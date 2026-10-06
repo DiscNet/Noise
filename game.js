@@ -90,17 +90,17 @@ function world(){
   ctx.fillStyle="#76b6c4";ctx.fillRect(0,0,W,H);
 
   // Céu em faixas para dar profundidade ao cenário.
-  rect(0,0,W,115,"#79bdc9");
-  rect(0,115,W,70,"#69aeb0");
-  rect(0,185,W,70,"#559c91");
+  rect(0,0,W,115,"#39b9d0");
+  rect(0,115,W,70,"#28a8b0");
+  rect(0,185,W,70,"#168f7b");
 
   // Nuvens pixeladas.
-  drawCloud(150,68,1.25);
-  drawCloud(690,91,.85);
-  drawCloud(825,48,.65);
+  drawCloud(150+(time*.004%55),68,1.25);
+  drawCloud(690-(time*.002%45),91,.85);
+  drawCloud(825+(time*.003%35),48,.65);
 
   // Montanhas distantes.
-  ctx.fillStyle="#477f75";
+  ctx.fillStyle="#247568";
   ctx.beginPath();
   ctx.moveTo(0,238);ctx.lineTo(0,190);ctx.lineTo(95,122);ctx.lineTo(170,190);
   ctx.lineTo(265,106);ctx.lineTo(375,202);ctx.lineTo(475,130);ctx.lineTo(590,213);
@@ -108,39 +108,39 @@ function world(){
   ctx.lineTo(960,238);ctx.closePath();ctx.fill();
 
   // Neve/luz nas cristas.
-  rect(82,139,25,4,"#b7d1bd");rect(91,134,13,5,"#b7d1bd");
-  rect(253,121,28,4,"#a9c9b5");rect(262,116,14,5,"#a9c9b5");
-  rect(688,126,25,4,"#b7d1bd");rect(696,121,12,5,"#b7d1bd");
+  rect(82,139,25,4,"#d8f0c0");rect(91,134,13,5,"#d8f0c0");
+  rect(253,121,28,4,"#c8e9bd");rect(262,116,14,5,"#c8e9bd");
+  rect(688,126,25,4,"#d8f0c0");rect(696,121,12,5,"#d8f0c0");
 
   // Floresta distante.
-  rect(0,238,W,18,"#356e54");
+  rect(0,238,W,18,"#185f45");
   for(let x=-10;x<W+30;x+=31){
     const h=18+(x*7%24+24)%24;
-    rect(x,256-h,10,h,"#285d4a");
-    rect(x-8,247-h,26,15,"#326f4e");
-    rect(x-4,235-h,18,16,"#3d8155");
+    rect(x,256-h,10,h,"#104d3c");
+    rect(x-8,247-h,26,15,"#176346");
+    rect(x-4,235-h,18,16,"#268050");
   }
 
   // Campo principal.
-  rect(0,256,W,284,"#4f9a55");
-  rect(0,256,W,8,"#43864e");
+  rect(0,256,W,284,"#43b84e");
+  rect(0,256,W,8,"#2d963f");
 
   // Caminho de terra em perspectiva.
-  ctx.fillStyle="#b78957";
+  ctx.fillStyle="#c8894b";
   ctx.beginPath();
   ctx.moveTo(404,540);ctx.lineTo(556,540);ctx.lineTo(514,310);ctx.lineTo(446,310);ctx.closePath();ctx.fill();
-  rect(437,328,86,8,"#c79b63");
-  rect(444,370,72,7,"#c79b63");
-  rect(454,421,53,7,"#c79b63");
-  rect(466,474,31,7,"#c79b63");
+  rect(437,328,86,8,"#e0a65c");
+  rect(444,370,72,7,"#e0a65c");
+  rect(454,421,53,7,"#e0a65c");
+  rect(466,474,31,7,"#e0a65c");
 
   // Pequeno lago lateral.
-  ctx.fillStyle="#3e8f9b";
+  ctx.fillStyle="#159fb2";
   ctx.beginPath();
   ctx.moveTo(0,430);ctx.lineTo(0,350);ctx.lineTo(105,354);ctx.lineTo(175,385);
   ctx.lineTo(153,430);ctx.lineTo(80,451);ctx.closePath();ctx.fill();
-  rect(20,377,67,3,"#75c4c5");rect(52,396,82,3,"#75c4c5");
-  rect(6,414,55,3,"#6ab6ba");
+  rect(20,377,67,3,"#9ce8e2");rect(52,396,82,3,"#75c4c5");
+  rect(6,414,55,3,"#70d6d2");
   const wave=(time*.025)%90;
   for(let i=0;i<4;i++){
     const wx=(wave+i*27)%125;
@@ -150,8 +150,8 @@ function world(){
   // Margens de grama.
   for(let x=0;x<W;x+=23){
     const offset=(x*13)%17;
-    rect(x,250-offset,4,12+offset,"#397d49");
-    rect(x+8,252-(offset>>1),3,10+(offset>>1),"#6aad58");
+    rect(x,250-offset,4,12+offset,"#238c3e");
+    rect(x+8,252-(offset>>1),3,10+(offset>>1),"#75c95a");
   }
 
   // Árvores em primeiro plano.
@@ -182,11 +182,11 @@ function world(){
   }
 
   // Reflexo/luz perto da área da raposa.
-  rect(365,283,230,3,"#69a95b");
+  rect(365,283,230,3,"#83d65b");
   for(let i=0;i<7;i++){
     const fx=(i*143+Math.floor(time*.012))%930;
     const fy=295+(i*31%165);
-    rect(fx,fy,2,2,i%2?"#d5e17b":"#b9d86e");
+    rect(fx,fy,2,2,i%2?"#e5f56d":"#b4ed68");
   }
 }
 function drawCloud(x,y,s){
@@ -220,13 +220,26 @@ function drawFlower(x,y,type){
   rect(x-1,y-6,4,4,petals);
   rect(x,y-2,3,3,"#f4d86a");
 }
+function drawFoxShadow(){
+  const impact=fox.bounce>0?Math.max(0,fox.bounce/120):0;
+  const width=Math.round(94+impact*18);
+  const height=Math.round(11-impact*4);
+  const x=Math.round(fox.x-width/2);
+  const y=Math.round(fox.y+76-height/2);
+  rect(x+10,y,width-20,height,"#1c543c");
+  rect(x,y+3,width,height-5,"#174434");
+}
 function drawFox(){
   if(!foxSprite.complete||foxSprite.naturalWidth===0)return;
   const bob=Math.sin(time*.006)*2;
-  const press=fox.bounce>0?3:0;
-  const width=128,height=168;
+  const p=fox.bounce>0?1-fox.bounce/120:0;
+  const jump=Math.sin(p*Math.PI)*8;
+  const squash=fox.bounce>0?1+Math.sin(p*Math.PI)*.12:1;
+  const stretch=fox.bounce>0?1-Math.sin(p*Math.PI)*.08:1;
+  const width=Math.round(128*squash);
+  const height=Math.round(168*stretch);
   const x=Math.round(fox.x-width/2);
-  const y=Math.round(fox.y-height/2+bob+press);
+  const y=Math.round(fox.y-height/2+bob-jump);
   ctx.drawImage(foxSprite,x,y,width,height);
 }
 function drawCoins(){
@@ -244,7 +257,7 @@ function coin(x,y,s=13){
 }
 function drawParticles(){
   for(const p of particles){
-    p.x+=p.vx;p.y+=p.vy;p.vy+=.04;p.life--;
+    p.x+=p.vx;p.y+=p.vy;p.vx*=.985;p.vy+=.04;p.life--;
     rect(p.x,p.y,p.s,p.s,p.c);
   }
   particles=particles.filter(p=>p.life>0);
@@ -257,20 +270,16 @@ function drawParticles(){
   ctx.globalAlpha=1;
   texts=texts.filter(t=>t.life>0);
 }
-function drawFoxShadow(){
-  ctx.fillStyle="rgba(20,47,42,.3)";
-  ctx.fillRect(418,401,124,7);
-}
 function spawnClick(){
-  for(let i=0;i<Math.min(12,state.power+3);i++){
+  for(let i=0;i<Math.min(16,state.power+4);i++){
     particles.push({
       x:fox.x+(Math.random()-.5)*70,y:fox.y-20,
-      vx:(Math.random()-.5)*2.5,vy:-2-Math.random()*2,
-      s:Math.random()>0.5?5:7,life:30+Math.random()*20,
+      vx:(Math.random()-.5)*3.2,vy:-2.4-Math.random()*2.4,
+      s:Math.random()>0.5?5:7,life:32+Math.random()*24,
       c:i%3===0?"#fff1a0":i%3===1?"#f6c63b":"#ffad35"
     });
   }
-  coinsWorld.push({x:fox.x+(Math.random()-.5)*28,y:fox.y-80,vx:(Math.random()-.5)*.8,vy:-2.1,life:55,size:10});
+  coinsWorld.push({x:fox.x+(Math.random()-.5)*28,y:fox.y-80,vx:(Math.random()-.5)*.8,vy:-2.1,life:60,size:10});
 }
 function clickAt(clientX,clientY){
   const r=canvas.getBoundingClientRect();
