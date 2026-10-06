@@ -85,34 +85,128 @@ resize();
 
 function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h))}
 function world(){
-  ctx.fillStyle="#163b40";ctx.fillRect(0,0,W,H);
-  rect(0,0,W,330,"#237d76");
-  for(let y=0;y<330;y+=30)for(let x=0;x<W;x+=30){
-    if((x/30+y/30)%2===0)rect(x,y,30,30,"#287f74");
+  ctx.fillStyle="#76b6c4";ctx.fillRect(0,0,W,H);
+
+  // Céu em faixas para dar profundidade ao cenário.
+  rect(0,0,W,115,"#79bdc9");
+  rect(0,115,W,70,"#69aeb0");
+  rect(0,185,W,70,"#559c91");
+
+  // Nuvens pixeladas.
+  drawCloud(150,68,1.25);
+  drawCloud(690,91,.85);
+  drawCloud(825,48,.65);
+
+  // Montanhas distantes.
+  ctx.fillStyle="#477f75";
+  ctx.beginPath();
+  ctx.moveTo(0,238);ctx.lineTo(0,190);ctx.lineTo(95,122);ctx.lineTo(170,190);
+  ctx.lineTo(265,106);ctx.lineTo(375,202);ctx.lineTo(475,130);ctx.lineTo(590,213);
+  ctx.lineTo(700,112);ctx.lineTo(810,192);ctx.lineTo(895,132);ctx.lineTo(960,182);
+  ctx.lineTo(960,238);ctx.closePath();ctx.fill();
+
+  // Neve/luz nas cristas.
+  rect(82,139,25,4,"#b7d1bd");rect(91,134,13,5,"#b7d1bd");
+  rect(253,121,28,4,"#a9c9b5");rect(262,116,14,5,"#a9c9b5");
+  rect(688,126,25,4,"#b7d1bd");rect(696,121,12,5,"#b7d1bd");
+
+  // Floresta distante.
+  rect(0,238,W,18,"#356e54");
+  for(let x=-10;x<W+30;x+=31){
+    const h=18+(x*7%24+24)%24;
+    rect(x,256-h,10,h,"#285d4a");
+    rect(x-8,247-h,26,15,"#326f4e");
+    rect(x-4,235-h,18,16,"#3d8155");
   }
-  rect(0,330,W,210,"#4c9854");
-  for(let x=0;x<W;x+=24){
-    rect(x,326,4,15,"#34794a");rect(x+8,321,3,20,"#34794a");rect(x+15,327,4,14,"#3e844d");
+
+  // Campo principal.
+  rect(0,256,W,284,"#4f9a55");
+  rect(0,256,W,8,"#43864e");
+
+  // Caminho de terra em perspectiva.
+  ctx.fillStyle="#b78957";
+  ctx.beginPath();
+  ctx.moveTo(404,540);ctx.lineTo(556,540);ctx.lineTo(514,310);ctx.lineTo(446,310);ctx.closePath();ctx.fill();
+  rect(437,328,86,8,"#c79b63");
+  rect(444,370,72,7,"#c79b63");
+  rect(454,421,53,7,"#c79b63");
+  rect(466,474,31,7,"#c79b63");
+
+  // Pequeno lago lateral.
+  ctx.fillStyle="#3e8f9b";
+  ctx.beginPath();
+  ctx.moveTo(0,430);ctx.lineTo(0,350);ctx.lineTo(105,354);ctx.lineTo(175,385);
+  ctx.lineTo(153,430);ctx.lineTo(80,451);ctx.closePath();ctx.fill();
+  rect(20,377,67,3,"#75c4c5");rect(52,396,82,3,"#75c4c5");
+  rect(6,414,55,3,"#6ab6ba");
+
+  // Margens de grama.
+  for(let x=0;x<W;x+=23){
+    const offset=(x*13)%17;
+    rect(x,250-offset,4,12+offset,"#397d49");
+    rect(x+8,252-(offset>>1),3,10+(offset>>1),"#6aad58");
   }
-  for(let i=0;i<12;i++){
-    const x=(i*97+50)%W,y=60+(i*61)%240;
-    rect(x,y,3,3,i%2?"#70b17d":"#b5d06d");
+
+  // Árvores em primeiro plano.
+  drawTree(78,278,1.35);
+  drawTree(872,287,1.2);
+  drawTree(210,322,.72);
+  drawTree(758,337,.78);
+
+  // Arbustos e flores.
+  drawBush(305,382);
+  drawBush(651,392);
+  drawBush(114,472);
+  drawBush(846,465);
+
+  for(let i=0;i<26;i++){
+    const x=(i*83+29)%W;
+    const y=275+(i*47%225);
+    if(x>395&&x<565&&y>315)continue;
+    drawFlower(x,y,i%3);
   }
-  rect(82,245,80,5,"#72b969");rect(104,239,32,6,"#72b969");
-  rect(755,268,92,5,"#72b969");rect(784,262,30,6,"#72b969");
-  rect(182,119,50,4,"#43a08b");rect(200,113,17,6,"#43a08b");
-  rect(650,150,58,4,"#43a08b");rect(672,144,17,6,"#43a08b");
-  drawTree(72,180,1.1);drawTree(850,200,.9);drawBush(275,355);drawBush(690,372);
+
+  // Pequenos detalhes de terreno.
+  for(let i=0;i<18;i++){
+    const x=(i*137+41)%W;
+    const y=285+(i*71%220);
+    rect(x,y,7,3,"#3d8148");
+    rect(x+6,y-3,4,3,"#68ad57");
+  }
+
+  // Reflexo/luz perto da área da raposa.
+  rect(365,283,230,3,"#69a95b");
+}
+function drawCloud(x,y,s){
+  const p=(a,b,w,h,c)=>rect(x+a*s,y+b*s,w*s,h*s,c);
+  p(-30,5,62,12,"#d8e9d7");
+  p(-17,-3,25,12,"#e5f1dc");
+  p(3,-9,24,18,"#e5f1dc");
+  p(21,1,26,12,"#d8e9d7");
 }
 function drawTree(x,y,s){
-  rect(x-7*s,y,14*s,66*s,"#6d472d");
-  rect(x-42*s,y-20*s,84*s,45*s,"#285d46");
-  rect(x-31*s,y-44*s,62*s,42*s,"#347553");
-  rect(x-13*s,y-59*s,31*s,30*s,"#43865a");
-  rect(x-27*s,y-28*s,12*s,10*s,"#65a766");
+  const p=(a,b,w,h,c)=>rect(x+a*s,y+b*s,w*s,h*s,c);
+  p(-8,0,16,70,"#70472f");
+  p(-47,-24,94,44,"#275b45");
+  p(-35,-48,70,42,"#326f4d");
+  p(-18,-69,40,34,"#438657");
+  p(-44,-9,25,18,"#3b8052");
+  p(19,-7,25,17,"#2d6749");
+  p(-28,-31,18,10,"#5b9b5c");
 }
 function drawBush(x,y){
-  rect(x-28,y,56,17,"#326f48");rect(x-19,y-13,39,20,"#3d8450");rect(x-7,y-23,18,18,"#55a15b");
+  rect(x-32,y,64,18,"#2e6c47");
+  rect(x-24,y-15,48,19,"#397c4d");
+  rect(x-8,y-25,22,21,"#54a05a");
+  rect(x+16,y-9,20,13,"#438c50");
+}
+function drawFlower(x,y,type){
+  const petals=["#f2c84b","#e9897d","#e8d8a0"][type];
+  rect(x,y,3,8,"#397b45");
+  rect(x-3,y-2,4,4,petals);
+  rect(x+2,y-3,4,4,petals);
+  rect(x-1,y-6,4,4,petals);
+  rect(x,y-2,3,3,"#f4d86a");
 }
 function drawFox(){
   const bob=Math.sin(time*.006)*2;
