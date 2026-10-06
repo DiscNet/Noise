@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fox Clicker</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:"Courier New",monospace;background:#17102b;color:#fff}
+body{display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden}
+.game{width:min(760px,100%);text-align:center}
+.header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+.title{font-size:clamp(24px,5vw,42px);font-weight:900;color:#ffd447;text-shadow:4px 4px #7a2cff;letter-spacing:2px}
+.coins{padding:10px 14px;background:#29194a;border:4px solid #ffd447;box-shadow:4px 4px #7a2cff;font-size:20px;font-weight:900;white-space:nowrap}
+.screen{position:relative;background:#241446;border:6px solid #ffd447;box-shadow:8px 8px #090611;overflow:hidden}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+.hint{margin-top:16px;color:#f0c9ff;font-size:14px}
+button{font:inherit;font-weight:900;color:#fff;background:#7a2cff;border:4px solid #ffd447;padding:10px 18px;cursor:pointer;box-shadow:4px 4px #090611}
+button:active{transform:translate(3px,3px);box-shadow:1px 1px #090611}
+</style>
+</head>
+<body>
+<main class="game">
+  <div class="header">
+    <div class="title">FOX CLICKER</div>
+    <div class="coins">🪙 <span id="score">0</span></div>
+  </div>
+  <div class="screen">
+    <canvas id="game" width="160" height="100" aria-label="Clique na raposa para ganhar moedas"></canvas>
+  </div>
+  <div class="hint">CLIQUE NA RAPOSA PARA GANHAR MOEDAS</div>
+  <br>
+  <button id="reset">RESET</button>
+</main>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+ctx.imageSmoothingEnabled=false;
+
+const W=160,H=100;
+let coins=Number(localStorage.getItem("foxCoins")||0);
+let fox={x:80,y:58,scale:1,pressed:0};
+let particles=[];
+let last=0;
+
+const score=document.getElementById("score");
+score.textContent=coins;
+
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+function text(t,x,y,size,c){ctx.fillStyle=c;ctx.font="bold "+size+"px Courier New";ctx.textAlign="center";ctx.fillText(t,x,y)}
+
+function drawBackground(){
+  rect(0,0,W,H,"#241446");
+  for(let y=0;y<H;y+=8) for(let x=0;x<W;x+=8){
+    if((x/8+y/8)%2===0) rect(x,y,8,8,"#28184d");
+  }
+  rect(0,76,W,24,"#3b2365");
+  for(let x=0;x<W;x+=12){
+    rect(x,72-(x%3)*2,8,6,"#4e2c79");
+  }
+  const stars=[[16,14],[38,25],[60,10],[91,20],[123,12],[145,29],[20,45],[136,43]];
+  stars.forEach(([x,y],i)=>rect(x,y,2,i%2?2:3,"#ffd447"));
+}
+
+function drawFox(){
+  const s=fox.scale;
+  const cx=Math.round(fox.x), cy=Math.round(fox.y+(fox.pressed?3:0));
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.scale(s,s);
+
+  // tail
+  rect(27,14,18,18,"#e86b2f");
+  rect(39,18,10,12,"#ffb13b");
+  rect(45,20,7,8,"#fff0bd");
+  rect(23,19,12,15,"#f28a32");
+
+  // body
+  rect(-25,8,50,32,"#e86b2f");
+  rect(-20,30,12,16,"#c74b2b");
+  rect(8,30,12,16,"#c74b2b");
+  rect(-10,22,20,18,"#ffb13b");
+  rect(-5,25,10,13,"#fff0bd");
+
+  // head
+  rect(-29,-23,58,45,"#f07a2e");
+  rect(-24,-31,17,15,"#e86b2f");
+  rect(7,-31,17,15,"#e86b2f");
+  rect(-20,-25,11,10,"#ffd06a");
+  rect(9,-25,11,10,"#ffd06a");
+
+  // ears
+  rect(-25,-32,12,7,"#7b3040");
+  rect(13,-32,12,7,"#7b3040");
+
+  // face
+  rect(-21,-10,14,12,"#fff0bd");
+  rect(7,-10,14,12,"#fff0bd");
+  rect(-15,-7,7,7,"#17102b");
+  rect(8,-7,7,7,"#17102b");
+  rect(-3,1,6,5,"#17102b");
+  rect(-7,6,14,5,"#fff0bd");
+
+  // cheeks
+  rect(-26,3,10,8,"#ffb13b");
+  rect(16,3,10,8,"#ffb13b");
+
+  // paws
+  rect(-29,39,13,8,"#ffd06a");
+  rect(16,39,13,8,"#ffd06a");
+  ctx.restore();
+}
+
+function spawnCoins(){
+  const count=Math.floor(Math.random()*3)+1;
+  for(let i=0;i<count;i++){
+    particles.push({
+      x:fox.x+(Math.random()-.5)*35,
+      y:fox.y-22,
+      vy:-.45-Math.random()*.5,
+      life:45+Math.random()*20,
+      value:1
+    });
+  }
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    p.y+=p.vy;p.life--;
+    rect(Math.round(p.x),Math.round(p.y),4,4,p.life%6<3?"#fff08a":"#ffd447");
+    if(p.life>18) text("+1",p.x,p.y-4,6,"#fff");
+  });
+  particles=particles.filter(p=>p.life>0);
+}
+
+function draw(){
+  drawBackground();
+  drawFox();
+  drawParticles();
+}
+
+function loop(t){
+  const dt=Math.min(50,t-last); last=t;
+  if(fox.pressed>0) fox.pressed=Math.max(0,fox.pressed-dt/120);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function clickFox(e){
+  const r=canvas.getBoundingClientRect();
+  const x=(e.clientX-r.left)*(W/r.width);
+  const y=(e.clientY-r.top)*(H/r.height);
+  const dx=(x-fox.x)/1.15,dy=(y-(fox.y-2))/1.15;
+  if(dx*dx+dy*dy<1050){
+    const gain=Math.floor(Math.random()*3)+1;
+    coins+=gain;
+    localStorage.setItem("foxCoins",coins);
+    score.textContent=coins;
+    fox.pressed=1;
+    spawnCoins();
+  }
+}
+
+canvas.addEventListener("click",clickFox);
+document.getElementById("reset").addEventListener("click",()=>{
+  coins=0;
+  localStorage.setItem("foxCoins",0);
+  score.textContent=0;
+  particles=[];
+});
+
+draw();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
