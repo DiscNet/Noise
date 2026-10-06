@@ -8,7 +8,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#173c43}
 body{font-family:"Courier New",monospace}
-canvas{display:block;position:absolute;width:max(100vw,177.7778vh);height:max(100vh,56.25vw);left:50%;top:50%;transform:translate(-50%,-50%);image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+canvas{display:block;position:absolute;inset:0;width:100vw;height:100vh;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
 .ui{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:3px 3px #18343a}
 .stats{position:absolute;top:18px;left:20px;display:flex;gap:24px;align-items:center}
 .stat{display:flex;align-items:center;gap:9px;font-size:24px;font-weight:900}
@@ -26,7 +26,7 @@ canvas{display:block;position:absolute;width:max(100vw,177.7778vh);height:max(10
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Clique na raposa para ganhar moedas"></canvas>
+<canvas id="game" width="320" height="180" aria-label="Clique na raposa para ganhar moedas"></canvas>
 <div class="ui">
   <div class="stats">
     <div class="stat"><span class="coin"></span><span id="coins">0</span></div>
@@ -43,7 +43,7 @@ canvas{display:block;position:absolute;width:max(100vw,177.7778vh);height:max(10
   </div>
 </div>
 <script>
-const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");\nctx.imageSmoothingEnabled=false;
 const coinsEl=document.getElementById("coins"),levelEl=document.getElementById("level"),powerEl=document.getElementById("power"),costEl=document.getElementById("cost"),toast=document.getElementById("toast");
 const W=320,H=180;
 function loadNumber(key,fallback,min=0){const value=Number(localStorage.getItem(key));return Number.isFinite(value)&&value>=min?value:fallback}
