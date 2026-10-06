@@ -2,176 +2,63 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fox Clicker</title>
 <style>
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:"Courier New",monospace;background:#17102b;color:#fff}
-body{display:flex;align-items:center;justify-content:center;padding:20px;overflow:hidden}
-.game{width:min(760px,100%);text-align:center}
-.header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
-.title{font-size:clamp(24px,5vw,42px);font-weight:900;color:#ffd447;text-shadow:4px 4px #7a2cff;letter-spacing:2px}
-.coins{padding:10px 14px;background:#29194a;border:4px solid #ffd447;box-shadow:4px 4px #7a2cff;font-size:20px;font-weight:900;white-space:nowrap}
-.screen{position:relative;background:#241446;border:6px solid #ffd447;box-shadow:8px 8px #090611;overflow:hidden}
-canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
-.hint{margin-top:16px;color:#f0c9ff;font-size:14px}
-button{font:inherit;font-weight:900;color:#fff;background:#7a2cff;border:4px solid #ffd447;padding:10px 18px;cursor:pointer;box-shadow:4px 4px #090611}
-button:active{transform:translate(3px,3px);box-shadow:1px 1px #090611}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
+body{font-family:"Courier New",monospace;background:#76c95b;color:#fff}
+#game{display:block;width:100vw;height:100vh;image-rendering:pixelated;image-rendering:crisp-edges;cursor:crosshair}
+.ui{position:fixed;top:20px;left:20px;z-index:2;display:flex;align-items:center;gap:12px;pointer-events:none}
+.coin{width:30px;height:30px;position:relative;background:#f6c62e;border:4px solid #8d531e;box-shadow:inset 4px 4px #ffe77a,inset -4px -4px #c98518}
+.coin:after{content:"";position:absolute;left:9px;top:4px;width:4px;height:14px;background:#fff0a8;box-shadow:7px 0 #fff0a8}
+#score{font-size:28px;font-weight:900;text-shadow:3px 3px #28553a}
+.reset{position:fixed;right:20px;top:20px;z-index:2;border:3px solid #fff;background:#2f7043;color:#fff;padding:8px 12px;font:900 14px "Courier New",monospace;cursor:pointer;box-shadow:3px 3px #28553a}
+.reset:active{transform:translate(2px,2px);box-shadow:1px 1px #28553a}
+.hint{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2;font-size:13px;font-weight:900;text-shadow:2px 2px #28553a;pointer-events:none;white-space:nowrap}
 </style>
 </head>
 <body>
-<main class="game">
-  <div class="header">
-    <div class="title">FOX CLICKER</div>
-    <div class="coins">🪙 <span id="score">0</span></div>
-  </div>
-  <div class="screen">
-    <canvas id="game" width="160" height="100" aria-label="Clique na raposa para ganhar moedas"></canvas>
-  </div>
-  <div class="hint">CLIQUE NA RAPOSA PARA GANHAR MOEDAS</div>
-  <br>
-  <button id="reset">RESET</button>
-</main>
-
+<div class="ui"><div class="coin" aria-hidden="true"></div><span id="score">0</span></div>
+<button class="reset" id="reset">RESET</button>
+<div class="hint">CLIQUE NA RAPOSA</div>
+<canvas id="game" aria-label="Clique na raposa para ganhar moedas"></canvas>
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-ctx.imageSmoothingEnabled=false;
-
-const W=160,H=100;
-let coins=Number(localStorage.getItem("foxCoins")||0);
-let fox={x:80,y:58,scale:1,pressed:0};
-let particles=[];
-let last=0;
-
-const score=document.getElementById("score");
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d"),score=document.getElementById("score");
+const W=320,H=180;
+let coins=Number(localStorage.getItem("foxCoins")||0),particles=[],fox={x:160,y:103,pressed:0},last=0;
 score.textContent=coins;
-
+function resize(){canvas.width=W;canvas.height=H}
 function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
-function text(t,x,y,size,c){ctx.fillStyle=c;ctx.font="bold "+size+"px Courier New";ctx.textAlign="center";ctx.fillText(t,x,y)}
-
-function drawBackground(){
-  rect(0,0,W,H,"#241446");
-  for(let y=0;y<H;y+=8) for(let x=0;x<W;x+=8){
-    if((x/8+y/8)%2===0) rect(x,y,8,8,"#28184d");
-  }
-  rect(0,76,W,24,"#3b2365");
-  for(let x=0;x<W;x+=12){
-    rect(x,72-(x%3)*2,8,6,"#4e2c79");
-  }
-  const stars=[[16,14],[38,25],[60,10],[91,20],[123,12],[145,29],[20,45],[136,43]];
-  stars.forEach(([x,y],i)=>rect(x,y,2,i%2?2:3,"#ffd447"));
+function drawWorld(){
+rect(0,0,W,H,"#72c85a");
+for(let y=0;y<H;y+=16)for(let x=0;x<W;x+=16)if((x+y)%32===0)rect(x,y,16,16,"#6bc052");
+rect(0,137,W,43,"#58a94b");
+for(let x=0;x<W;x+=24){rect(x,133,5,8,"#3e8b45");rect(x+8,130,4,11,"#3e8b45")}
+for(let i=0;i<12;i++){const x=(i*47+19)%W,y=25+(i*31)%100;rect(x,y,3,3,"#3e9145");rect(x+5,y+3,2,2,"#3e9145")}
+rect(26,116,10,4,"#9cdb68");rect(31,111,5,5,"#9cdb68");rect(268,101,12,5,"#9cdb68");rect(273,96,5,5,"#9cdb68")
 }
-
 function drawFox(){
-  const s=fox.scale;
-  const cx=Math.round(fox.x), cy=Math.round(fox.y+(fox.pressed?3:0));
-  ctx.save();
-  ctx.translate(cx,cy);
-  ctx.scale(s,s);
-
-  // tail
-  rect(27,14,18,18,"#e86b2f");
-  rect(39,18,10,12,"#ffb13b");
-  rect(45,20,7,8,"#fff0bd");
-  rect(23,19,12,15,"#f28a32");
-
-  // body
-  rect(-25,8,50,32,"#e86b2f");
-  rect(-20,30,12,16,"#c74b2b");
-  rect(8,30,12,16,"#c74b2b");
-  rect(-10,22,20,18,"#ffb13b");
-  rect(-5,25,10,13,"#fff0bd");
-
-  // head
-  rect(-29,-23,58,45,"#f07a2e");
-  rect(-24,-31,17,15,"#e86b2f");
-  rect(7,-31,17,15,"#e86b2f");
-  rect(-20,-25,11,10,"#ffd06a");
-  rect(9,-25,11,10,"#ffd06a");
-
-  // ears
-  rect(-25,-32,12,7,"#7b3040");
-  rect(13,-32,12,7,"#7b3040");
-
-  // face
-  rect(-21,-10,14,12,"#fff0bd");
-  rect(7,-10,14,12,"#fff0bd");
-  rect(-15,-7,7,7,"#17102b");
-  rect(8,-7,7,7,"#17102b");
-  rect(-3,1,6,5,"#17102b");
-  rect(-7,6,14,5,"#fff0bd");
-
-  // cheeks
-  rect(-26,3,10,8,"#ffb13b");
-  rect(16,3,10,8,"#ffb13b");
-
-  // paws
-  rect(-29,39,13,8,"#ffd06a");
-  rect(16,39,13,8,"#ffd06a");
-  ctx.restore();
+const s=.55,cy=Math.round(fox.y+(fox.pressed?2:0));ctx.save();ctx.translate(Math.round(fox.x),cy);ctx.scale(s,s);
+rect(27,14,18,18,"#e86b2f");rect(39,18,10,12,"#ffb13b");rect(45,20,7,8,"#fff0bd");rect(23,19,12,15,"#f28a32");
+rect(-25,8,50,32,"#e86b2f");rect(-20,30,12,16,"#c74b2b");rect(8,30,12,16,"#c74b2b");rect(-10,22,20,18,"#ffb13b");rect(-5,25,10,13,"#fff0bd");
+rect(-29,-23,58,45,"#f07a2e");rect(-24,-31,17,15,"#e86b2f");rect(7,-31,17,15,"#e86b2f");rect(-20,-25,11,10,"#ffd06a");rect(9,-25,11,10,"#ffd06a");
+rect(-25,-32,12,7,"#7b3040");rect(13,-32,12,7,"#7b3040");rect(-21,-10,14,12,"#fff0bd");rect(7,-10,14,12,"#fff0bd");
+rect(-15,-7,7,7,"#17102b");rect(8,-7,7,7,"#17102b");rect(-3,1,6,5,"#17102b");rect(-7,6,14,5,"#fff0bd");
+rect(-26,3,10,8,"#ffb13b");rect(16,3,10,8,"#ffb13b");rect(-29,39,13,8,"#ffd06a");rect(16,39,13,8,"#ffd06a");ctx.restore()
 }
-
-function spawnCoins(){
-  const count=Math.floor(Math.random()*3)+1;
-  for(let i=0;i<count;i++){
-    particles.push({
-      x:fox.x+(Math.random()-.5)*35,
-      y:fox.y-22,
-      vy:-.45-Math.random()*.5,
-      life:45+Math.random()*20,
-      value:1
-    });
-  }
-}
-
-function drawParticles(){
-  particles.forEach(p=>{
-    p.y+=p.vy;p.life--;
-    rect(Math.round(p.x),Math.round(p.y),4,4,p.life%6<3?"#fff08a":"#ffd447");
-    if(p.life>18) text("+1",p.x,p.y-4,6,"#fff");
-  });
-  particles=particles.filter(p=>p.life>0);
-}
-
-function draw(){
-  drawBackground();
-  drawFox();
-  drawParticles();
-}
-
-function loop(t){
-  const dt=Math.min(50,t-last); last=t;
-  if(fox.pressed>0) fox.pressed=Math.max(0,fox.pressed-dt/120);
-  draw();
-  requestAnimationFrame(loop);
-}
-
+function drawCoin(x,y){x=Math.round(x);y=Math.round(y);rect(x,y,7,7,"#9a5a1e");rect(x+2,y-2,7,7,"#f6c62e");rect(x+3,y-1,3,4,"#ffe77a")}
+function spawn(){particles.push({x:fox.x+(Math.random()-.5)*13,y:fox.y-22,vy:-.6-Math.random()*.5,life:40+Math.random()*18})}
+function drawParticles(){particles.forEach(p=>{p.y+=p.vy;p.life--;drawCoin(p.x,p.y)});particles=particles.filter(p=>p.life>0)}
+function draw(){drawWorld();drawFox();drawParticles()}
+function loop(t){const dt=Math.min(50,t-last);last=t;if(fox.pressed>0)fox.pressed=Math.max(0,fox.pressed-dt/110);draw();requestAnimationFrame(loop)}
 function clickFox(e){
-  const r=canvas.getBoundingClientRect();
-  const x=(e.clientX-r.left)*(W/r.width);
-  const y=(e.clientY-r.top)*(H/r.height);
-  const dx=(x-fox.x)/1.15,dy=(y-(fox.y-2))/1.15;
-  if(dx*dx+dy*dy<1050){
-    const gain=Math.floor(Math.random()*3)+1;
-    coins+=gain;
-    localStorage.setItem("foxCoins",coins);
-    score.textContent=coins;
-    fox.pressed=1;
-    spawnCoins();
-  }
+const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height;
+const dx=(x-fox.x)/1.15,dy=(y-(fox.y-2))/1.15;
+if(dx*dx+dy*dy<300){coins++;localStorage.setItem("foxCoins",coins);score.textContent=coins;fox.pressed=1;spawn()}
 }
-
 canvas.addEventListener("click",clickFox);
-document.getElementById("reset").addEventListener("click",()=>{
-  coins=0;
-  localStorage.setItem("foxCoins",0);
-  score.textContent=0;
-  particles=[];
-});
-
-draw();
-requestAnimationFrame(loop);
+document.getElementById("reset").addEventListener("click",()=>{coins=0;localStorage.setItem("foxCoins",0);score.textContent=0;particles=[]});
+resize();draw();requestAnimationFrame(loop);
 </script>
 </body>
 </html>
