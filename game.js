@@ -23,7 +23,9 @@ const ui={
 
 const defaultState={coins:0,level:1,power:1,cost:12,clicks:0,totalClicks:0};
 let state=load();
-let fox={x:480,y:310,bounce:0,hover:0};
+let fox={x:480,y:320,bounce:0,hover:0};
+const foxSprite=new Image();
+foxSprite.src="fox.png";
 let particles=[];
 let texts=[];
 let coinsWorld=[];
@@ -219,25 +221,13 @@ function drawFlower(x,y,type){
   rect(x,y-2,3,3,"#f4d86a");
 }
 function drawFox(){
+  if(!foxSprite.complete||foxSprite.naturalWidth===0)return;
   const bob=Math.sin(time*.006)*2;
   const press=fox.bounce>0?3:0;
-  const x=Math.round(fox.x),y=Math.round(fox.y+bob+press);
-  ctx.save();ctx.translate(x,y);
-  const p=(a,b,w,h,c)=>rect(a,b,w,h,c);
-  p(-58,34,116,67,"#d95c2d");
-  p(-46,82,28,27,"#b5462d");p(18,82,28,27,"#b5462d");
-  p(-22,66,44,37,"#ffad35");p(-11,72,22,27,"#fff0bd");
-  p(-67,5,134,104,"#e56a2e");
-  p(-55,-28,39,34,"#d75a2d");p(16,-28,39,34,"#d75a2d");
-  p(-47,-18,26,23,"#ffd064");p(21,-18,26,23,"#ffd064");
-  p(-58,-30,28,13,"#6d3040");p(30,-30,28,13,"#6d3040");
-  p(-50,14,31,26,"#fff0bd");p(19,14,31,26,"#fff0bd");
-  p(-36,18,14,14,"#172a2d");p(22,18,14,14,"#172a2d");
-  p(-7,35,14,11,"#172a2d");p(-17,47,34,10,"#fff0bd");
-  p(-61,47,24,18,"#ffad35");p(37,47,24,18,"#ffad35");
-  p(-67,105,29,17,"#ffd064");p(38,105,29,17,"#ffd064");
-  p(45,73,54,15,"#c64e2b");p(79,65,26,19,"#b9472d");p(94,52,18,18,"#b9472d");
-  ctx.restore();
+  const width=128,height=168;
+  const x=Math.round(fox.x-width/2);
+  const y=Math.round(fox.y-height/2+bob+press);
+  ctx.drawImage(foxSprite,x,y,width,height);
 }
 function drawCoins(){
   for(const c of coinsWorld){
@@ -269,7 +259,7 @@ function drawParticles(){
 }
 function drawFoxShadow(){
   ctx.fillStyle="rgba(20,47,42,.3)";
-  ctx.fillRect(420,421,120,7);
+  ctx.fillRect(418,401,124,7);
 }
 function spawnClick(){
   for(let i=0;i<Math.min(12,state.power+3);i++){
@@ -280,13 +270,13 @@ function spawnClick(){
       c:i%3===0?"#fff1a0":i%3===1?"#f6c63b":"#ffad35"
     });
   }
-  coinsWorld.push({x:fox.x+(Math.random()-.5)*28,y:fox.y-75,vx:(Math.random()-.5)*.8,vy:-2.1,life:55,size:10});
+  coinsWorld.push({x:fox.x+(Math.random()-.5)*28,y:fox.y-80,vx:(Math.random()-.5)*.8,vy:-2.1,life:55,size:10});
 }
 function clickAt(clientX,clientY){
   const r=canvas.getBoundingClientRect();
   const scaleX=W/r.width,scaleY=H/r.height;
   const x=(clientX-r.left)*scaleX,y=(clientY-r.top)*scaleY;
-  const dx=x-fox.x,dy=y-(fox.y-20);
+  const dx=x-fox.x,dy=y-(fox.y-10);
   if(dx*dx+dy*dy>95*95)return;
   const now=performance.now();
   if(now-comboTimer<900)combo=Math.min(9,combo+1);else combo=1;
@@ -297,11 +287,11 @@ function clickAt(clientX,clientY){
   state.totalClicks++;
   fox.bounce=120;
   spawnClick();
-  texts.push({x:fox.x,y:fox.y-110,vy:-.8,life:38,text:"+"+reward,c:combo>1?"#ffe36a":"#fff"});
+  texts.push({x:fox.x,y:fox.y-105,vy:-.8,life:38,text:"+"+reward,c:combo>1?"#ffe36a":"#fff"});
   if(state.clicks%25===0){
     unlockedChest=true;
     say("BAÚ DISPONÍVEL");
-    texts.push({x:fox.x,y:fox.y-145,vy:-.5,life:60,text:"25 CLIQUES",c:"#e8c8ff"});
+    texts.push({x:fox.x,y:fox.y-125,vy:-.5,life:60,text:"25 CLIQUES",c:"#e8c8ff"});
   }
   if(state.clicks%10===0)say("BÔNUS DE CLIQUE");
   save();updateUI();
@@ -317,7 +307,7 @@ ui.upgrade.addEventListener("click",()=>{
   state.power++;
   state.cost=Math.ceil(state.cost*1.58);
   fox.bounce=120;
-  texts.push({x:fox.x,y:fox.y-115,vy:-.6,life:45,text:"PODER +1",c:"#fff"});
+  texts.push({x:fox.x,y:fox.y-105,vy:-.6,life:45,text:"PODER +1",c:"#fff"});
   say("RAPOSA MELHORADA");
   save();updateUI();
 });
@@ -328,7 +318,7 @@ ui.chest.addEventListener("click",()=>{
   unlockedChest=false;
   state.clicks=0;
   for(let i=0;i<20;i++)coinsWorld.push({x:fox.x+(Math.random()-.5)*120,y:fox.y-20,vx:(Math.random()-.5)*2.2,vy:-3-Math.random()*2,life:70,size:12});
-  texts.push({x:fox.x,y:fox.y-135,vy:-.5,life:70,text:"BAÚ +"+reward,c:"#ffe05b"});
+  texts.push({x:fox.x,y:fox.y-125,vy:-.5,life:70,text:"BAÚ +"+reward,c:"#ffe05b"});
   say("BAÚ ABERTO");
   save();updateUI();
 });
