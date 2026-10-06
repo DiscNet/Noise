@@ -8,7 +8,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#173c43}
 body{font-family:"Courier New",monospace}
-canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+canvas{display:block;position:absolute;width:max(100vw,177.7778vh);height:max(100vh,56.25vw);left:50%;top:50%;transform:translate(-50%,-50%);image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
 .ui{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:3px 3px #18343a}
 .stats{position:absolute;top:18px;left:20px;display:flex;gap:24px;align-items:center}
 .stat{display:flex;align-items:center;gap:9px;font-size:24px;font-weight:900}
@@ -46,7 +46,8 @@ canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated;image-re
 const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
 const coinsEl=document.getElementById("coins"),levelEl=document.getElementById("level"),powerEl=document.getElementById("power"),costEl=document.getElementById("cost"),toast=document.getElementById("toast");
 const W=320,H=180;
-let coins=Number(localStorage.getItem("foxCoins")||0),level=Number(localStorage.getItem("foxLevel")||1),power=Number(localStorage.getItem("foxPower")||1),clicks=Number(localStorage.getItem("foxClicks")||0),upgradeCost=Number(localStorage.getItem("foxCost")||10);
+function loadNumber(key,fallback,min=0){const value=Number(localStorage.getItem(key));return Number.isFinite(value)&&value>=min?value:fallback}
+let coins=loadNumber("foxCoins",0),level=loadNumber("foxLevel",1,1),power=loadNumber("foxPower",1,1),clicks=loadNumber("foxClicks",0),upgradeCost=loadNumber("foxCost",10,1);
 let particles=[],floaters=[],chestOpen=0,fox={x:160,y:99,pressed:0},last=0;
 const rect=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h)};
 function save(){localStorage.setItem("foxCoins",coins);localStorage.setItem("foxLevel",level);localStorage.setItem("foxPower",power);localStorage.setItem("foxClicks",clicks);localStorage.setItem("foxCost",upgradeCost)}
@@ -60,7 +61,7 @@ rect(18,104,25,4,"#7ac56b");rect(27,99,9,5,"#7ac56b");rect(266,112,30,4,"#7ac56b
 rect(59,42,8,4,"#46a08b");rect(63,38,4,4,"#46a08b");rect(235,54,8,4,"#46a08b");rect(239,50,4,4,"#46a08b");
 for(let i=0;i<18;i++){let x=(i*71+31)%W,y=(i*43+17)%115;rect(x,y,2,2,i%2?"#b4d96b":"#3c9a72")}
 }
-function fox(){
+function drawFox(){
 const s=.43,cy=Math.round(fox.y+(fox.pressed?3:0));ctx.save();ctx.translate(Math.round(fox.x),cy);ctx.scale(s,s);
 rect(27,14,18,18,"#d85c2d");rect(39,18,10,12,"#ffad35");rect(45,20,7,8,"#fff0bd");rect(23,19,12,15,"#ee7530");
 rect(-25,8,50,32,"#d85c2d");rect(-20,30,12,16,"#b9472d");rect(8,30,12,16,"#b9472d");rect(-10,22,20,18,"#ffad35");rect(-5,25,10,13,"#fff0bd");
@@ -97,7 +98,7 @@ if(coins<upgradeCost)return;
 coins-=upgradeCost;level++;power++;upgradeCost=Math.ceil(upgradeCost*1.65);save();ui();
 floaters.push({x:160,y:75,vy:-.3,life:45,text:"PODER AUMENTADO",c:"#fff"});fox.pressed=1
 }
-function loop(t){const dt=Math.min(50,t-last);last=t;if(fox.pressed>0)fox.pressed=Math.max(0,fox.pressed-dt/100);if(chestOpen>0)chestOpen-=dt/16;world();chest();fox();particlesDraw();requestAnimationFrame(loop)}
+function loop(t){const dt=Math.min(50,t-last);last=t;if(fox.pressed>0)fox.pressed=Math.max(0,fox.pressed-dt/100);if(chestOpen>0)chestOpen-=dt/16;world();chest();drawFox();particlesDraw();requestAnimationFrame(loop)}
 canvas.addEventListener("click",clickFox);
 document.getElementById("upgrade").addEventListener("click",upgrade);
 document.getElementById("reset").addEventListener("click",()=>{coins=0;level=1;power=1;clicks=0;upgradeCost=10;particles=[];floaters=[];chestOpen=0;save();ui()});
