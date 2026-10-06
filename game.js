@@ -139,6 +139,11 @@ function world(){
   ctx.lineTo(153,430);ctx.lineTo(80,451);ctx.closePath();ctx.fill();
   rect(20,377,67,3,"#75c4c5");rect(52,396,82,3,"#75c4c5");
   rect(6,414,55,3,"#6ab6ba");
+  const wave=(time*.025)%90;
+  for(let i=0;i<4;i++){
+    const wx=(wave+i*27)%125;
+    rect(wx,365+i*13,22,2,"#78c5c4");
+  }
 
   // Margens de grama.
   for(let x=0;x<W;x+=23){
@@ -176,6 +181,11 @@ function world(){
 
   // Reflexo/luz perto da área da raposa.
   rect(365,283,230,3,"#69a95b");
+  for(let i=0;i<7;i++){
+    const fx=(i*143+Math.floor(time*.012))%930;
+    const fy=295+(i*31%165);
+    rect(fx,fy,2,2,i%2?"#d5e17b":"#b9d86e");
+  }
 }
 function drawCloud(x,y,s){
   const p=(a,b,w,h,c)=>rect(x+a*s,y+b*s,w*s,h*s,c);
