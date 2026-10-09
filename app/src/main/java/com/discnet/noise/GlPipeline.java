@@ -25,7 +25,7 @@ final class GlPipeline {
         if (success[0] == 0) throw new IllegalStateException("Shader link: " + glGetProgramInfoLog(program));
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
     }
@@ -46,19 +46,19 @@ final class GlPipeline {
     }
     void draw(int outputWidth, int outputHeight, EditState state, boolean export) {
         glViewport(0, 0, outputWidth, outputHeight);
-        glClearColor(0.039f, 0.051f, 0.09f, 1); glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.050f, 0.046f, 0.073f, 1); glClear(GL_COLOR_BUFFER_BIT);
         if (texture == 0) return;
         float sx = 1, sy = 1;
         if (!export) {
             float imageRatio = (float)width / height, surfaceRatio = (float)outputWidth / outputHeight;
             // Crop to fill: no letterboxing/black bars in portrait or landscape.
-            if (imageRatio > surfaceRatio) sx = imageRatio / surfaceRatio; else sy = surfaceRatio / imageRatio;
+            if (imageRatio > surfaceRatio) sy = surfaceRatio / imageRatio; else sx = imageRatio / surfaceRatio;
         }
         // Android texture top is v=0; OpenGL framebuffer top is positive y.
         vertices.position(0);
-        // Keep fullscreen quad, crop texture coordinates instead of oversized vertices.
-        float tx = (1f - 1f / sx) * .5f, ty = (1f - 1f / sy) * .5f;
-        vertices.put(new float[]{-1,-1,tx,1-ty, 1,-1,1-tx,1-ty, -1,1,tx,ty, 1,1,1-tx,ty}).position(0);
+        // Preserve complete image and original aspect ratio (fit-center, no crop).
+        vertices.put(new float[]{-sx,-sy,0,1, sx,-sy,1,1,
+                                  -sx,sy,0,0, sx,sy,1,0}).position(0);
         glUseProgram(program); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(uniforms.get("uImage"), 0); glUniform2f(uniforms.get("uSize"), width, height);
         glUniform4fv(uniforms.get("uColor"), 1, state.color, 0);
@@ -66,12 +66,14 @@ final class GlPipeline {
         glUniform2fv(uniforms.get("uHue"), 1, state.hue, 0);
         glUniform3fv(uniforms.get("uStyle"), 1, state.style, 0);
         glUniform4fv(uniforms.get("uFxA"), 1, state.fxA, 0);
-        glUniform3fv(uniforms.get("uFxB"), 1, state.fxB, 0);
+        glUniform4fv(uniforms.get("uFxB"), 1, state.fxB, 0);
+        glUniform4fv(uniforms.get("uDitherA"),1,state.ditherA,0);
+        glUniform2fv(uniforms.get("uDitherB"),1,state.ditherB,0);
         // Band-limited procedural traces: one wave stays several screen pixels
         // wide while the export keeps original-resolution detail.
         float patternScale = export ? 1f : Math.max(1f, Math.max(
-            width * (1f - 2f * tx) / Math.max(1, outputWidth),
-            height * (1f - 2f * ty) / Math.max(1, outputHeight)));
+            width / Math.max(1f, outputWidth*sx),
+            height / Math.max(1f, outputHeight*sy)));
         glUniform1f(uniforms.get("uPatternScale"), patternScale);
         glUniform1i(uniforms.get("uInvert"), state.invert ? 1 : 0);
         glUniform1i(uniforms.get("uOriginal"), state.original ? 1 : 0);
