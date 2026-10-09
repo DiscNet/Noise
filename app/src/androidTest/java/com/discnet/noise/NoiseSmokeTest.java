@@ -108,6 +108,48 @@ public class NoiseSmokeTest extends Instrumentation {
             require(lit>300,"Dither should produce plenty of luminous traces");
             require(cool>80&&warm>80,"Dither must separate cold blue and warm orange areas");
             neonA.recycle();neonB.recycle();stripes.recycle();
+
+            stage("creative adjustments");
+            Bitmap effectsImage = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888);
+            Canvas fxCanvas = new Canvas(effectsImage);
+            Paint fxPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            fxPaint.setShader(new LinearGradient(0, 0, 128, 96,
+                    new int[]{0xff151d33, 0xffa76942, 0xfff0c9ab},
+                    null, Shader.TileMode.CLAMP));
+            fxCanvas.drawPaint(fxPaint);
+            fxPaint.setShader(null);
+            fxPaint.setColor(0xffdd764b);
+            fxCanvas.drawRect(36, 16, 106, 76, fxPaint);
+            fxPaint.setColor(0xff1038bb);
+            fxCanvas.drawRect(10, 24, 33, 90, fxPaint);
+            Bitmap plainFx = GpuExporter.render(getTargetContext(), effectsImage,
+                    new EditState(new float[9], false, false));
+            for (int effect = 0; effect < 7; effect++) {
+                float[] filters = new float[7]; filters[effect] = 0.95f;
+                EditState alteredState = new EditState(new float[9], new float[3],
+                        filters, false, false);
+                Bitmap changed = GpuExporter.render(getTargetContext(), effectsImage, alteredState);
+                Bitmap before = GpuExporter.render(getTargetContext(), effectsImage,
+                        new EditState(new float[9], new float[3], filters, true, true));
+                int changes = 0;
+                for (int y = 0; y < 96; y++) for (int x = 0; x < 128; x++) {
+                    if (changed.getPixel(x, y) != plainFx.getPixel(x, y)) changes++;
+                    if ((x % 13) == 0 && (y % 13) == 0)
+                        closeColor(before.getPixel(x,y), effectsImage.getPixel(x,y),
+                                "Original ignores new effect " + effect);
+                }
+                require(changes > 10, "New creative effect " + effect +
+                        " must change image pixels, changed=" + changes);
+                changed.recycle(); before.recycle();
+            }
+            float[] soloGlow = new float[]{0f, 0.9f, 0f};
+            Bitmap luminous = GpuExporter.render(getTargetContext(), effectsImage,
+                    new EditState(new float[9], soloGlow, new float[7], false, false));
+            int changedGlow = 0;
+            for(int y=0;y<96;y++)for(int x=0;x<128;x++)
+                if(luminous.getPixel(x,y)!=plainFx.getPixel(x,y))changedGlow++;
+            require(changedGlow>20, "Standalone Glow must work without Dither");
+            luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
             stage("import");
@@ -123,6 +165,23 @@ public class NoiseSmokeTest extends Instrumentation {
             EditorSurface surface = (EditorSurface) field(activity, "preview");
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
+            // Direct slider events must immediately reach the matching GPU uniform.
+            require(sliders.length == 19, "All 19 controls must be present");
+            runOnMainSync(() -> {
+                sliders[12].setProgress(150); // Fade
+                sliders[13].setProgress(110); // Tom de pele
+                sliders[10].setProgress(120); // Glow outside Dither
+                sliders[18].setProgress(160); // Nitidez
+            });
+            EditState activeEffects = (EditState) field(surface, "state");
+            require(activeEffects.fxA[0] > .7f && activeEffects.fxA[1] > .5f,
+                    "Live Fade and skin-tone uniforms");
+            require(activeEffects.fxB[2] > .75f && activeEffects.style[1] > .55f,
+                    "Live Sharpen and independent Glow uniforms");
+            runOnMainSync(() -> {
+                sliders[12].setProgress(0); sliders[13].setProgress(0);
+                sliders[10].setProgress(0); sliders[18].setProgress(0);
+            });
             stage("live preview");
             long startFrames = surface.frameCount;
             for (int i = 0; i < 45; i++) {
