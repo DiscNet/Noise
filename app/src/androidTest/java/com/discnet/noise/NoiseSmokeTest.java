@@ -21,12 +21,15 @@ public class NoiseSmokeTest extends Instrumentation {
     private Bitmap render(Bitmap source, float[] values, boolean invert, boolean before) throws Exception {
         return GpuExporter.render(getTargetContext(), source, new EditState(values, invert, before));
     }
+    private void stage(String name) { Bundle b = new Bundle(); b.putString("stream", "Stage: " + name + "\n"); sendStatus(1, b); }
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
+            stage("launch");
             Intent launch = new Intent(getTargetContext(), MainActivity.class); launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             MainActivity activity = (MainActivity) startActivitySync(launch); waitForIdleSync();
             SystemClock.sleep(800);
+            stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
             source.setPixels(colors, 0, 4, 0, 0, 4, 3);
@@ -56,6 +59,7 @@ public class NoiseSmokeTest extends Instrumentation {
             require(Color.red(smooth.getPixel(1, 1)) < 144, "Denoise reduces isolated noise"); smooth.recycle(); speck.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
+            stage("import");
             Bitmap demo = scene();
             File input = new File(getTargetContext().getFilesDir(), "fixture.png");
             try (FileOutputStream stream = new FileOutputStream(input)) { demo.compress(Bitmap.CompressFormat.PNG, 100, stream); }
@@ -68,6 +72,7 @@ public class NoiseSmokeTest extends Instrumentation {
             EditorSurface surface = (EditorSurface) field(activity, "preview");
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
+            stage("live preview");
             long startFrames = surface.frameCount;
             for (int i = 0; i < 45; i++) {
                 final int progress = 60 + i * 3;
@@ -83,6 +88,7 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(() -> invert.setChecked(false)); SystemClock.sleep(150);
             require(!((EditState)field(surface, "state")).invert, "Switch disables inversion");
             require(surface.frameCount > startFrames + drawn, "Preview survives separate EGL exports");
+            stage("PNG export");
             File pngFile = new File(getTargetContext().getFilesDir(), "export.png");
             Method export = MainActivity.class.getDeclaredMethod("export", Uri.class); export.setAccessible(true);
             runOnMainSync(() -> { try { export.invoke(activity, Uri.fromFile(pngFile)); } catch (Exception e) { throw new RuntimeException(e); } });
@@ -92,8 +98,10 @@ public class NoiseSmokeTest extends Instrumentation {
             Bitmap saved = BitmapFactory.decodeFile(pngFile.getPath());
             require(saved != null && saved.getWidth() == 900 && saved.getHeight() == 900, "PNG dimensions");
             require(Color.blue(saved.getPixel(100,100)) > Color.blue(saved.getPixel(100,800)), "PNG strips stay upright"); saved.recycle();
+            long framesBeforeExportUpdate = surface.frameCount;
             runOnMainSync(() -> sliders[0].setProgress(126)); SystemClock.sleep(150);
-            require(surface.frameCount > startFrames + drawn, "Preview alive after PNG export");
+            require(surface.frameCount > framesBeforeExportUpdate, "Preview alive after PNG export");
+            stage("screenshot");
             Bitmap screenshot = getUiAutomation().takeScreenshot();
             require(screenshot != null, "Screenshot");
             try (FileOutputStream out = new FileOutputStream(new File(getTargetContext().getFilesDir(), "noise-ui.png"))) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, out); }
