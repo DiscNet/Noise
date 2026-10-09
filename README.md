@@ -1,24 +1,36 @@
-# Noise! 1.3
+# Noise! 1.4
 
-Editor de fotos Android offline com prévia OpenGL ES 2.0 e visual dark glass inspirado no conceito de interface fornecido.
+Editor de fotografias Android, offline, com prévia OpenGL ES 2.0 e exportação PNG.
 
-[Baixar APK da última release](https://github.com/DiscNet/Noise/releases/latest) · Android 8 ou superior
+[Baixar o APK mais recente](https://github.com/DiscNet/Noise/releases/latest) · Android 8 ou superior.
 
-## Interface
+## Controles e tradução
 
-- Barra superior **Noise!** com abrir foto e exportar PNG, abas **Basic**, **Noise** e **Dither**.
-- Visual grafite escuro, cantos arredondados, bordas sutis e controles translúcidos. Prévia em destaque, sem barras pretas: imagens são **recortadas somente na prévia** para ocupar toda a área, mantendo a imagem completa no PNG salvo.
-- Painel inferior com controles responsivos; pressione **Original** para comparar, use **Reset** para restaurar, e **Invert** para inverter as cores.
-- Grupo Basic: saturação, contraste, vibração, exposição, highlights, branco, preto e matiz.
-- Grupo Noise: granulação orgânica em intensidade positiva e suavização bilateral em intensidade negativa.
-- Grupo Dither: intensidade do padrão, glow e RGB Shift. Botão **Aplicar Neon da referência** prepara as três barras (94/66/13) sem alterar o original.
+A interface dark glass agora organiza os ajustes em quatro abas roláveis:
 
-## Dither neon
+- **Básico:** Saturação, Contraste, Vibração, Exposição, Highlights, Branco, Preto, Matiz.
+- **Ruído:** suavização bilateral para valores negativos e granulação orgânica para valores positivos.
+- **Dither:** neon de linhas onduladas e pontos de luz, Desvio RGB e botão **Aplicar Neon da referência**.
+- **Efeitos:** **Fade**, **Tom de pele (Skin Tone)**, **Poeira (Dust)**, **Vinheta (Vignette)**, **Aberrações (Aberrations)**, **Névoa (Mist)**, **Brilho difuso (Glow)** e **Nitidez (Sharpen)**.
 
-**Versão 1.3:** shader autoral baseado na imagem de referência (**não é o código do Dither Boy**): linhas horizontais finas, onduladas conforme luminância e contorno, pontilhismo irregular, dithering Bayer ordenado, separação de regiões frias (azul/lilás) e quentes (rosa/laranja), sombras muito escuras e brilho emissivo na silhueta. O padrão escala conforme a prévia para evitar aliasing em imagens grandes, e a exportação conserva detalhes na resolução original. Os controles funcionam em tempo real via uniforms da GPU e são reproduzidos na exportação PNG. A granulação foi corrigida para usar hash de coordenadas inteiras da imagem toda, sem ladrilhos de 256 pixels.
+Os novos efeitos ficam **desativados por padrão** e são ajustáveis de 0 a 100, com visualização ao deslizar e sem debouncing. Glow saiu da aba Dither e funciona sozinho ou combinado ao Dither. O preset de neon também configura Glow, mas não o habilita automaticamente ao abrir uma foto.
 
-A aparência exata depende da foto e dos controles, portanto a prévia do conceito é uma referência estética, não uma promessa de resultado idêntico em todas as imagens.
+## Efeitos de imagem (versão 1.4)
 
-## Compilação
+- **Fade:** look fosco, sombras elevadas e altas luzes levemente reduzidas.
+- **Tom de pele:** reforço seletivo de tons quentes por faixa de cor; não identifica pessoas nem usa reconhecimento facial.
+- **Poeira:** partículas e microarranhões sintéticos pseudoaleatórios, determinísticos e não repetidos em um tile de textura.
+- **Vinheta:** escurecimento gradual da periferia, preservando o centro.
+- **Aberrações:** desvio radial das componentes vermelha/azul nas bordas da lente, distinto do Desvio RGB uniforme.
+- **Névoa:** difusão espacial e redução sutil de contraste, para atmosfera enevoada.
+- **Brilho difuso:** realce suave aproximado das regiões claras, com ou sem Dither.
+- **Nitidez:** filtro unsharp 4 amostras, reforçando detalhes e bordas.
 
-JDK 17, Gradle 8.9, Android SDK 35: `gradle assembleDebug assembleDebugAndroidTest`. GitHub Actions compila, executa testes instrumentados no emulador e publica a release apenas se os testes terminarem com sucesso. APK de desenvolvimento assinado com chave de depuração; pode exigir desinstalar versões anteriores em caso de troca de assinatura.
+O processamento é por fragment shader na GPU, com os mesmos uniforms na prévia e na exportação. Não é um algoritmo de IA. Efeitos muito fortes podem aumentar a carga gráfica em dispositivos modestos. Opacidade/alpha original é mantida no PNG. A prévia preenche a tela por recorte, mas a exportação usa a imagem inteira.
+
+## Projeto
+
+O Dither neon é uma implementação própria inspirada na referência visual fornecida, não no código-fonte do Dither Boy. A aparência exata depende da imagem, exposição e intensidades configuradas.
+
+Requisitos de build: JDK 17, Gradle 8.9, Android SDK 35.
+Execute `gradle assembleDebug assembleDebugAndroidTest`. O workflow GitHub Actions compila, testa em emulador e publica uma nova release apenas quando tudo passa. O APK publicado é assinado com chave de desenvolvimento e pode exigir reinstalação após uma mudança de assinatura.
