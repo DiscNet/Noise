@@ -129,19 +129,23 @@ public class NoiseSmokeTest extends Instrumentation {
                 EditState alteredState = new EditState(new float[9], new float[3],
                         filters, false, false);
                 Bitmap changed = GpuExporter.render(getTargetContext(), effectsImage, alteredState);
-                Bitmap before = GpuExporter.render(getTargetContext(), effectsImage,
-                        new EditState(new float[9], new float[3], filters, true, true));
                 int changes = 0;
                 for (int y = 0; y < 96; y++) for (int x = 0; x < 128; x++) {
                     if (changed.getPixel(x, y) != plainFx.getPixel(x, y)) changes++;
-                    if ((x % 13) == 0 && (y % 13) == 0)
-                        closeColor(before.getPixel(x,y), effectsImage.getPixel(x,y),
-                                "Original ignores new effect " + effect);
                 }
                 require(changes > 10, "New creative effect " + effect +
                         " must change image pixels, changed=" + changes);
-                changed.recycle(); before.recycle();
+                changed.recycle();
             }
+            // A single combined bypass render checks the Original switch for
+            // all filters without recompiling the large GLES2 shader 7 times.
+            float[] allFilters = {0.95f, 0.95f, 0.95f, 0.95f, 0.95f, 0.95f, 0.95f};
+            Bitmap bypassAll = GpuExporter.render(getTargetContext(), effectsImage,
+                    new EditState(new float[9], new float[3], allFilters, true, true));
+            for(int y=0;y<96;y+=13)for(int x=0;x<128;x+=13)
+                closeColor(bypassAll.getPixel(x,y),effectsImage.getPixel(x,y),
+                        "Original bypasses all creative filters");
+            bypassAll.recycle();
             float[] soloGlow = new float[]{0f, 0.9f, 0f};
             Bitmap luminous = GpuExporter.render(getTargetContext(), effectsImage,
                     new EditState(new float[9], soloGlow, new float[7], false, false));
