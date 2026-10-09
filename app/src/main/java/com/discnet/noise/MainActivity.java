@@ -16,6 +16,7 @@ public class MainActivity extends Activity {
     private final float[] values=new float[9];
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final AtomicInteger generation=new AtomicInteger();
+    private final AtomicInteger loads=new AtomicInteger();
     private Bitmap original,preview,rendered;
     private ImageView image;
     private TextView status;
@@ -30,6 +31,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state){super.onCreate(state);
         getWindow().setStatusBarColor(0xff15151d);getWindow().setNavigationBarColor(0xff15151d);
         LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(dp(16),dp(12),dp(16),dp(8));root.setBackgroundColor(0xff15151d);setContentView(root);
+        root.setOnApplyWindowInsetsListener((v,insets)->{root.setPadding(dp(16)+insets.getSystemWindowInsetLeft(),dp(12)+insets.getSystemWindowInsetTop(),dp(16)+insets.getSystemWindowInsetRight(),dp(8)+insets.getSystemWindowInsetBottom());return insets;});
         TextView title=text("Noise!",32);title.setTextColor(color);root.addView(title);
         status=text("Sua imagem. Seu estilo.",13);root.addView(status);
         image=new ImageView(this);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setContentDescription("Prévia da imagem editada");root.addView(image,new LinearLayout.LayoutParams(-1,0,1));
@@ -48,17 +50,17 @@ public class MainActivity extends Activity {
         if(state!=null){float[] a=state.getFloatArray("values");if(a!=null)for(int j=0;j<9;j++)sliders[j].setProgress(Math.round(a[j]*100)+100);String uri=state.getString("input");if(uri!=null)load(Uri.parse(uri));}
     }
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);b.putFloatArray("values",values.clone());if(input!=null)b.putString("input",input.toString());}
-    private void load(Uri uri){int token=generation.incrementAndGet();status.setText("Abrindo imagem…");save.setEnabled(false);worker.execute(()->{try{
+    private void load(Uri uri){int token=loads.incrementAndGet();status.setText("Abrindo imagem…");save.setEnabled(false);worker.execute(()->{try{
         // API 28 decoder applies EXIF orientation; older Android uses the fallback below.
         Bitmap bitmap;
         if(android.os.Build.VERSION.SDK_INT>=28) bitmap=decodeModern(uri);
         else {BitmapFactory.Options o=new BitmapFactory.Options();o.inJustDecodeBounds=true;try(InputStream s=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(s,null,o);}o.inJustDecodeBounds=false;o.inSampleSize=1;while(Math.max(o.outWidth,o.outHeight)/o.inSampleSize>4096){o.inSampleSize=o.inSampleSize==0?2:o.inSampleSize*2;}try(InputStream s=getContentResolver().openInputStream(uri)){bitmap=BitmapFactory.decodeStream(s,null,o);}}
         if(bitmap==null)throw new IOException("Formato não suportado");float scale=Math.min(1,900f/Math.max(bitmap.getWidth(),bitmap.getHeight()));Bitmap small=Bitmap.createScaledBitmap(bitmap,Math.max(1,Math.round(bitmap.getWidth()*scale)),Math.max(1,Math.round(bitmap.getHeight()*scale)),true);
-        runOnUiThread(()->{if(token!=generation.get())return;input=uri;original=bitmap;preview=small;rendered=null;image.setImageBitmap(small);save.setEnabled(true);schedule();});
+        runOnUiThread(()->{if(token!=loads.get())return;input=uri;original=bitmap;preview=small;rendered=null;image.setImageBitmap(small);save.setEnabled(true);schedule();});
     }catch(Exception|OutOfMemoryError e){runOnUiThread(()->{status.setText("Não foi possível abrir esta imagem.");save.setEnabled(original!=null);});}});}
     @android.annotation.TargetApi(28) private Bitmap decodeModern(Uri uri)throws IOException{return ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(),uri),(d,i,s)->{d.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);d.setMutableRequired(true);int max=Math.max(i.getSize().getWidth(),i.getSize().getHeight());if(max>4096){float k=4096f/max;d.setTargetSize(Math.round(i.getSize().getWidth()*k),Math.round(i.getSize().getHeight()*k));}});}
     private Bitmap edit(Bitmap b,float[] a){int w=b.getWidth(),h=b.getHeight();int[] p=new int[w*h];b.getPixels(p,0,w,0,0,w,h);return Bitmap.createBitmap(Adjustments.apply(p,w,h,a),w,h,Bitmap.Config.ARGB_8888);}
     private void schedule(){if(preview==null)return;int token=generation.incrementAndGet();Bitmap b=preview;float[] a=values.clone();worker.execute(()->{if(token!=generation.get())return;try{Bitmap result=edit(b,a);runOnUiThread(()->{if(token!=generation.get()){result.recycle();return;}rendered=result;if(!comparing)image.setImageBitmap(result);if(!exporting)status.setText("Prévia ao vivo • "+original.getWidth()+" × "+original.getHeight());});}catch(OutOfMemoryError e){runOnUiThread(()->status.setText("Memória insuficiente para a prévia."));}});}
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();if(request==1){try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(SecurityException ignored){}load(uri);}else if(request==2&&original!=null){Bitmap b=original;float[] a=values.clone();exporting=true;save.setEnabled(false);status.setText("Exportando PNG…");worker.execute(()->{try{Bitmap out=edit(b,a);try(OutputStream s=getContentResolver().openOutputStream(uri,"wt")){if(s==null||!out.compress(Bitmap.CompressFormat.PNG,100,s))throw new IOException();}out.recycle();runOnUiThread(()->{exporting=false;save.setEnabled(true);status.setText("Imagem salva!");Toast.makeText(this,"PNG salvo com sucesso",Toast.LENGTH_LONG).show();});}catch(Exception|OutOfMemoryError e){runOnUiThread(()->{exporting=false;save.setEnabled(true);status.setText("Falha ao salvar. Tente outra pasta ou imagem menor.");});}});}}
-    @Override protected void onDestroy(){generation.incrementAndGet();worker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){loads.incrementAndGet();generation.incrementAndGet();worker.shutdownNow();super.onDestroy();}
 }
