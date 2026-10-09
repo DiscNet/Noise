@@ -9,7 +9,9 @@ uniform vec2 uSize;
 uniform vec4 uColor;  // saturation, vibrance, exposure, contrast
 uniform vec4 uTone;   // highlights, whites, blacks, noise
 uniform vec2 uHue;
-uniform vec3 uStyle;  // neon dither, glow, channel separation
+uniform vec3 uStyle;  // neon dither, independently adjustable glow, RGB shift
+uniform vec4 uFxA;    // Fade, skin tone, dust, vignette
+uniform vec3 uFxB;    // lens aberrations, mist, sharpen
 uniform float uPatternScale; // source-pixels per display pixel, 1.0 for export
 uniform bool uInvert;
 uniform bool uOriginal;
@@ -92,12 +94,74 @@ void main() {
         }
         c = clamp(c, 0.0, 1.0);
 
+        // Tom de pele: selective warm/orange hue and luminosity adjustment.
+        // This is an RGB color-range selection, not a face detector.
+        if (uFxA.y > 0.001) {
+            float redBlue = c.r - c.b;
+            float redGreen = c.r - c.g;
+            float warmMask = smoothstep(0.025, 0.24, redBlue)
+                           * (1.0 - smoothstep(0.30, 0.69, abs(redGreen)))
+                           * smoothstep(0.09, 0.28, luminance(c));
+            vec3 skin = clamp(vec3(c.r * 1.08 + 0.022,
+                                   c.g * 1.018 + 0.008,
+                                   c.b * 0.89), 0.0, 1.0);
+            c = mix(c, skin, uFxA.y * warmMask);
+        }
+
+        // Fade: film-matte tonal compression with raised blacks and muted whites.
+        if (uFxA.x > 0.001) {
+            float fade = uFxA.x;
+            c = clamp(c * (1.0 - fade * 0.51)
+                        + vec3(0.155 * fade), 0.0, 1.0);
+        }
+
+        // Nitidez: 4-tap unsharp mask, entirely skipped when set to zero.
+        if (uFxB.z > 0.001) {
+            vec2 onePixel = 1.35 / uSize;
+            vec3 localAverage =
+                straight(texture2D(uImage, vTexCoord + vec2(onePixel.x, 0.0))) +
+                straight(texture2D(uImage, vTexCoord - vec2(onePixel.x, 0.0))) +
+                straight(texture2D(uImage, vTexCoord + vec2(0.0, onePixel.y))) +
+                straight(texture2D(uImage, vTexCoord - vec2(0.0, onePixel.y)));
+            localAverage *= 0.25;
+            c = clamp(c + (c - localAverage) * 1.35 * uFxB.z, 0.0, 1.0);
+        }
+
+        // Névoa: subtle spatial diffusion and atmosphere rather than static white overlay.
+        if (uFxB.y > 0.001) {
+            float radius = (2.0 + 0.008 * min(uSize.x, uSize.y)) * uFxB.y;
+            vec2 shift = vec2(radius) / uSize;
+            vec3 diffused = straight(texture2D(uImage, vTexCoord + vec2(shift.x, 0.0))) +
+                            straight(texture2D(uImage, vTexCoord - vec2(shift.x, 0.0))) +
+                            straight(texture2D(uImage, vTexCoord + vec2(0.0, shift.y))) +
+                            straight(texture2D(uImage, vTexCoord - vec2(0.0, shift.y)));
+            diffused *= 0.25;
+            c = mix(c, diffused, uFxB.y * 0.41);
+            c = c * (1.0 - uFxB.y * 0.16)
+              + vec3(0.11, 0.125, 0.145) * uFxB.y;
+            c = clamp(c, 0.0, 1.0);
+        }
+
         if (uStyle.z > 0.001) {
             vec2 uv = vec2(1.0 + 5.0 * uStyle.z, 0.4 + 1.6 * uStyle.z) / uSize;
             vec3 left = straight(texture2D(uImage, vTexCoord - uv));
             vec3 right = straight(texture2D(uImage, vTexCoord + uv));
             c.r = mix(c.r, left.r, uStyle.z * 0.85);
             c.b = mix(c.b, right.b, uStyle.z * 0.85);
+        }
+
+        // Aberrações: radial lens fringe, distinct from the uniform RGB shift.
+        if (uFxB.x > 0.001) {
+            vec2 distanceFromCenter = (vTexCoord - 0.5) * 2.0;
+            float radial = dot(distanceFromCenter, distanceFromCenter);
+            vec2 separation = distanceFromCenter * radial *
+                        (5.5 * uFxB.x) / uSize;
+            float redChannel = straight(texture2D(uImage,
+                 clamp(vTexCoord + separation, vec2(0.0), vec2(1.0)))).r;
+            float blueChannel = straight(texture2D(uImage,
+                 clamp(vTexCoord - separation, vec2(0.0), vec2(1.0)))).b;
+            c.r = mix(c.r, redChannel, uFxB.x);
+            c.b = mix(c.b, blueChannel, uFxB.x);
         }
 
         if (uStyle.x > 0.001) {
@@ -174,8 +238,8 @@ void main() {
             c = mix(c, dithered, amount);
         }
 
-        if (uStyle.y > 0.001 && uStyle.x <= 0.001) {
-            // Plain Glow without Neon Dither remains useful independently.
+        if (uStyle.y > 0.001) {
+            // Standalone Glow now works with OR without the Dither enabled.
             vec2 spread = vec2(2.5 + 4.5 * uStyle.y) / uSize;
             vec3 blur = straight(texture2D(uImage, vTexCoord + vec2(spread.x, 0.0)));
             blur += straight(texture2D(uImage, vTexCoord - vec2(spread.x, 0.0)));
@@ -183,7 +247,47 @@ void main() {
             blur += straight(texture2D(uImage, vTexCoord - vec2(0.0, spread.y)));
             blur *= 0.25;
             float glowPower = smoothstep(0.23, 0.80, luminance(blur));
-            c = clamp(c + blur * glowPower * uStyle.y * 0.46, 0.0, 1.0);
+            vec3 haloColor = mix(blur,
+                neonPalette(clamp(luminance(blur), 0.0, 1.0),
+                clamp(0.45 + (blur.r - blur.b) * 1.3, 0.0, 1.0), 0.2),
+                uStyle.x);
+            c = clamp(c + haloColor * glowPower * uStyle.y *
+                mix(0.46, 0.27, uStyle.x), 0.0, 1.0);
+        }
+
+        // Poeira: occasional randomly shaped film flecks and faint scratches.
+        // Hashes image-space cells, not a tiled noise/particle texture.
+        if (uFxA.z > 0.001) {
+            vec2 dustP = vTexCoord * uSize / 13.0;
+            vec2 dustCell = floor(dustP);
+            vec2 pos = fract(dustP);
+            vec2 jitter = vec2(hash(dustCell + 21.3), hash(dustCell + 93.7));
+            vec2 fleckCenter = vec2(0.17) + 0.66 * jitter;
+            float shape = length((pos - fleckCenter) *
+                vec2(0.72 + hash(dustCell + 9.1), 1.1));
+            float dustRadius = mix(0.08, 0.18, hash(dustCell + 63.5));
+            float fleck = 1.0 - smoothstep(dustRadius * 0.47,
+                                               dustRadius + 0.055, shape);
+            float density = 0.13 + uFxA.z * 0.62;
+            float particle = fleck * step(hash(dustCell + 49.6), density);
+            float scratchId = hash(dustCell + 167.8);
+            float scratch = (1.0 - smoothstep(0.015, 0.052,
+                abs(pos.x - fleckCenter.x))) *
+                step(0.995 - uFxA.z * 0.055, scratchId) *
+                smoothstep(0.0, 0.17, pos.y) * (1.0 - smoothstep(0.83, 1.0, pos.y));
+            float dustMask = clamp(max(particle, scratch * 0.34) * uFxA.z,
+                                   0.0, 0.88);
+            float bright = step(0.40, hash(dustCell + 7.6));
+            vec3 dustInk = mix(vec3(0.028, 0.023, 0.035),
+                               vec3(0.97, 0.86, 0.75), bright);
+            c = mix(c, dustInk, dustMask);
+        }
+
+        // Vinheta stays centered in source-image coordinates.
+        if (uFxA.w > 0.001) {
+            float edgeDistance = length((vTexCoord - 0.5) * 2.0);
+            float falloff = smoothstep(0.35, 1.34, edgeDistance);
+            c *= 1.0 - 0.93 * uFxA.w * falloff;
         }
 
         if (uInvert) c = 1.0 - c;
