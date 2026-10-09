@@ -1,36 +1,24 @@
-# Noise! 1.4
+# Noise! 1.5
 
-Editor de fotografias Android, offline, com prévia OpenGL ES 2.0 e exportação PNG.
+Editor de fotografias Android offline (Android 8+, OpenGL ES 2.0).
 
-[Baixar o APK mais recente](https://github.com/DiscNet/Noise/releases/latest) · Android 8 ou superior.
+## Interface
+Visual dark glass inspirado na referência de UI, com superfícies translúcidas, reflexos leves, cantos arredondados, brilho violeta/rosa e controles compactos. Esta interface usa transparência e gradientes; a desfocagem real do conteúdo da prévia por trás dos painéis não é implementada porque o conteúdo é um `GLSurfaceView` e a captura a cada quadro afetaria a latência.
 
-## Controles e tradução
+Abas **Básico**, **Ruído**, **Dither** e **Efeitos**. Ajuste enquanto move os sliders, compare com o original, redefina e salve em PNG.
 
-A interface dark glass agora organiza os ajustes em quatro abas roláveis:
+## Novidades 1.5
+- **Brilho difuso:** glow de realces com amostras simétricas em oito direções. Não desfoca nem arrasta a imagem base, e funciona independentemente do Dither.
+- **Desfoque rotativo:** soma de amostras em arco tangente às circunferências concêntricas, aparecendo progressivamente nas bordas.
+- **Dither profissional:** intensidade, profundidade/níveis tonais, posição X/Y do padrão, escala, densidade de pontos e ondulação, além do desvio RGB e preset da referência.
+- **Poeira analógica:** flocos aleatórios, fibras diagonais, microarranhões, anéis de emulsão e granulação fina; distribuição determinística não repetitiva.
+- **Prévia sem corte:** imagem inteira preservada na sua proporção original (fit-center). O espaço excedente usa o fundo escuro do editor em vez de recortar a fotografia.
+- **Redimensionar:** botão ⤢ na barra superior, largura/altura entre 1 e 4096 px, manutenção opcional da proporção e botão Original. Redimensiona o **PNG exportado** sem alterar os pixels da foto carregada.
+- **Ícone adaptativo:** novo ícone com fundo escuro de ponta a ponta e símbolo dentro da área segura, evitando bordas brancas do launcher.
 
-- **Básico:** Saturação, Contraste, Vibração, Exposição, Highlights, Branco, Preto, Matiz.
-- **Ruído:** suavização bilateral para valores negativos e granulação orgânica para valores positivos.
-- **Dither:** neon de linhas onduladas e pontos de luz, Desvio RGB e botão **Aplicar Neon da referência**.
-- **Efeitos:** **Fade**, **Tom de pele (Skin Tone)**, **Poeira (Dust)**, **Vinheta (Vignette)**, **Aberrações (Aberrations)**, **Névoa (Mist)**, **Brilho difuso (Glow)** e **Nitidez (Sharpen)**.
+As opções 1.4 continuam disponíveis: Fade, Tom de pele (seletivo por cor, sem detecção de rosto), Vinheta, Aberrações, Névoa e Nitidez. O Dither é uma implementação visual autoral inspirada na referência e não reproduz o código de Dither Boy.
 
-Os novos efeitos ficam **desativados por padrão** e são ajustáveis de 0 a 100, com visualização ao deslizar e sem debouncing. Glow saiu da aba Dither e funciona sozinho ou combinado ao Dither. O preset de neon também configura Glow, mas não o habilita automaticamente ao abrir uma foto.
+## Compilar e testar
+`gradle --no-daemon assembleDebug assembleDebugAndroidTest` (JDK 17, Gradle 8.9, SDK 35). O GitHub Actions valida um emulador Android e publica APK apenas após passar o smoke test. O build usa assinatura de debug; atualizar uma instalação assinada com chave diferente pode exigir desinstalar a versão anterior.
 
-## Efeitos de imagem (versão 1.4)
-
-- **Fade:** look fosco, sombras elevadas e altas luzes levemente reduzidas.
-- **Tom de pele:** reforço seletivo de tons quentes por faixa de cor; não identifica pessoas nem usa reconhecimento facial.
-- **Poeira:** partículas e microarranhões sintéticos pseudoaleatórios, determinísticos e não repetidos em um tile de textura.
-- **Vinheta:** escurecimento gradual da periferia, preservando o centro.
-- **Aberrações:** desvio radial das componentes vermelha/azul nas bordas da lente, distinto do Desvio RGB uniforme.
-- **Névoa:** difusão espacial e redução sutil de contraste, para atmosfera enevoada.
-- **Brilho difuso:** realce suave aproximado das regiões claras, com ou sem Dither.
-- **Nitidez:** filtro unsharp 4 amostras, reforçando detalhes e bordas.
-
-O processamento é por fragment shader na GPU, com os mesmos uniforms na prévia e na exportação. Não é um algoritmo de IA. Efeitos muito fortes podem aumentar a carga gráfica em dispositivos modestos. Opacidade/alpha original é mantida no PNG. A prévia preenche a tela por recorte, mas a exportação usa a imagem inteira.
-
-## Projeto
-
-O Dither neon é uma implementação própria inspirada na referência visual fornecida, não no código-fonte do Dither Boy. A aparência exata depende da imagem, exposição e intensidades configuradas.
-
-Requisitos de build: JDK 17, Gradle 8.9, Android SDK 35.
-Execute `gradle assembleDebug assembleDebugAndroidTest`. O workflow GitHub Actions compila, testa em emulador e publica uma nova release apenas quando tudo passa. O APK publicado é assinado com chave de desenvolvimento e pode exigir reinstalação após uma mudança de assinatura.
+[**Baixar o APK mais recente**](https://github.com/DiscNet/Noise/releases/latest)
