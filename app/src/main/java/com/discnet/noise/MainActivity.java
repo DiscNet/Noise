@@ -15,15 +15,16 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
-    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Glow", "RGB Shift"};
-    private static final int[][] GROUPS = {{0, 3, 1, 2, 4, 5, 6, 8}, {7}, {9, 10, 11}};
+    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez"};
+    private static final int[][] GROUPS = {{0, 3, 1, 2, 4, 5, 6, 8}, {7}, {9, 11}, {12, 13, 14, 15, 16, 17, 10, 18}};
     private final float[] values = new float[9];
     private final float[] effects = new float[3];
+    private final float[] filters = new float[7];
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicInteger loads = new AtomicInteger();
-    private final SeekBar[] sliders = new SeekBar[12];
-    private final TextView[] valueLabels = new TextView[12], tabs = new TextView[3];
-    private final LinearLayout[] rows = new LinearLayout[12];
+    private final SeekBar[] sliders = new SeekBar[19];
+    private final TextView[] valueLabels = new TextView[19], tabs = new TextView[4];
+    private final LinearLayout[] rows = new LinearLayout[19];
     private Bitmap original;
     private EditorSurface preview;
     private TextView status, save, open, compare, stageBadge;
@@ -78,8 +79,8 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams catParams = lp(-1, dp(46));
         catParams.leftMargin = dp(56); catParams.rightMargin = dp(56);
         root.addView(categories, catParams);
-        String[] labels = {"Basic", "Noise", "Dither"};
-        for (int i=0;i<3;i++) {
+        String[] labels = {"Básico", "Ruído", "Dither", "Efeitos"};
+        for (int i=0;i<4;i++) {
             final int group=i;
             tabs[i]=text(labels[i],14,Glass.MUTED); tabs[i].setGravity(Gravity.CENTER);
             categories.addView(tabs[i], new LinearLayout.LayoutParams(0,-1,1));
@@ -136,7 +137,7 @@ public class MainActivity extends Activity {
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
-        for (int i = 0; i < 12; i++) buildAdjustment(i);
+        for (int i = 0; i < 19; i++) buildAdjustment(i);
         invertSwitch = new Switch(this);
         invertSwitch.setText("◐   Invert"); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
         invertSwitch.setSwitchMinWidth(dp(45));
@@ -153,6 +154,9 @@ public class MainActivity extends Activity {
             float[] savedEffects=state.getFloatArray("effects");
             if(savedEffects!=null&&savedEffects.length==3)
                 for(int i=0;i<3;i++)sliders[9+i].setProgress(Math.round(savedEffects[i]*200));
+            float[] savedFilters=state.getFloatArray("filters");
+            if(savedFilters!=null&&savedFilters.length==7)
+                for(int i=0;i<7;i++)sliders[12+i].setProgress(Math.round(savedFilters[i]*200));
             resetting = false; showGroup(state.getInt("group", 0)); publish();
             String uri = state.getString("input"); if (uri != null) load(Uri.parse(uri));
         }
@@ -162,7 +166,7 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL); rows[index]=row;
         TextView label = text(NAMES[index],13,Glass.INK);
         label.setSingleLine(true); label.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(label,lp(dp(100),dp(43)));
+        row.addView(label,lp(dp(109),dp(43)));
         Glass.Slider slider=new Glass.Slider(this,
             index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:0xffdbb9ff);
         sliders[index]=slider; slider.setContentDescription(NAMES[index]);
@@ -174,7 +178,8 @@ public class MainActivity extends Activity {
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar seek,int progress,boolean user){
                 if(index<9)values[index]=(progress-100)/100f;
-                else effects[index-9]=progress/200f;
+                else if(index<12)effects[index-9]=progress/200f;
+                else filters[index-12]=progress/200f;
                 valueLabels[index].setText(formatValue(index));publish();
             }
             public void onStartTrackingTouch(SeekBar seek){}
@@ -182,6 +187,7 @@ public class MainActivity extends Activity {
         });
     }
     private String formatValue(int index) {
+        if(index>=12)return String.format(Locale.US,"%d",Math.round(filters[index-12]*100));
         if(index>=9)return String.format(Locale.US,"%d",Math.round(effects[index-9]*100));
         if(index==2)return String.format(Locale.US,"%+.1f EV",values[index]*3);
         if(index==8)return String.format(Locale.US,"%+d°",Math.round(values[index]*180));
@@ -189,7 +195,7 @@ public class MainActivity extends Activity {
         return n==0?"0":String.format(Locale.US,"%+d",n);
     }
     private void showGroup(int group) {
-        selectedGroup=Math.max(0,Math.min(2,group));
+        selectedGroup=Math.max(0,Math.min(3,group));
         controls.removeAllViews();
         for(int index:GROUPS[selectedGroup])controls.addView(rows[index]);
         if(selectedGroup==1){
@@ -208,7 +214,7 @@ public class MainActivity extends Activity {
                 status.setText("Neon da referência aplicado · ajuste a intensidade");
             });
         }
-        for(int i=0;i<3;i++){
+        for(int i=0;i<4;i++){
             boolean active=i==selectedGroup;
             tabs[i].setSelected(active);tabs[i].setTextColor(active?Glass.INK:Glass.MUTED);
             tabs[i].setBackground(Glass.panel(this,active?0xff494052:0x00201e29,
@@ -218,7 +224,7 @@ public class MainActivity extends Activity {
     }
     private void publish() {
         if (preview == null || resetting) return;
-        preview.setEditState(new EditState(values, effects, invertSwitch != null && invertSwitch.isChecked(), comparing));
+        preview.setEditState(new EditState(values, effects, filters, invertSwitch != null && invertSwitch.isChecked(), comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
         if (compare != null) compare.setText(comparing ? "◑  Original" : "◐  Comparar");
     }
@@ -292,7 +298,7 @@ public class MainActivity extends Activity {
         return bitmap;
     }
     private void export(Uri uri) {
-        Bitmap bitmap = original; EditState state = new EditState(values, effects, invertSwitch.isChecked(), false);
+        Bitmap bitmap = original; EditState state = new EditState(values, effects, filters, invertSwitch.isChecked(), false);
         exporting = true; updateActions(); status.setText("Salvando sua imagem…");
         worker.execute(() -> {
             Bitmap output = null;
@@ -316,7 +322,7 @@ public class MainActivity extends Activity {
         } else if (request == 2 && original != null && !exporting) export(uri);
     }
     @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putBoolean("invert", invertSwitch.isChecked());
+        super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putFloatArray("filters",filters.clone()); state.putBoolean("invert", invertSwitch.isChecked());
         state.putInt("group", selectedGroup); if (input != null) state.putString("input", input.toString());
     }
     @Override protected void onResume() { super.onResume(); if (preview != null) preview.onResume(); }
