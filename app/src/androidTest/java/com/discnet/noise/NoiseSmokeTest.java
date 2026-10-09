@@ -57,6 +57,26 @@ public class NoiseSmokeTest extends Instrumentation {
             Bitmap speck = Bitmap.createBitmap(3, 3, Bitmap.Config.ARGB_8888); speck.eraseColor(0xff808080); speck.setPixel(1, 1, 0xff909090);
             float[] reduce = new float[9]; reduce[7] = -1; Bitmap smooth = render(speck, reduce, false, false);
             require(Color.red(smooth.getPixel(1, 1)) < 144, "Denoise reduces isolated noise"); smooth.recycle(); speck.recycle();
+            // 1.2 styles must alter pixels, be deterministic and bypassed by comparison.
+            Bitmap poster = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+            Canvas posterCanvas = new Canvas(poster);
+            Paint posterPaint = new Paint();
+            posterPaint.setShader(new LinearGradient(0,0,64,64,0xff3045ae,0xffff9c44,Shader.TileMode.CLAMP));
+            posterCanvas.drawRect(0,0,64,64,posterPaint);
+            Bitmap plainPoster=render(poster,new float[9],false,false);
+            for(int effect=0;effect<3;effect++){
+                float[] style=new float[3];style[effect]=0.8f;
+                Bitmap altered=GpuExporter.render(getTargetContext(),poster,new EditState(new float[9],style,false,false));
+                Bitmap bypassed=GpuExporter.render(getTargetContext(),poster,new EditState(new float[9],style,false,true));
+                int differences=0;
+                for(int yy=0;yy<64;yy+=4)for(int xx=0;xx<64;xx+=4){
+                    if(altered.getPixel(xx,yy)!=plainPoster.getPixel(xx,yy))differences++;
+                    closeColor(bypassed.getPixel(xx,yy),poster.getPixel(xx,yy),"Dither original bypass "+effect);
+                }
+                require(differences>5,"Style "+effect+" must change image pixels");
+                altered.recycle();bypassed.recycle();
+            }
+            plainPoster.recycle();poster.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
             stage("import");

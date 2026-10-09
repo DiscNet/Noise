@@ -25,7 +25,7 @@ final class GlPipeline {
         if (success[0] == 0) throw new IllegalStateException("Shader link: " + glGetProgramInfoLog(program));
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
     }
@@ -51,16 +51,20 @@ final class GlPipeline {
         float sx = 1, sy = 1;
         if (!export) {
             float imageRatio = (float)width / height, surfaceRatio = (float)outputWidth / outputHeight;
-            if (imageRatio > surfaceRatio) sy = surfaceRatio / imageRatio; else sx = imageRatio / surfaceRatio;
+            // Crop to fill: no letterboxing/black bars in portrait or landscape.
+            if (imageRatio > surfaceRatio) sx = imageRatio / surfaceRatio; else sy = surfaceRatio / imageRatio;
         }
         // Android texture top is v=0; OpenGL framebuffer top is positive y.
         vertices.position(0);
-        vertices.put(new float[]{-sx,-sy,0,1, sx,-sy,1,1, -sx,sy,0,0, sx,sy,1,0}).position(0);
+        // Keep fullscreen quad, crop texture coordinates instead of oversized vertices.
+        float tx = (1f - 1f / sx) * .5f, ty = (1f - 1f / sy) * .5f;
+        vertices.put(new float[]{-1,-1,tx,1-ty, 1,-1,1-tx,1-ty, -1,1,tx,ty, 1,1,1-tx,ty}).position(0);
         glUseProgram(program); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(uniforms.get("uImage"), 0); glUniform2f(uniforms.get("uSize"), width, height);
         glUniform4fv(uniforms.get("uColor"), 1, state.color, 0);
         glUniform4fv(uniforms.get("uTone"), 1, state.tone, 0);
         glUniform2fv(uniforms.get("uHue"), 1, state.hue, 0);
+        glUniform3fv(uniforms.get("uStyle"), 1, state.style, 0);
         glUniform1i(uniforms.get("uInvert"), state.invert ? 1 : 0);
         glUniform1i(uniforms.get("uOriginal"), state.original ? 1 : 0);
         glUniform1i(uniforms.get("uExport"), export ? 1 : 0);

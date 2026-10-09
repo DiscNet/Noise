@@ -15,14 +15,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
-    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz"};
-    private static final int[][] GROUPS = {{0, 1, 8}, {2, 3, 4, 5, 6}, {7}};
+    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Glow", "RGB Shift"};
+    private static final int[][] GROUPS = {{0, 3, 1, 2, 4, 5, 6, 8}, {7}, {9, 10, 11}};
     private final float[] values = new float[9];
+    private final float[] effects = new float[3];
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicInteger loads = new AtomicInteger();
-    private final SeekBar[] sliders = new SeekBar[9];
-    private final TextView[] valueLabels = new TextView[9], tabs = new TextView[3];
-    private final LinearLayout[] rows = new LinearLayout[9];
+    private final SeekBar[] sliders = new SeekBar[12];
+    private final TextView[] valueLabels = new TextView[12], tabs = new TextView[3];
+    private final LinearLayout[] rows = new LinearLayout[12];
     private Bitmap original;
     private EditorSurface preview;
     private TextView status, save, open, compare, stageBadge;
@@ -51,135 +52,170 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.TRANSPARENT); getWindow().setNavigationBarColor(0xff080e1d);
         Glass.Backdrop background = new Glass.Backdrop(this); setContentView(background);
         LinearLayout root = vertical(); background.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        root.setPadding(dp(18), dp(10), dp(18), dp(12));
+        root.setPadding(dp(10), dp(4), dp(10), dp(8));
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            root.setPadding(dp(18) + insets.getSystemWindowInsetLeft(), dp(10) + insets.getSystemWindowInsetTop(),
-                dp(18) + insets.getSystemWindowInsetRight(), dp(12) + insets.getSystemWindowInsetBottom());
+            root.setPadding(dp(10) + insets.getSystemWindowInsetLeft(), dp(4) + insets.getSystemWindowInsetTop(),
+                dp(10) + insets.getSystemWindowInsetRight(), dp(8) + insets.getSystemWindowInsetBottom());
             return insets;
         });
-        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); root.addView(header, lp(-1, dp(60)));
-        LinearLayout brand = vertical(); header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView title = text("Noise!", 32, Glass.INK); title.setTypeface(Typeface.create("sans-serif-black", Typeface.ITALIC)); brand.addView(title);
-        TextView caption = text("PHOTO STUDIO", 9, Glass.CYAN); caption.setLetterSpacing(.3f); brand.addView(caption);
-        open = action("＋", false); open.setTextSize(25); open.setContentDescription("Abrir imagem"); header.addView(open, lp(dp(48), dp(48)));
-        save = action("Salvar ↗", true); LinearLayout.LayoutParams saveParams = lp(dp(100), dp(48)); saveParams.leftMargin = dp(9); header.addView(save, saveParams);
+        LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(header, lp(-1, dp(54)));
+        TextView settings = action("⚙", false); settings.setTextSize(23);
+        header.addView(settings, lp(dp(46), dp(46)));
+        settings.setOnClickListener(v -> reset());
+        TextView title = text("Noise!", 30, Glass.INK);
+        title.setGravity(Gravity.CENTER); title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(54), 1));
+        open = action("▧", false); open.setTextSize(23); open.setContentDescription("Abrir imagem");
+        header.addView(open, lp(dp(46), dp(46)));
+        save = action("↗", false); save.setTextSize(23); save.setContentDescription("Salvar PNG");
+        LinearLayout.LayoutParams saveParams = lp(dp(46), dp(46)); saveParams.leftMargin = dp(4);
+        header.addView(save, saveParams);
         open.setOnClickListener(v -> pickImage()); save.setOnClickListener(v -> chooseOutput());
-        gap(root, 14);
+        LinearLayout categories = new LinearLayout(this);
+        categories.setPadding(dp(3), dp(3), dp(3), dp(3));
+        categories.setBackground(Glass.panel(this, 0xee22202c, 0xee201e2b, 28, 0x25ffffff));
+        LinearLayout.LayoutParams catParams = lp(-1, dp(46));
+        catParams.leftMargin = dp(56); catParams.rightMargin = dp(56);
+        root.addView(categories, catParams);
+        String[] labels = {"Basic", "Noise", "Dither"};
+        for (int i=0;i<3;i++) {
+            final int group=i;
+            tabs[i]=text(labels[i],14,Glass.MUTED); tabs[i].setGravity(Gravity.CENTER);
+            categories.addView(tabs[i], new LinearLayout.LayoutParams(0,-1,1));
+            tabs[i].setOnClickListener(v -> showGroup(group));
+            tabs[i].setFocusable(true);
+        }
+        gap(root, 8);
 
         FrameLayout stage = new FrameLayout(this);
-        stage.setBackground(Glass.panel(this, 0x57344967, 0x3021304f, 26, 0x57bed8ff)); stage.setPadding(dp(12), dp(8), dp(12), dp(10));
-        root.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1));
+        stage.setBackground(Glass.panel(this, 0xff111019, 0xff0c0b11, 18, 0x22ffffff));
+        root.addView(stage, new LinearLayout.LayoutParams(-1,0,1));
         preview = new EditorSurface(this, new EditorSurface.Listener() {
             public void ready(int maximum) { maxTexture = Math.min(4096, maximum); }
             public void failed(String message) { if (!destroyed) status.setText(message); }
         });
-        FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(-1, -1); imageParams.topMargin = dp(22);
+        FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(-1, -1); imageParams.topMargin = 0;
         stage.addView(preview, imageParams);
         // Overlay the empty state instead of removing the GL surface: context stays warm.
         empty = vertical(); empty.setGravity(Gravity.CENTER); empty.setBackgroundColor(0xff0a0d17);
-        FrameLayout.LayoutParams emptyParams = new FrameLayout.LayoutParams(-1, -1); emptyParams.topMargin = dp(22);
+        FrameLayout.LayoutParams emptyParams = new FrameLayout.LayoutParams(-1, -1); emptyParams.topMargin = 0;
         stage.addView(empty, emptyParams);
-        TextView icon = text("＋", 42, Glass.CYAN); icon.setGravity(Gravity.CENTER);
+        TextView icon = text("＋", 42, Glass.INK); icon.setGravity(Gravity.CENTER);
         icon.setBackground(Glass.panel(this, 0x6538556e, 0x60312c65, 22, 0x887abedc)); empty.addView(icon, lp(dp(70), dp(70)));
         gap(empty, 14); TextView prompt = text("Dê um novo tom.", 22, Glass.INK); prompt.setTypeface(Typeface.DEFAULT_BOLD); empty.addView(prompt);
         gap(empty, 8); TextView hint = text("Abra uma foto para começar", 13, Glass.MUTED); empty.addView(hint);
         empty.setOnClickListener(v -> pickImage()); empty.setContentDescription("Abrir uma foto para começar");
-        // A separate row above the stage avoids overlapping the SurfaceView.
-        stageBadge = text("PRÉVIA  /  ORIGINAL", 10, Glass.CYAN); stageBadge.setLetterSpacing(.14f);
-        FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(-2, dp(22)); badgeParams.leftMargin = dp(4); stage.addView(stageBadge, badgeParams);
-        gap(root, 8);
-        status = text("Seu próximo visual começa aqui.", 11, Glass.MUTED); status.setSingleLine(true); root.addView(status, lp(-1, dp(20)));
-
-        LinearLayout tools = new LinearLayout(this); tools.setGravity(Gravity.CENTER_VERTICAL); root.addView(tools, lp(-1, dp(54)));
-        compare = action("◐  Original", false); tools.addView(compare, new LinearLayout.LayoutParams(0, dp(48), 1));
+        stageBadge = text("", 10, Glass.MUTED);
+        status = text("Abra uma imagem para começar", 11, Glass.MUTED);
+        status.setGravity(Gravity.CENTER);
+        root.addView(status, lp(-1, dp(20)));
+        // Compact floating graphite glass panel, controls grouped by the tabs above.
+        LinearLayout panel = vertical();
+        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        panel.setBackground(Glass.panel(this, 0xee2a2735, 0xf0201e29, 24, 0x55a9a3c5));
+        LinearLayout.LayoutParams panelParams = lp(-1, dp(304));
+        root.addView(panel, panelParams);
+        LinearLayout tools = new LinearLayout(this);
+        tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(38)));
+        compare = action("◐  Original", false);
+        tools.addView(compare,new LinearLayout.LayoutParams(0,dp(34),1));
         compare.setContentDescription("Segure para comparar com a imagem original");
-        compare.setOnTouchListener((v, event) -> {
-            if (original == null) return false;
-            if (event.getAction() == MotionEvent.ACTION_DOWN) { comparing = true; publish(); }
-            else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                comparing = false; publish(); if (event.getAction() == MotionEvent.ACTION_UP) { comparisonTouch = true; v.performClick(); comparisonTouch = false; }
+        compare.setOnTouchListener((v,event) -> {
+            if(original==null)return false;
+            if(event.getAction()==MotionEvent.ACTION_DOWN){comparing=true;publish();}
+            else if(event.getAction()==MotionEvent.ACTION_UP||event.getAction()==MotionEvent.ACTION_CANCEL){
+                comparing=false;publish();
+                if(event.getAction()==MotionEvent.ACTION_UP){comparisonTouch=true;v.performClick();comparisonTouch=false;}
             }
             return true;
         });
-        // Accessibility/keyboard click provides a toggle; touch remains press-and-hold.
-        compare.setOnClickListener(v -> { if (!comparisonTouch && original != null) { comparing = !comparing; publish(); } });
-        invertSwitch = new Switch(this); invertSwitch.setText("Inverter  "); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
-        invertSwitch.setShowText(false); invertSwitch.setSwitchMinWidth(dp(42)); invertSwitch.setContentDescription("Inverter cores");
-        Glass.button(invertSwitch, false);
-        invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}}, new int[]{Glass.LIME, 0xffadb9d0}));
-        invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}}, new int[]{0xff547646, 0xff38425c}));
-        LinearLayout.LayoutParams invertParams = new LinearLayout.LayoutParams(0, dp(48), 1); invertParams.leftMargin = dp(10); tools.addView(invertSwitch, invertParams);
-        invertSwitch.setOnCheckedChangeListener((v, checked) -> publish());
-        gap(root, 12);
-
-        LinearLayout panel = vertical(); panel.setPadding(dp(16), dp(8), dp(16), dp(8));
-        panel.setBackground(Glass.panel(this, 0x68485372, 0x3823314c, 26, 0x55c6d8ff)); root.addView(panel, lp(-1, dp(250)));
-        LinearLayout section = new LinearLayout(this); section.setGravity(Gravity.CENTER_VERTICAL); panel.addView(section, lp(-1, dp(32)));
-        TextView heading = text("Ajustes", 18, Glass.INK); heading.setTypeface(Typeface.DEFAULT_BOLD); section.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView reset = text("↺  Redefinir", 12, Glass.LIME); reset.setGravity(Gravity.CENTER); reset.setPadding(dp(6), 0, dp(6), 0); section.addView(reset, lp(-2, dp(32)));
-        reset.setContentDescription("Zerar todos os ajustes e desligar a inversão"); reset.setOnClickListener(v -> reset());
-        LinearLayout categories = new LinearLayout(this); panel.addView(categories, lp(-1, dp(39)));
-        String[] labels = {"◉  Cor", "☼  Luz", "⁙  Textura"};
-        for (int i = 0; i < 3; i++) {
-            final int group = i; tabs[i] = text(labels[i], 13, Glass.MUTED); tabs[i].setGravity(Gravity.CENTER); tabs[i].setTypeface(Typeface.DEFAULT_BOLD);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(36), 1); if (i != 0) params.leftMargin = dp(7); categories.addView(tabs[i], params);
-            tabs[i].setOnClickListener(v -> showGroup(group)); tabs[i].setFocusable(true);
-        }
-        View rule = new View(this); rule.setBackgroundColor(0x24c9dcff); panel.addView(rule, lp(-1, dp(1))); gap(panel, 4);
+        compare.setOnClickListener(v->{if(!comparisonTouch&&original!=null){comparing=!comparing;publish();}});
+        TextView reset = action("↺  Reset",false); tools.addView(reset,lp(dp(90),dp(34)));
+        reset.setOnClickListener(v->reset());
+        View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
-        for (int i = 0; i < 9; i++) buildAdjustment(i);
+        for (int i = 0; i < 12; i++) buildAdjustment(i);
+        invertSwitch = new Switch(this);
+        invertSwitch.setText("◐   Invert"); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
+        invertSwitch.setSwitchMinWidth(dp(45));
+        invertSwitch.setContentDescription("Inverter cores");
+        invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xffd3c0ff,0xffd3d0dc}));
+        invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff7a628f,0xff43404e}));
+        panel.addView(invertSwitch,lp(-1,dp(44)));
+        invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
         showGroup(0); updateActions();
         if (state != null) {
             float[] saved = state.getFloatArray("values"); resetting = true;
             if (saved != null && saved.length == 9) for (int i = 0; i < 9; i++) sliders[i].setProgress(Math.round(saved[i] * 100) + 100);
-            invertSwitch.setChecked(state.getBoolean("invert")); resetting = false; showGroup(state.getInt("group", 0)); publish();
+            invertSwitch.setChecked(state.getBoolean("invert"));
+            float[] savedEffects=state.getFloatArray("effects");
+            if(savedEffects!=null&&savedEffects.length==3)
+                for(int i=0;i<3;i++)sliders[9+i].setProgress(Math.round(savedEffects[i]*200));
+            resetting = false; showGroup(state.getInt("group", 0)); publish();
             String uri = state.getString("input"); if (uri != null) load(Uri.parse(uri));
         }
     }
     private void buildAdjustment(int index) {
-        LinearLayout row = vertical(); rows[index] = row;
-        LinearLayout labelRow = new LinearLayout(this); labelRow.setGravity(Gravity.CENTER_VERTICAL); row.addView(labelRow, lp(-1, dp(22)));
-        TextView label = text(NAMES[index], 13, Glass.INK); labelRow.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView value = text("0", 12, Glass.CYAN); value.setGravity(Gravity.CENTER); value.setTypeface(Typeface.MONOSPACE);
-        value.setBackground(Glass.panel(this, 0x422c4059, 0x422c3059, 8, 0x327aa4bf)); valueLabels[index] = value; labelRow.addView(value, lp(dp(61), dp(24)));
-        value.setContentDescription("Zerar " + NAMES[index]); value.setOnClickListener(v -> sliders[index].setProgress(100));
-        Glass.Slider slider = new Glass.Slider(this, index == 7 ? Glass.LIME : index == 8 ? Glass.VIOLET : Glass.CYAN); sliders[index] = slider;
-        slider.setContentDescription(NAMES[index]); row.addView(slider, lp(-1, dp(30)));
-        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar seek, int progress, boolean user) {
-                values[index] = (progress - 100) / 100f; valueLabels[index].setText(formatValue(index)); publish();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL); rows[index]=row;
+        TextView label = text(NAMES[index],13,Glass.INK);
+        label.setSingleLine(true); label.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(label,lp(dp(100),dp(43)));
+        Glass.Slider slider=new Glass.Slider(this,
+            index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:0xffdbb9ff);
+        sliders[index]=slider; slider.setContentDescription(NAMES[index]);
+        slider.setMax(200); slider.setProgress(index<9?100:0);
+        row.addView(slider,new LinearLayout.LayoutParams(0,dp(43),1));
+        TextView value=text("0",12,Glass.INK); value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        valueLabels[index]=value; row.addView(value,lp(dp(49),dp(43)));
+        value.setOnClickListener(v->sliders[index].setProgress(index<9?100:0));
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar seek,int progress,boolean user){
+                if(index<9)values[index]=(progress-100)/100f;
+                else effects[index-9]=progress/200f;
+                valueLabels[index].setText(formatValue(index));publish();
             }
-            public void onStartTrackingTouch(SeekBar seek) {}
-            public void onStopTrackingTouch(SeekBar seek) {}
+            public void onStartTrackingTouch(SeekBar seek){}
+            public void onStopTrackingTouch(SeekBar seek){}
         });
     }
     private String formatValue(int index) {
-        if (index == 2) return String.format(Locale.US, "%+.1f EV", values[index] * 3);
-        if (index == 8) return String.format(Locale.US, "%+d°", Math.round(values[index] * 180));
-        int n = Math.round(values[index] * 100); return n == 0 ? "0" : String.format(Locale.US, "%+d", n);
+        if(index>=9)return String.format(Locale.US,"%d",Math.round(effects[index-9]*100));
+        if(index==2)return String.format(Locale.US,"%+.1f EV",values[index]*3);
+        if(index==8)return String.format(Locale.US,"%+d°",Math.round(values[index]*180));
+        int n=Math.round(values[index]*100);
+        return n==0?"0":String.format(Locale.US,"%+d",n);
     }
     private void showGroup(int group) {
-        selectedGroup = Math.max(0, Math.min(2, group)); controls.removeAllViews();
-        for (int index : GROUPS[selectedGroup]) controls.addView(rows[index]);
-        if (selectedGroup == 2) {
-            gap(controls, 12); TextView note = text("−  Suavizar                         Granular  +", 12, Glass.LIME); controls.addView(note);
-            gap(controls, 8); TextView explanation = text("Deslize para a esquerda para reduzir o ruído. Para a direita, adicione textura à foto.", 12, Glass.MUTED); explanation.setLineSpacing(dp(3), 1); controls.addView(explanation);
+        selectedGroup=Math.max(0,Math.min(2,group));
+        controls.removeAllViews();
+        for(int index:GROUPS[selectedGroup])controls.addView(rows[index]);
+        if(selectedGroup==1){
+            TextView hint=text("− Suavizar     /     + Granular",12,Glass.MUTED);
+            controls.addView(hint,lp(-1,dp(32)));
         }
-        for (int i = 0; i < 3; i++) {
-            boolean active = i == selectedGroup; tabs[i].setSelected(active); tabs[i].setTextColor(active ? Glass.LIME : Glass.MUTED);
-            tabs[i].setBackground(Glass.panel(this, active ? 0x543c5c3b : 0x17222c45, active ? 0x30283e32 : 0x12222c45, 12, active ? 0x99caff70 : 0x25c6d8ff));
+        if(selectedGroup==2){
+            TextView hint=text("Neon halftone  •  Glow  •  RGB",11,Glass.MUTED);
+            controls.addView(hint,lp(-1,dp(32)));
         }
-        controlScroll.scrollTo(0, 0);
+        for(int i=0;i<3;i++){
+            boolean active=i==selectedGroup;
+            tabs[i].setSelected(active);tabs[i].setTextColor(active?Glass.INK:Glass.MUTED);
+            tabs[i].setBackground(Glass.panel(this,active?0xff494052:0x00201e29,
+                active?0xff3e3047:0x00201e29,23,active?0x99ba9aca:0x00ffffff));
+        }
+        controlScroll.scrollTo(0,0);
     }
     private void publish() {
         if (preview == null || resetting) return;
-        preview.setEditState(new EditState(values, invertSwitch != null && invertSwitch.isChecked(), comparing));
+        preview.setEditState(new EditState(values, effects, invertSwitch != null && invertSwitch.isChecked(), comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
         if (compare != null) compare.setText(comparing ? "◑  Original" : "◐  Comparar");
     }
     private void reset() {
-        resetting = true; for (SeekBar slider : sliders) slider.setProgress(100); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
+        resetting = true; for (int i=0;i<sliders.length;i++)sliders[i].setProgress(i<9?100:0); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
     }
     private void updateActions() {
         boolean available = original != null && !loading;
@@ -248,7 +284,7 @@ public class MainActivity extends Activity {
         return bitmap;
     }
     private void export(Uri uri) {
-        Bitmap bitmap = original; EditState state = new EditState(values, invertSwitch.isChecked(), false);
+        Bitmap bitmap = original; EditState state = new EditState(values, effects, invertSwitch.isChecked(), false);
         exporting = true; updateActions(); status.setText("Salvando sua imagem…");
         worker.execute(() -> {
             Bitmap output = null;
@@ -272,7 +308,7 @@ public class MainActivity extends Activity {
         } else if (request == 2 && original != null && !exporting) export(uri);
     }
     @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putBoolean("invert", invertSwitch.isChecked());
+        super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putBoolean("invert", invertSwitch.isChecked());
         state.putInt("group", selectedGroup); if (input != null) state.putString("input", input.toString());
     }
     @Override protected void onResume() { super.onResume(); if (preview != null) preview.onResume(); }
