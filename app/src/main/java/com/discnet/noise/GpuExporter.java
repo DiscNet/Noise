@@ -10,6 +10,16 @@ import static android.opengl.GLES20.*;
 /** Separate EGL context: saving a PNG never blocks the preview GL thread. */
 final class GpuExporter {
     static Bitmap render(Context context, Bitmap source, EditState state) throws Exception {
+        return render(context, source, state, source.getWidth(), source.getHeight());
+    }
+
+    /** Resize at export time on GPU: the source bitmap is never destructively scaled. */
+    static Bitmap render(Context context, Bitmap source, EditState state,
+                         int targetWidth, int targetHeight) throws Exception {
+        if(targetWidth < 1 || targetHeight < 1
+                || targetWidth > 4096 || targetHeight > 4096
+                || (long)targetWidth*targetHeight > 16777216L)
+            throw new IllegalArgumentException("Tamanho de exportação fora do limite (1 a 4096 px).");
         EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         EGLContext eglContext = EGL_NO_CONTEXT;
         EGLSurface surface = EGL_NO_SURFACE;
@@ -27,7 +37,7 @@ final class GpuExporter {
             surface = eglCreatePbufferSurface(display, configs[0], new int[]{EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE}, 0);
             if (!eglMakeCurrent(display, surface, surface, eglContext)) throw new IllegalStateException("EGL current");
             pipeline = new GlPipeline(context); pipeline.upload(source);
-            int w = source.getWidth(), h = source.getHeight();
+            int w = targetWidth, h = targetHeight;
             glGenTextures(1, colorTexture, 0); glBindTexture(GL_TEXTURE_2D, colorTexture[0]);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
