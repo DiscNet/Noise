@@ -153,9 +153,9 @@ void main() {
             vec2 jitter = vec2(hash(cell + 4.7), hash(cell + 78.6));
             vec2 center = vec2(0.21) + 0.58 * jitter;
             float radius = mix(0.10, 0.27, hash(cell + 112.0));
-            float dot = 1.0 - smoothstep(radius * 0.5, radius + 0.12, length(local - center));
+            float sparkShape = 1.0 - smoothstep(radius * 0.5, radius + 0.12, length(local - center));
             float density = clamp(0.015 + signal * 0.57 + rim * 0.30, 0.0, 0.87);
-            float specks = dot * step(hash(cell + 19.1), density) * silhouette;
+            float specks = sparkShape * step(hash(cell + 19.1), density) * silhouette;
 
             float brighten = (0.24 + 1.85 * pow(signal, 0.65) + detail);
             vec3 neon = inkColor * (lines + specks * 1.18) * brighten;
