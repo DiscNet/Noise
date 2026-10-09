@@ -54,7 +54,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           emulator-boot-timeout: 180
-          api-level: 29
+          api-level: 30
           arch: x86_64
           profile: pixel_2
           disable-animations: true
