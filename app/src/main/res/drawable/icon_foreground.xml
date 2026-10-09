@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+ android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- All visible paths stay inside the central 66dp safe zone of adaptive icons. -->
+    <path android:pathData="M34,74 L34,34 L45,34 L62,58 L62,34 L73,34 L73,74 L63,74 L45,48 L45,74 Z"
+          android:fillColor="#EBD4FF"/>
+    <path android:pathData="M78,65h8v9h-8z" android:fillColor="#FF75CD"/>
+    <path android:pathData="M27,30 L38,26" android:strokeColor="#FF75CD"
+          android:strokeWidth="2" android:strokeLineCap="round"/>
+</vector>
