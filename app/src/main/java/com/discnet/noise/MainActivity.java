@@ -2,6 +2,9 @@ package com.discnet.noise;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.provider.MediaStore;
 import android.text.*;
 import android.text.InputType;
 import android.os.*;
@@ -27,7 +30,7 @@ public class MainActivity extends Activity {
     private final float[] filters = new float[8];
     private final float[] ditherControls = EditState.DITHER_DEFAULTS.clone();
     private int outputWidth, outputHeight, restoreWidth, restoreHeight;
-    private TextView resizeButton;
+    private ImageView resizeButton;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicInteger loads = new AtomicInteger();
     private final SeekBar[] sliders = new SeekBar[26];
@@ -35,7 +38,11 @@ public class MainActivity extends Activity {
     private final LinearLayout[] rows = new LinearLayout[26];
     private Bitmap original;
     private EditorSurface preview;
-    private TextView status, save, open, compare, stageBadge;
+    private TextView status, compare, stageBadge;
+    private ImageView save, open;
+    private Glass.Backdrop appBackground;
+    private GalleryScreen galleryScreen;
+    private static final int GALLERY_PERMISSION=73;
     private LinearLayout empty, controls;
     private Switch invertSwitch;
     private ScrollView controlScroll;
@@ -59,7 +66,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setStatusBarColor(0xff09080f); getWindow().setNavigationBarColor(0xff09080f);
-        Glass.Backdrop background = new Glass.Backdrop(this); setContentView(background);
+        Glass.Backdrop background = new Glass.Backdrop(this); appBackground=background; setContentView(background);
         LinearLayout root = vertical(); background.addView(root, new FrameLayout.LayoutParams(-1, -1));
         root.setPadding(dp(10), dp(4), dp(10), dp(8));
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -69,19 +76,18 @@ public class MainActivity extends Activity {
         });
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(header, lp(-1, dp(54)));
-        TextView settings = action("⚙", false); settings.setTextSize(23);
+        ImageView settings = IconArt.button(this,IconArt.SETTINGS,"Configurações");
         header.addView(settings, lp(dp(46), dp(46)));
         settings.setOnClickListener(v -> showOptions(settings));
         TextView title = text("Noise!", 30, Glass.INK);
         title.setGravity(Gravity.CENTER); title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         header.addView(title, new LinearLayout.LayoutParams(0, dp(54), 1));
-        open = action("▧", false); open.setTextSize(23); open.setContentDescription("Abrir imagem");
+        open=IconArt.button(this,IconArt.GALLERY,"Galeria de fotos");
         header.addView(open, lp(dp(46), dp(46)));
-        resizeButton=action("⤢",false); resizeButton.setTextSize(25);
-        resizeButton.setContentDescription("Redimensionar a imagem");
+        resizeButton=IconArt.button(this,IconArt.RESIZE,"Redimensionar a imagem");
         LinearLayout.LayoutParams resParams=lp(dp(44),dp(44));resParams.leftMargin=dp(3);
         header.addView(resizeButton,resParams);
-        save = action("↓", false); save.setTextSize(23); save.setContentDescription("Salvar PNG");
+        save=IconArt.button(this,IconArt.SAVE,"Salvar PNG");
         LinearLayout.LayoutParams saveParams = lp(dp(44), dp(44)); saveParams.leftMargin = dp(3);
         header.addView(save, saveParams);
         open.setOnClickListener(v -> pickImage());
@@ -134,7 +140,8 @@ public class MainActivity extends Activity {
         root.addView(panel, panelParams);
         LinearLayout tools = new LinearLayout(this);
         tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(38)));
-        compare = action("◐  Original", false);
+        compare=action("Original",false);
+        decorateAction(compare,IconArt.ORIGINAL);
         tools.addView(compare,new LinearLayout.LayoutParams(0,dp(34),1));
         compare.setContentDescription("Segure para comparar com a imagem original");
         compare.setOnTouchListener((v,event) -> {
@@ -147,14 +154,17 @@ public class MainActivity extends Activity {
             return true;
         });
         compare.setOnClickListener(v->{if(!comparisonTouch&&original!=null){comparing=!comparing;publish();}});
-        TextView reset = action("↺  Reset",false); tools.addView(reset,lp(dp(90),dp(34)));
+        TextView reset = action("Reset",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(90),dp(34)));
         reset.setOnClickListener(v->reset());
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
         for (int i = 0; i < 26; i++) buildAdjustment(i);
         invertSwitch = new Switch(this);
-        invertSwitch.setText("◐   Invert"); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
+        invertSwitch.setText("  Inverter cores");
+        android.graphics.drawable.Drawable toggleIcon=new IconArt(IconArt.ORIGINAL,Glass.INK);
+        toggleIcon.setBounds(0,0,dp(23),dp(23));
+        invertSwitch.setCompoundDrawables(toggleIcon,null,null,null); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
         invertSwitch.setSwitchMinWidth(dp(45));
         invertSwitch.setContentDescription("Inverter cores");
         invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xffd3c0ff,0xffd3d0dc}));
@@ -180,13 +190,12 @@ public class MainActivity extends Activity {
             resetting = false; showGroup(state.getInt("group", 0)); publish();
             String uri = state.getString("input"); if (uri != null) load(Uri.parse(uri));
         }
+        if(state==null||state.getString("input")==null)showGallery();
     }
     private void buildAdjustment(int index) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL); rows[index]=row;
-        TextView glyph = text(ICONS[index],18,0xffded1ed);
-        glyph.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);
-        glyph.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        View glyph=IconArt.inline(this,index);
         row.addView(glyph,lp(dp(27),dp(45)));
         TextView label = text(NAMES[index],13,Glass.INK);
         label.setSingleLine(true); label.setGravity(Gravity.CENTER_VERTICAL);
@@ -257,7 +266,7 @@ public class MainActivity extends Activity {
         if (preview == null || resetting) return;
         preview.setEditState(new EditState(values, effects, filters, ditherControls, invertSwitch != null && invertSwitch.isChecked(), comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
-        if (compare != null) compare.setText(comparing ? "◑  Original" : "◐  Comparar");
+        if (compare != null) compare.setText(comparing ? "Original" : "Comparar");
     }
     private void reset() {
         resetting = true; for (int i=0;i<sliders.length;i++)sliders[i].setProgress((i<9||i>=20)?100:0); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
@@ -269,6 +278,12 @@ public class MainActivity extends Activity {
         resizeButton.setEnabled(available && !exporting); resizeButton.setAlpha(resizeButton.isEnabled()?1:.4f);
         compare.setEnabled(available); compare.setAlpha(available ? 1 : .45f); invertSwitch.setEnabled(available);
         for (SeekBar slider : sliders) slider.setEnabled(available);
+    }
+    private void decorateAction(TextView view,int which){
+        android.graphics.drawable.Drawable icon=new IconArt(which,Glass.INK);
+        icon.setBounds(0,0,dp(19),dp(19));
+        view.setCompoundDrawablePadding(dp(6));
+        view.setCompoundDrawables(icon,null,null,null);
     }
     private void updateSizeLabel(){
         if(original==null)return;
@@ -347,9 +362,76 @@ public class MainActivity extends Activity {
             }));
         dialog.show();
     }
-    private void pickImage() {
-        if (loading) return;
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); intent.setType("image/*"); intent.addCategory(Intent.CATEGORY_OPENABLE); startActivityForResult(intent, 1);
+    private void pickImage(){if(!loading)showGallery();}
+    /** Opens the Android system Photo Picker or the device's Gallery activity,
+      * never ACTION_OPEN_DOCUMENT / the files UI. */
+    private void pickFromSystemGallery() {
+        try{
+            Intent intent;
+            if(Build.VERSION.SDK_INT>=33){
+                intent=new Intent(MediaStore.ACTION_PICK_IMAGES);
+                intent.setType("image/*");
+            }else{
+                intent=new Intent(Intent.ACTION_PICK,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                intent.setType("image/*");
+            }
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(intent,1);
+        }catch(android.content.ActivityNotFoundException error){
+            Toast.makeText(this,"Galeria padrão indisponível",Toast.LENGTH_SHORT).show();
+        }
+    }
+    private boolean hasGalleryPermission(){
+        if(Build.VERSION.SDK_INT>=34)
+            return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)==PackageManager.PERMISSION_GRANTED
+                ||checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)==PackageManager.PERMISSION_GRANTED;
+        if(Build.VERSION.SDK_INT>=33)
+            return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)==PackageManager.PERMISSION_GRANTED;
+        return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)==PackageManager.PERMISSION_GRANTED;
+    }
+    private void grantGalleryPermission(){
+        if(hasGalleryPermission()){if(galleryScreen!=null)galleryScreen.refresh(true);return;}
+        if(Build.VERSION.SDK_INT>=34)
+            requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED},GALLERY_PERMISSION);
+        else if(Build.VERSION.SDK_INT>=33)
+            requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES},GALLERY_PERMISSION);
+        else
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},GALLERY_PERMISSION);
+    }
+    private void showGallery(){
+        if(galleryScreen==null){
+            galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){
+                public void onPhoto(Uri uri){load(uri);}
+                public void onSystemGallery(){pickFromSystemGallery();}
+                public void onGrantPermission(){grantGalleryPermission();}
+                public void onClose(){
+                    if(original!=null)closeGallery();
+                    else Toast.makeText(MainActivity.this,"Selecione uma foto para editar",Toast.LENGTH_SHORT).show();
+                }
+            });
+            appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));
+        }
+        galleryScreen.setVisibility(View.VISIBLE);
+        galleryScreen.bringToFront();
+        galleryScreen.refresh(hasGalleryPermission());
+        if(!hasGalleryPermission())grantGalleryPermission();
+    }
+    private void closeGallery(){
+        if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){
+        super.onRequestPermissionsResult(request,names,grants);
+        if(request==GALLERY_PERMISSION && galleryScreen!=null)
+            galleryScreen.refresh(hasGalleryPermission());
+    }
+    @Override public void onBackPressed(){
+        if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE && original!=null){
+            closeGallery();return;
+        }
+        if(original!=null){showGallery();return;}
+        super.onBackPressed();
     }
     private void chooseOutput() {
         if (original == null || exporting || loading) return;
@@ -374,6 +456,7 @@ public class MainActivity extends Activity {
     // Also used by the instrumented test to feed a deterministic image through the real renderer.
     void setImage(Bitmap bitmap) {
         original = bitmap; preview.setImage(bitmap); empty.setVisibility(View.GONE);
+        closeGallery();
         outputWidth=restoreWidth>0?restoreWidth:bitmap.getWidth();
         outputHeight=restoreHeight>0?restoreHeight:bitmap.getHeight();
         restoreWidth=restoreHeight=0;
@@ -441,5 +524,5 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume() { super.onResume(); if (preview != null) preview.onResume(); }
     @Override protected void onPause() { comparing = false; publish(); if (preview != null) preview.onPause(); super.onPause(); }
-    @Override protected void onDestroy() { destroyed = true; loads.incrementAndGet(); worker.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { destroyed = true; loads.incrementAndGet(); worker.shutdown(); if(galleryScreen!=null)galleryScreen.dispose(); super.onDestroy(); }
 }
