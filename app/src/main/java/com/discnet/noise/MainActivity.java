@@ -19,6 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
     private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação"};
+    private static final String[] ICONS = {"☼","◉","✧","◐","✦","◯","●","⁙","◌","≋","✧","◎",
+        "◑","◕","⁙","◉","◎","≈","◇","⟳","▤","↔","↕","⌗","∴","〰"};
     private static final int[][] GROUPS = {{0, 3, 1, 2, 4, 5, 6, 8}, {7}, {9, 11, 20, 21, 22, 23, 24, 25}, {12, 13, 14, 15, 16, 17, 10, 18, 19}};
     private final float[] values = new float[9];
     private final float[] effects = new float[3];
@@ -127,7 +129,8 @@ public class MainActivity extends Activity {
         LinearLayout panel = vertical();
         panel.setPadding(dp(15), dp(10), dp(15), dp(10));
         panel.setBackground(Glass.frosted(this, 28));
-        LinearLayout.LayoutParams panelParams = lp(-1, dp(330));
+        panel.setElevation(dp(12)); panel.setClipToOutline(true);
+        LinearLayout.LayoutParams panelParams = lp(-1, dp(300));
         root.addView(panel, panelParams);
         LinearLayout tools = new LinearLayout(this);
         tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(38)));
@@ -181,9 +184,13 @@ public class MainActivity extends Activity {
     private void buildAdjustment(int index) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL); rows[index]=row;
+        TextView glyph = text(ICONS[index],18,0xffded1ed);
+        glyph.setGravity(Gravity.CENTER_VERTICAL|Gravity.LEFT);
+        glyph.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));
+        row.addView(glyph,lp(dp(27),dp(45)));
         TextView label = text(NAMES[index],13,Glass.INK);
         label.setSingleLine(true); label.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(label,lp(dp(110),dp(45)));
+        row.addView(label,lp(dp(94),dp(45)));
         Glass.Slider slider=new Glass.Slider(this,
             index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:index>=20?0xfffc89f7:index==19?0xffffae88:0xffd5baff);
         sliders[index]=slider; slider.setContentDescription(NAMES[index]);
@@ -216,7 +223,11 @@ public class MainActivity extends Activity {
     private void showGroup(int group) {
         selectedGroup=Math.max(0,Math.min(3,group));
         controls.removeAllViews();
-        for(int index:GROUPS[selectedGroup])controls.addView(rows[index]);
+        for(int index:GROUPS[selectedGroup]){
+            controls.addView(rows[index]);
+            View separator=new View(this);separator.setBackgroundColor(0x20ffffff);
+            controls.addView(separator,lp(-1,dp(1)));
+        }
         if(selectedGroup==1){
             TextView hint=text("− Suavizar     /     + Granular",12,Glass.MUTED);
             controls.addView(hint,lp(-1,dp(32)));
