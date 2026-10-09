@@ -240,11 +240,17 @@ void main() {
             float softLine = 1.0 - smoothstep(0.27, 0.50, phase);
             float ambient = smoothstep(0.12, 0.48, (light + luminance(xc) +
                 luminance(xa) + luminance(yc) + luminance(ya)) * 0.2);
-            float halo = (softLine * 0.20 + specks * 0.28) * ambient * silhouette;
-            neon += inkColor * halo * (0.28 + 0.95 * uStyle.y);
-            // Subtle halo also extends to pixels adjacent to bright contours.
+            float halo = (softLine * 0.26 + specks * 0.30) * ambient * silhouette;
+            // Larger luminous shells follow the same waviness and local tone
+            // as the bright lines; never a uniform fog on dark pixels.
+            float coreGlow = exp(-pow(phase / 0.245, 2.0));
+            float rimGlow = exp(-pow(phase / 0.50, 2.0));
+            float luminousLine = clamp(signal * 0.73 + rim * 0.52, 0.0, 1.0);
+            neon += inkColor * luminousLine * silhouette *
+                (coreGlow * 0.47 + rimGlow * 0.23);
+            neon += inkColor * halo * (0.46 + 1.16 * uStyle.y);
             neon += inkColor * smoothstep(0.28, 0.85, ambient) *
-                 (0.035 + 0.18 * uStyle.y) * silhouette;
+                 (0.021 + 0.13 * uStyle.y) * silhouette;
             vec3 dithered = clamp(neon, 0.0, 1.0);
             c = mix(c, dithered, amount);
         }
@@ -324,13 +330,6 @@ void main() {
             c=clamp(c,0.0,1.0);
         }
 
-        // Vinheta stays centered in source-image coordinates.
-        if (uFxA.w > 0.001) {
-            float edgeDistance = length((vTexCoord - 0.5) * 2.0);
-            float falloff = smoothstep(0.35, 1.34, edgeDistance);
-            c *= 1.0 - 0.93 * uFxA.w * falloff;
-        }
-
         // Rotational radial blur: tangent to concentric rings and constrained
         // to the outer image. Angle increases with distance and slider.
         if (uFxB.w > 0.001) {
@@ -351,6 +350,13 @@ void main() {
                 radialSum += straight(texture2D(uImage,uv));
             }
             c=mix(c,radialSum/8.0,edge*uFxB.w);
+        }
+
+        // Vinheta stays centered in source-image coordinates.
+        if (uFxA.w > 0.001) {
+            float edgeDistance = length((vTexCoord - 0.5) * 2.0);
+            float falloff = smoothstep(0.35, 1.34, edgeDistance);
+            c *= 1.0 - 0.93 * uFxA.w * falloff;
         }
 
         if (uInvert) c = 1.0 - c;

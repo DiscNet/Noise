@@ -62,6 +62,8 @@ jobs:
           script: |
             adb install app/build/outputs/apk/debug/app-debug.apk
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            # Start gallery without a runtime permission modal during GPU smoke tests.
+            adb shell pm grant com.discnet.noise android.permission.READ_EXTERNAL_STORAGE || true
             mkdir -p smoke
             timeout 240s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
             timeout 15s adb logcat -d > smoke/logcat.txt || true
@@ -84,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.5 ($TAG)" --notes "Noise! 1.5: Glow isotrópico, desfoque rotativo nas bordas, 6 controles extras do Dither, poeira analógica, prévia sem corte na proporção original, redimensionamento de exportação, ícone adaptativo e interface glass refinada. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.6 ($TAG)" --notes "Noise! 1.6: Redimensionamento por sliders, tela de galeria com fotos recentes e álbuns, galeria padrão via Android Photo Picker, fundo artístico durante edição, vinheta após blur rotativo, linhas neon mais luminosas e ícones vetoriais originais. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."

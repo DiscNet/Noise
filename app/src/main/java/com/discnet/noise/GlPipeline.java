@@ -14,6 +14,7 @@ final class GlPipeline {
     private final FloatBuffer vertices = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     private final HashMap<String, Integer> uniforms = new HashMap<>();
     private int program, texture, position, coordinate;
+    private int stageProgram, stagePosition, stageCanvas;
     private int width, height;
     GlPipeline(Context context) throws IOException {
         int vs = compile(GL_VERTEX_SHADER, read(context, "editor.vert"));
@@ -23,6 +24,19 @@ final class GlPipeline {
         int[] success = new int[1]; glGetProgramiv(program, GL_LINK_STATUS, success, 0);
         glDeleteShader(vs); glDeleteShader(fs);
         if (success[0] == 0) throw new IllegalStateException("Shader link: " + glGetProgramInfoLog(program));
+        // A separate inexpensive shader fills unused space around the photo
+        // with a textured luminous studio backdrop; export remains transparent.
+        int sv=compile(GL_VERTEX_SHADER,read(context,"stage.vert"));
+        int sf=compile(GL_FRAGMENT_SHADER,read(context,"stage.frag"));
+        stageProgram=glCreateProgram();
+        glAttachShader(stageProgram,sv);glAttachShader(stageProgram,sf);
+        glLinkProgram(stageProgram);
+        int[] stageLinked=new int[1];
+        glGetProgramiv(stageProgram,GL_LINK_STATUS,stageLinked,0);
+        glDeleteShader(sv);glDeleteShader(sf);
+        if(stageLinked[0]==0)throw new IllegalStateException("Stage shader: "+glGetProgramInfoLog(stageProgram));
+        stagePosition=glGetAttribLocation(stageProgram,"aPosition");
+        stageCanvas=glGetUniformLocation(stageProgram,"uCanvas");
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
         for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
@@ -47,6 +61,16 @@ final class GlPipeline {
     void draw(int outputWidth, int outputHeight, EditState state, boolean export) {
         glViewport(0, 0, outputWidth, outputHeight);
         glClearColor(0.050f, 0.046f, 0.073f, 1); glClear(GL_COLOR_BUFFER_BIT);
+        if(!export) {
+            glUseProgram(stageProgram);
+            vertices.position(0);
+            vertices.put(new float[]{-1,-1,0,0, 1,-1,1,0, -1,1,0,1, 1,1,1,1}).position(0);
+            glUniform2f(stageCanvas,outputWidth,outputHeight);
+            glVertexAttribPointer(stagePosition,2,GL_FLOAT,false,16,vertices);
+            glEnableVertexAttribArray(stagePosition);
+            glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+            glDisableVertexAttribArray(stagePosition);
+        }
         if (texture == 0) return;
         float sx = 1, sy = 1;
         if (!export) {
@@ -85,6 +109,7 @@ final class GlPipeline {
     void release() {
         if (texture != 0) glDeleteTextures(1, new int[]{texture}, 0);
         if (program != 0) glDeleteProgram(program);
+        if (stageProgram != 0) glDeleteProgram(stageProgram);
     }
     static void check(String operation) { int error = glGetError(); if (error != GL_NO_ERROR) throw new IllegalStateException(operation + ": GL " + error); }
     private static int compile(int kind, String source) {
