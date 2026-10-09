@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     private Switch invertSwitch;
     private ScrollView controlScroll;
     private Uri input;
-    private boolean comparing, exporting, loading, destroyed, resetting;
+    private boolean comparing, exporting, loading, destroyed, resetting, comparisonTouch;
     private int selectedGroup, maxTexture = 4096;
     private int dp(float n) { return Glass.dp(this, n); }
     private TextView text(String content, int size, int color) {
@@ -67,16 +67,18 @@ public class MainActivity extends Activity {
         gap(root, 14);
 
         FrameLayout stage = new FrameLayout(this);
-        stage.setBackground(Glass.panel(this, 0x57344967, 0x3021304f, 26, 0x57bed8ff)); stage.setPadding(dp(12), dp(38), dp(12), dp(12));
+        stage.setBackground(Glass.panel(this, 0x57344967, 0x3021304f, 26, 0x57bed8ff)); stage.setPadding(dp(12), dp(8), dp(12), dp(10));
         root.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1));
         preview = new EditorSurface(this, new EditorSurface.Listener() {
             public void ready(int maximum) { maxTexture = Math.min(4096, maximum); }
             public void failed(String message) { if (!destroyed) status.setText(message); }
         });
-        stage.addView(preview, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(-1, -1); imageParams.topMargin = dp(22);
+        stage.addView(preview, imageParams);
         // Overlay the empty state instead of removing the GL surface: context stays warm.
         empty = vertical(); empty.setGravity(Gravity.CENTER); empty.setBackgroundColor(0xff0a0d17);
-        stage.addView(empty, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams emptyParams = new FrameLayout.LayoutParams(-1, -1); emptyParams.topMargin = dp(22);
+        stage.addView(empty, emptyParams);
         TextView icon = text("＋", 42, Glass.CYAN); icon.setGravity(Gravity.CENTER);
         icon.setBackground(Glass.panel(this, 0x6538556e, 0x60312c65, 22, 0x887abedc)); empty.addView(icon, lp(dp(70), dp(70)));
         gap(empty, 14); TextView prompt = text("Dê um novo tom.", 22, Glass.INK); prompt.setTypeface(Typeface.DEFAULT_BOLD); empty.addView(prompt);
@@ -84,7 +86,7 @@ public class MainActivity extends Activity {
         empty.setOnClickListener(v -> pickImage()); empty.setContentDescription("Abrir uma foto para começar");
         // A separate row above the stage avoids overlapping the SurfaceView.
         stageBadge = text("PRÉVIA  /  ORIGINAL", 10, Glass.CYAN); stageBadge.setLetterSpacing(.14f);
-        FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(-2, dp(26)); badgeParams.topMargin = -dp(30); badgeParams.leftMargin = dp(4); stage.addView(stageBadge, badgeParams);
+        FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(-2, dp(22)); badgeParams.leftMargin = dp(4); stage.addView(stageBadge, badgeParams);
         gap(root, 8);
         status = text("Seu próximo visual começa aqui.", 11, Glass.MUTED); status.setSingleLine(true); root.addView(status, lp(-1, dp(20)));
 
@@ -95,12 +97,12 @@ public class MainActivity extends Activity {
             if (original == null) return false;
             if (event.getAction() == MotionEvent.ACTION_DOWN) { comparing = true; publish(); }
             else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                comparing = false; publish(); if (event.getAction() == MotionEvent.ACTION_UP) v.performClick();
+                comparing = false; publish(); if (event.getAction() == MotionEvent.ACTION_UP) { comparisonTouch = true; v.performClick(); comparisonTouch = false; }
             }
             return true;
         });
         // Accessibility/keyboard click provides a toggle; touch remains press-and-hold.
-        compare.setOnClickListener(v -> { if (getSystemService(android.view.accessibility.AccessibilityManager.class).isTouchExplorationEnabled()) { comparing = !comparing; publish(); } });
+        compare.setOnClickListener(v -> { if (!comparisonTouch && original != null) { comparing = !comparing; publish(); } });
         invertSwitch = new Switch(this); invertSwitch.setText("Inverter  "); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
         invertSwitch.setShowText(false); invertSwitch.setSwitchMinWidth(dp(42)); invertSwitch.setContentDescription("Inverter cores");
         Glass.button(invertSwitch, false);
@@ -110,20 +112,20 @@ public class MainActivity extends Activity {
         invertSwitch.setOnCheckedChangeListener((v, checked) -> publish());
         gap(root, 12);
 
-        LinearLayout panel = vertical(); panel.setPadding(dp(16), dp(10), dp(16), dp(12));
-        panel.setBackground(Glass.panel(this, 0x68485372, 0x3823314c, 26, 0x55c6d8ff)); root.addView(panel, lp(-1, dp(286)));
-        LinearLayout section = new LinearLayout(this); section.setGravity(Gravity.CENTER_VERTICAL); panel.addView(section, lp(-1, dp(37)));
+        LinearLayout panel = vertical(); panel.setPadding(dp(16), dp(8), dp(16), dp(8));
+        panel.setBackground(Glass.panel(this, 0x68485372, 0x3823314c, 26, 0x55c6d8ff)); root.addView(panel, lp(-1, dp(250)));
+        LinearLayout section = new LinearLayout(this); section.setGravity(Gravity.CENTER_VERTICAL); panel.addView(section, lp(-1, dp(32)));
         TextView heading = text("Ajustes", 18, Glass.INK); heading.setTypeface(Typeface.DEFAULT_BOLD); section.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView reset = text("↺  Redefinir", 12, Glass.LIME); reset.setGravity(Gravity.CENTER); reset.setPadding(dp(6), 0, dp(6), 0); section.addView(reset, lp(-2, dp(37)));
+        TextView reset = text("↺  Redefinir", 12, Glass.LIME); reset.setGravity(Gravity.CENTER); reset.setPadding(dp(6), 0, dp(6), 0); section.addView(reset, lp(-2, dp(32)));
         reset.setContentDescription("Zerar todos os ajustes e desligar a inversão"); reset.setOnClickListener(v -> reset());
-        LinearLayout categories = new LinearLayout(this); panel.addView(categories, lp(-1, dp(43)));
+        LinearLayout categories = new LinearLayout(this); panel.addView(categories, lp(-1, dp(39)));
         String[] labels = {"◉  Cor", "☼  Luz", "⁙  Textura"};
         for (int i = 0; i < 3; i++) {
             final int group = i; tabs[i] = text(labels[i], 13, Glass.MUTED); tabs[i].setGravity(Gravity.CENTER); tabs[i].setTypeface(Typeface.DEFAULT_BOLD);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(36), 1); if (i != 0) params.leftMargin = dp(7); categories.addView(tabs[i], params);
             tabs[i].setOnClickListener(v -> showGroup(group)); tabs[i].setFocusable(true);
         }
-        View rule = new View(this); rule.setBackgroundColor(0x24c9dcff); panel.addView(rule, lp(-1, dp(1))); gap(panel, 6);
+        View rule = new View(this); rule.setBackgroundColor(0x24c9dcff); panel.addView(rule, lp(-1, dp(1))); gap(panel, 4);
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
         for (int i = 0; i < 9; i++) buildAdjustment(i);
@@ -137,13 +139,13 @@ public class MainActivity extends Activity {
     }
     private void buildAdjustment(int index) {
         LinearLayout row = vertical(); rows[index] = row;
-        LinearLayout labelRow = new LinearLayout(this); labelRow.setGravity(Gravity.CENTER_VERTICAL); row.addView(labelRow, lp(-1, dp(24)));
+        LinearLayout labelRow = new LinearLayout(this); labelRow.setGravity(Gravity.CENTER_VERTICAL); row.addView(labelRow, lp(-1, dp(22)));
         TextView label = text(NAMES[index], 13, Glass.INK); labelRow.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
         TextView value = text("0", 12, Glass.CYAN); value.setGravity(Gravity.CENTER); value.setTypeface(Typeface.MONOSPACE);
         value.setBackground(Glass.panel(this, 0x422c4059, 0x422c3059, 8, 0x327aa4bf)); valueLabels[index] = value; labelRow.addView(value, lp(dp(61), dp(24)));
         value.setContentDescription("Zerar " + NAMES[index]); value.setOnClickListener(v -> sliders[index].setProgress(100));
         Glass.Slider slider = new Glass.Slider(this, index == 7 ? Glass.LIME : index == 8 ? Glass.VIOLET : Glass.CYAN); sliders[index] = slider;
-        slider.setContentDescription(NAMES[index]); row.addView(slider, lp(-1, dp(36)));
+        slider.setContentDescription(NAMES[index]); row.addView(slider, lp(-1, dp(30)));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar seek, int progress, boolean user) {
                 values[index] = (progress - 100) / 100f; valueLabels[index].setText(formatValue(index)); publish();

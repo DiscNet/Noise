@@ -7,6 +7,8 @@ import android.os.*;
 import android.widget.*;
 import java.io.*;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import android.net.Uri;
 
 /** Runs on a real Android emulator, including the production GLES shader and export path. */
 public class NoiseSmokeTest extends Instrumentation {
@@ -55,7 +57,14 @@ public class NoiseSmokeTest extends Instrumentation {
             neutral.recycle(); inverted.recycle(); source.recycle();
 
             Bitmap demo = scene();
-            runOnMainSync(() -> activity.setImage(demo));
+            File input = new File(getTargetContext().getFilesDir(), "fixture.png");
+            try (FileOutputStream stream = new FileOutputStream(input)) { demo.compress(Bitmap.CompressFormat.PNG, 100, stream); }
+            demo.recycle();
+            Method load = MainActivity.class.getDeclaredMethod("load", Uri.class); load.setAccessible(true);
+            runOnMainSync(() -> { try { load.invoke(activity, Uri.fromFile(input)); } catch (Exception e) { throw new RuntimeException(e); } });
+            long deadline = SystemClock.uptimeMillis() + 10000;
+            while ((Boolean)field(activity, "loading") && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(20);
+            require(field(activity, "original") != null, "Image import through ContentResolver/ImageDecoder");
             EditorSurface surface = (EditorSurface) field(activity, "preview");
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
@@ -74,11 +83,22 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(() -> invert.setChecked(false)); SystemClock.sleep(150);
             require(!((EditState)field(surface, "state")).invert, "Switch disables inversion");
             require(surface.frameCount > startFrames + drawn, "Preview survives separate EGL exports");
+            File pngFile = new File(getTargetContext().getFilesDir(), "export.png");
+            Method export = MainActivity.class.getDeclaredMethod("export", Uri.class); export.setAccessible(true);
+            runOnMainSync(() -> { try { export.invoke(activity, Uri.fromFile(pngFile)); } catch (Exception e) { throw new RuntimeException(e); } });
+            deadline = SystemClock.uptimeMillis() + 15000;
+            while ((Boolean)field(activity, "exporting") && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(20);
+            require(pngFile.length() > 1000, "Image export file");
+            Bitmap saved = BitmapFactory.decodeFile(pngFile.getPath());
+            require(saved != null && saved.getWidth() == 900 && saved.getHeight() == 900, "PNG dimensions");
+            require(Color.blue(saved.getPixel(100,100)) > Color.blue(saved.getPixel(100,800)), "PNG strips stay upright"); saved.recycle();
+            runOnMainSync(() -> sliders[0].setProgress(126)); SystemClock.sleep(150);
+            require(surface.frameCount > startFrames + drawn, "Preview alive after PNG export");
             Bitmap screenshot = getUiAutomation().takeScreenshot();
             require(screenshot != null, "Screenshot");
             try (FileOutputStream out = new FileOutputStream(new File(getTargetContext().getFilesDir(), "noise-ui.png"))) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, out); }
             screenshot.recycle();
-            result.putString("stream", "NOISE_SMOKE_OK: GPU neutral/orientation, alpha PNG, all 9 adjustments, compare bypass, denoise, inversion toggle, live slider frames=" + drawn + "\n");
+            result.putString("stream", "NOISE_SMOKE_OK: GPU neutral/orientation, import/export files, alpha PNG, all 9 adjustments, compare bypass, denoise, inversion toggle, live slider frames=" + drawn + "\n");
             finish(Activity.RESULT_OK, result);
         } catch (Throwable error) {
             StringWriter stack = new StringWriter(); error.printStackTrace(new PrintWriter(stack)); result.putString("stream", "NOISE_SMOKE_FAILED\n" + stack); finish(Activity.RESULT_CANCELED, result);
