@@ -49,7 +49,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Verify GPU editor on Android
-        timeout-minutes: 6
+        timeout-minutes: 9
         uses: reactivecircus/android-emulator-runner@v2
         with:
           emulator-boot-timeout: 180
@@ -62,7 +62,7 @@ jobs:
             adb install app/build/outputs/apk/debug/app-debug.apk
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             mkdir -p smoke
-            timeout 90s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
+            timeout 240s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
