@@ -1,0 +1,32 @@
+name: Build Noise APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: gradle --no-daemon assembleDebug
+      - run: cp app/build/outputs/apk/debug/app-debug.apk Noise.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Noise-APK
+          path: Noise.apk
+      - name: Publish installable APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" Noise.apk --title "Noise! 1.0 ($TAG)" --notes "APK de teste instalável, assinado com chave de depuração. Android 8 ou superior."
