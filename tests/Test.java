@@ -1,3 +1,0 @@
-import com.discnet.noise.Adjustments;
-import java.util.Arrays;
-class Test { public static void main(String[] args) { int[] p={0xff123456,0xff808080,0x00808080,0xffffffff,0xff000000,0xffcc3311};float[] v=new float[9];if(!Arrays.equals(p,Adjustments.apply(p,3,2,v)))throw new AssertionError("Neutral");for(int j=0;j<9;j++)for(float x:new float[]{-1,1}){v=new float[9];v[j]=x;int[] a=Adjustments.apply(p,3,2,v);for(int i=0;i<a.length;i++)if((a[i]>>>24)!=(p[i]>>>24))throw new AssertionError("Alpha");if(!Arrays.equals(a,Adjustments.apply(p,3,2,v)))throw new AssertionError("Determinism");}System.out.println("Neutral, alpha and deterministic extremes passed");}}

@@ -21,12 +21,36 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Check image processing
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: noise-development-signing-v1
+      - run: gradle --no-daemon assembleDebug assembleDebugAndroidTest
+      - name: Enable KVM
         run: |
-          mkdir -p /tmp/noise-tests
-          javac -d /tmp/noise-tests app/src/main/java/com/discnet/noise/Adjustments.java tests/Test.java
-          java -cp /tmp/noise-tests Test
-      - run: gradle --no-daemon assembleDebug
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify GPU editor on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install app/build/outputs/apk/debug/app-debug.apk
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            mkdir -p smoke
+            adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
+            grep -q NOISE_SMOKE_OK smoke/results.txt
+            adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Noise-smoke-tests
+          path: smoke/
       - run: cp app/build/outputs/apk/debug/app-debug.apk Noise.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -37,4 +61,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.0 ($TAG)" --notes "APK de teste instalável, assinado com chave de depuração. Android 8 ou superior."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.1 ($TAG)" --notes "Noise! 1.1: prévia na GPU, inversão de cores alternável e interface glassmorphism. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
