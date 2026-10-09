@@ -2,6 +2,7 @@ name: Build Noise APK
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 permissions:
   contents: write
@@ -53,7 +54,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           emulator-boot-timeout: 180
-          api-level: 29
+          api-level: 30
           arch: x86_64
           profile: pixel_2
           disable-animations: true
@@ -78,8 +79,9 @@ jobs:
           name: Noise-APK
           path: Noise.apk
       - name: Publish installable APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.4 ($TAG)" --notes "Noise! 1.4: Fade, Tom de pele, Poeira, Vinheta, Aberrações, Névoa, Glow independente e Nitidez. Quatro abas, processamento GPU em tempo real e exportação PNG. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.5 ($TAG)" --notes "Noise! 1.5: Glow isotrópico, desfoque rotativo nas bordas, 6 controles extras do Dither, poeira analógica, prévia sem corte na proporção original, redimensionamento de exportação, ícone adaptativo e interface glass refinada. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
