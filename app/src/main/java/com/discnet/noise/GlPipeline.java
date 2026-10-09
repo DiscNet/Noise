@@ -25,7 +25,7 @@ final class GlPipeline {
         if (success[0] == 0) throw new IllegalStateException("Shader link: " + glGetProgramInfoLog(program));
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uPatternScale", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
     }
@@ -65,6 +65,12 @@ final class GlPipeline {
         glUniform4fv(uniforms.get("uTone"), 1, state.tone, 0);
         glUniform2fv(uniforms.get("uHue"), 1, state.hue, 0);
         glUniform3fv(uniforms.get("uStyle"), 1, state.style, 0);
+        // Band-limited procedural traces: one wave stays several screen pixels
+        // wide while the export keeps original-resolution detail.
+        float patternScale = export ? 1f : Math.max(1f, Math.max(
+            width * (1f - 2f * tx) / Math.max(1, outputWidth),
+            height * (1f - 2f * ty) / Math.max(1, outputHeight)));
+        glUniform1f(uniforms.get("uPatternScale"), patternScale);
         glUniform1i(uniforms.get("uInvert"), state.invert ? 1 : 0);
         glUniform1i(uniforms.get("uOriginal"), state.original ? 1 : 0);
         glUniform1i(uniforms.get("uExport"), export ? 1 : 0);
