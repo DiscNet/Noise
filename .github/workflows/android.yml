@@ -82,4 +82,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.2 ($TAG)" --notes "Noise! 1.2: interface dark glass, dither neon ajustável, glow, RGB shift, ruído orgânico e prévia sem barras laterais. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.3 ($TAG)" --notes "Noise! 1.3: novo dither de traços ondulados, pontilhismo orgânico, paleta neon azul/rosa/laranja, pretos profundos, e preset da referência. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."

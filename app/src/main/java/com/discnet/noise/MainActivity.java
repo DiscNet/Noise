@@ -197,8 +197,16 @@ public class MainActivity extends Activity {
             controls.addView(hint,lp(-1,dp(32)));
         }
         if(selectedGroup==2){
-            TextView hint=text("Neon halftone  •  Glow  •  RGB",11,Glass.MUTED);
-            controls.addView(hint,lp(-1,dp(32)));
+            TextView preset=action("✦   Aplicar Neon da referência",false);
+            preset.setContentDescription("Aplicar estilo neon ondulado com brilhos e pontos");
+            LinearLayout.LayoutParams presetParams=lp(-1,dp(42));
+            controls.addView(preset,presetParams);
+            preset.setOnClickListener(v->{
+                sliders[9].setProgress(188);  // 94% dither: connected wavy traces
+                sliders[10].setProgress(132); // 66% glow: luminous halos
+                sliders[11].setProgress(26);  // 13% RGB shift: subtle chromatic fringes
+                status.setText("Neon da referência aplicado · ajuste a intensidade");
+            });
         }
         for(int i=0;i<3;i++){
             boolean active=i==selectedGroup;

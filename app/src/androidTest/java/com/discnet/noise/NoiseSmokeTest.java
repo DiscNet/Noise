@@ -77,6 +77,37 @@ public class NoiseSmokeTest extends Instrumentation {
                 altered.recycle();bypassed.recycle();
             }
             plainPoster.recycle();poster.recycle();
+
+            // Reference look: black negative space + cool/warm bright contours,
+            // stable spatial noise (no frame-to-frame shimmer or changing PNG).
+            Bitmap stripes=Bitmap.createBitmap(120,96,Bitmap.Config.ARGB_8888);
+            stripes.eraseColor(0xff000000);
+            Canvas neonCanvas=new Canvas(stripes);
+            Paint neonPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+            neonPaint.setColor(0xff377aff);
+            neonCanvas.drawRect(12,14,55,83,neonPaint);
+            neonPaint.setColor(0xffff9e32);
+            neonCanvas.drawRect(65,14,108,83,neonPaint);
+            float[] neonSettings={0.94f,0.66f,0.13f};
+            EditState neonState=new EditState(new float[9],neonSettings,false,false);
+            Bitmap neonA=GpuExporter.render(getTargetContext(),stripes,neonState);
+            Bitmap neonB=GpuExporter.render(getTargetContext(),stripes,neonState);
+            int lit=0, cool=0, warm=0;
+            for(int yy=0; yy<96; yy++)for(int xx=0; xx<120; xx++){
+                int ca=neonA.getPixel(xx,yy), cb=neonB.getPixel(xx,yy);
+                require(ca==cb,"Neon halftone deterministic export");
+                if(xx<7||xx>114){
+                    require(Color.red(ca)<=7&&Color.green(ca)<=7&&Color.blue(ca)<=7,
+                        "Neon should preserve near-black negative space");
+                } else if (yy>18 && yy<79) {
+                    if(Color.red(ca)+Color.green(ca)+Color.blue(ca)>160)lit++;
+                    if(xx>17&&xx<49&&Color.blue(ca)>Color.red(ca)+10)cool++;
+                    if(xx>71&&xx<102&&Color.red(ca)>Color.blue(ca)+25)warm++;
+                }
+            }
+            require(lit>300,"Dither should produce plenty of luminous traces");
+            require(cool>80&&warm>80,"Dither must separate cold blue and warm orange areas");
+            neonA.recycle();neonB.recycle();stripes.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
             stage("import");
