@@ -1,24 +1,31 @@
-# Noise! 1.5
+# Noise! 1.6
 
-Editor de fotografias Android offline (Android 8+, OpenGL ES 2.0).
+Editor de fotos Android offline, com processamento GLSL em tempo real (OpenGL ES 2.0), interface dark glass e exportação PNG.
 
-## Interface
-Visual dark glass inspirado na referência de UI, com superfícies translúcidas, reflexos leves, cantos arredondados, brilho violeta/rosa e controles compactos. Esta interface usa transparência e gradientes; a desfocagem real do conteúdo da prévia por trás dos painéis não é implementada porque o conteúdo é um `GLSurfaceView` e a captura a cada quadro afetaria a latência.
+## Galeria ao abrir
 
-Abas **Básico**, **Ruído**, **Dither** e **Efeitos**. Ajuste enquanto move os sliders, compare com o original, redefina e salve em PNG.
+- A tela inicial apresenta uma **grade de fotografias recentes** indexadas pelo MediaStore (máximo de 500 por carregamento) e uma seleção de **álbuns/pastas**. Miniaturas são carregadas em threads separadas e guardadas num cache de memória.
+- A primeira execução pode pedir permissão para ler as fotos; se não for concedida, é possível usar o **seletor de fotos do próprio Android** sem liberar acesso à galeria inteira.
+- O botão de galeria no editor reabre os últimos arquivos/pastas; o ícone no cabeçalho da galeria abre o **Photo Picker** no Android 13+ ou a atividade de galeria do celular em versões anteriores.
+- Não usamos mais `ACTION_OPEN_DOCUMENT` (gerenciador de arquivos) para escolher imagens.
 
-## Novidades 1.5
-- **Brilho difuso:** glow de realces com amostras simétricas em oito direções. Não desfoca nem arrasta a imagem base, e funciona independentemente do Dither.
-- **Desfoque rotativo:** soma de amostras em arco tangente às circunferências concêntricas, aparecendo progressivamente nas bordas.
-- **Dither profissional:** intensidade, profundidade/níveis tonais, posição X/Y do padrão, escala, densidade de pontos e ondulação, além do desvio RGB e preset da referência.
-- **Poeira analógica:** flocos aleatórios, fibras diagonais, microarranhões, anéis de emulsão e granulação fina; distribuição determinística não repetitiva.
-- **Prévia sem corte:** imagem inteira preservada na sua proporção original (fit-center). O espaço excedente usa o fundo escuro do editor em vez de recortar a fotografia.
-- **Redimensionar:** botão ⤢ na barra superior, largura/altura entre 1 e 4096 px, manutenção opcional da proporção e botão Original. Redimensiona o **PNG exportado** sem alterar os pixels da foto carregada.
-- **Ícone adaptativo:** novo ícone com fundo escuro de ponta a ponta e símbolo dentro da área segura, evitando bordas brancas do launcher.
+## Redimensionar com gestos
 
-As opções 1.4 continuam disponíveis: Fade, Tom de pele (seletivo por cor, sem detecção de rosto), Vinheta, Aberrações, Névoa e Nitidez. O Dither é uma implementação visual autoral inspirada na referência e não reproduz o código de Dither Boy.
+O botão Redimensionar abre **duas barras de arrastar**, com preview ilustrativo da proporção, trava de proporção original e atalhos **25%, 50%, 100%, 200%**. Não há caixas numéricas para preencher. As dimensões são aplicadas à **exportação** sem destruir a foto original. O tamanho máximo permanece 4096×4096 px.
 
-## Compilar e testar
-`gradle --no-daemon assembleDebug assembleDebugAndroidTest` (JDK 17, Gradle 8.9, SDK 35). O GitHub Actions valida um emulador Android e publica APK apenas após passar o smoke test. O build usa assinatura de debug; atualizar uma instalação assinada com chave diferente pode exigir desinstalar a versão anterior.
+## Imagem e atmosfera
 
-[**Baixar o APK mais recente**](https://github.com/DiscNet/Noise/releases/latest)
+- A área atrás da foto é renderizada com shader leve: gradiente grafite/violeta, pequenos grãos, linhas sutis e iluminação ambiente suave.
+- Prévia da imagem no formato original, encaixada sem cortes nem distorções.
+- **Glow nas linhas do Dither:** haloes coloridos mais definidos ao redor dos traços brilhantes, preservando o fundo escuro.
+- **Desfoque rotativo:** a vinheta é aplicada por último para que o blur não apague nem sobreponha as bordas escurecidas.
+- **Ícones verdadeiros:** desenhos vetoriais antialiasing consistentes para controles de edição, ações e atalhos; não dependem de emojis/fontes.
+- Efeitos anteriores (Fade, Tom de pele, Poeira, Vinheta, Aberrações, Névoa, Nitidez e demais controles Dither) continuam disponíveis.
+
+## Desenvolvimento
+
+JDK 17, Android SDK 35, Gradle 8.9. Execute `gradle --no-daemon assembleDebug assembleDebugAndroidTest`. O GitHub Actions verifica o editor e publica APK apenas quando todos os testes no emulador passam.
+
+**Privacidade:** fotos continuam no aparelho; nenhum upload ou serviço de rede é necessário. A permissão de galeria é opcional para quem usa o seletor nativo do Android.
+
+[Baixar último APK](https://github.com/DiscNet/Noise/releases/latest)
