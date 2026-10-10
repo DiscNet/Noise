@@ -86,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.9 ($TAG)" --notes "Noise! 1.9: Nova aba ASCII com caracteres reais formando a imagem, 6 ajustes em tempo real, dois conjuntos de símbolos, cores opcionais, comparação com original e exportação PNG pelo mesmo shader GPU. Mantém todos os efeitos anteriores. Android 8+."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.10 ($TAG)" --notes "Noise! 1.10: Ative ASCII → Cores do Dither para caracteres em azul, laranja e vermelho com a mesma paleta neon do Dither. Alternância em tempo real entre paleta Dither, cores da foto e branco sobre preto. Corrige o salvamento das opções ASCII no PNG. Android 8+."

@@ -238,6 +238,52 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Original bypasses ASCII");
             textA.recycle();textB.recycle();denseText.recycle();beforeAscii.recycle();
             block.recycle();
+
+            stage("ASCII Dither palette GPU");
+            Bitmap palettePhoto=Bitmap.createBitmap(288,144,Bitmap.Config.ARGB_8888);
+            palettePhoto.eraseColor(Color.BLACK);
+            Canvas paletteCanvas=new Canvas(palettePhoto);
+            Paint palettePaint=new Paint();
+            int[] paletteColors={0xff347fff,0xffff7840,0xffffb932};
+            for(int region=0;region<3;region++){
+                palettePaint.setColor(paletteColors[region]);
+                paletteCanvas.drawRect(region*96+8,12,region*96+88,132,palettePaint);
+            }
+            EditState paletteState=new EditState(new float[9],new float[3],new float[8],
+                EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                EditState.ASCII_DEFAULTS,true,false,true,false,false,false);
+            Bitmap paletteText=GpuExporter.render(getTargetContext(),palettePhoto,paletteState);
+            Bitmap photoText=GpuExporter.render(getTargetContext(),palettePhoto,
+                new EditState(new float[9],new float[3],new float[8],
+                    EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                    EditState.ASCII_DEFAULTS,true,true,false,false,false));
+            int blueGlyphs=0,redGlyphs=0,orangeGlyphs=0,paletteChanges=0,blackPaper=0;
+            for(int yy=0;yy<144;yy++)for(int xx=0;xx<288;xx++){
+                int pixel=paletteText.getPixel(xx,yy);
+                int r=Color.red(pixel),g=Color.green(pixel),b=Color.blue(pixel);
+                require(Color.alpha(pixel)==255,"Dither ASCII remains an opaque image");
+                if(r+g+b<12)blackPaper++;
+                if(pixel!=photoText.getPixel(xx,yy))paletteChanges++;
+                if(yy<20||yy>124)continue;
+                if(xx>16&&xx<80&&b>r+35&&b>g+20)blueGlyphs++;
+                if(xx>112&&xx<176&&r>g+55&&r>b+55)redGlyphs++;
+                if(xx>208&&xx<272&&r>g+20&&g>b+20)orangeGlyphs++;
+            }
+            require(blueGlyphs>100&&redGlyphs>100&&orangeGlyphs>100,
+                "ASCII needs blue, red and orange glyphs: "+blueGlyphs+"/"+redGlyphs+"/"+orangeGlyphs);
+            require(blackPaper>8000,"Dither palette preserves ASCII black paper");
+            require(paletteChanges>500,"Dither palette differs from original photo colors");
+            for(boolean enabled:new boolean[]{false,true}){
+                Bitmap bypass=GpuExporter.render(getTargetContext(),palettePhoto,
+                    new EditState(new float[9],new float[3],new float[8],
+                        EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                        EditState.ASCII_DEFAULTS,enabled,false,true,false,enabled,enabled));
+                for(int yy=0;yy<144;yy+=11)for(int xx=0;xx<288;xx+=11)
+                    closeColor(bypass.getPixel(xx,yy),palettePhoto.getPixel(xx,yy),
+                        enabled?"Original bypasses ASCII Dither colors":"Disabled ASCII ignores palette");
+                bypass.recycle();
+            }
+            paletteText.recycle();photoText.recycle();palettePhoto.recycle();
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
@@ -311,6 +357,7 @@ public class NoiseSmokeTest extends Instrumentation {
             stage("ASCII UI live state");
             Switch asciiToggle=(Switch)field(activity,"asciiSwitch");
             Switch asciiColors=(Switch)field(activity,"asciiColoredSwitch");
+            Switch asciiDither=(Switch)field(activity,"asciiDitherSwitch");
             Switch asciiSymbols=(Switch)field(activity,"asciiSymbolsSwitch");
             runOnMainSync(()->{
                 sliders[44].setProgress(182);
@@ -324,6 +371,27 @@ public class NoiseSmokeTest extends Instrumentation {
                 "ASCII options reach the live shader");
             require(asciiUi.asciiA[0]>.90f&&asciiUi.asciiA[2]>.68f,
                 "ASCII density and brightness sliders update immediately");
+            runOnMainSync(()->{
+                asciiToggle.setChecked(false);
+                asciiDither.setChecked(true);
+            });
+            EditState ditherUi=(EditState)field(surface,"state");
+            require(ditherUi.asciiEnabled&&ditherUi.asciiDither&&!ditherUi.asciiColored,
+                "Dither colors activate ASCII and replace original photo colors immediately");
+            Bundle savedOptions=new Bundle();
+            runOnMainSync(()->callActivityOnSaveInstanceState(activity,savedOptions));
+            require(savedOptions.getBoolean("asciiDither")&&savedOptions.getBoolean("asciiEnabled"),
+                "Dither color choice is saved with the ASCII session");
+            runOnMainSync(()->asciiColors.setChecked(true));
+            require(!((EditState)field(surface,"state")).asciiDither&& !asciiDither.isChecked(),
+                "Original photo colors replace the Dither palette");
+            runOnMainSync(()->{
+                asciiDither.setChecked(true);
+                asciiDither.setChecked(false);
+            });
+            EditState monoUi=(EditState)field(surface,"state");
+            require(monoUi.asciiEnabled&&!monoUi.asciiDither&&!monoUi.asciiColored,
+                "Turning off Dither colors restores monochrome ASCII");
             runOnMainSync(()->{
                 asciiToggle.setChecked(false);
                 asciiColors.setChecked(false); asciiSymbols.setChecked(false);
@@ -368,6 +436,15 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(() -> sliders[0].setProgress(126)); SystemClock.sleep(150);
             require(surface.frameCount > framesBeforeExportUpdate, "Preview alive after PNG export");
             stage("automatic public save");
+            runOnMainSync(()->{
+                asciiDither.setChecked(true);
+                asciiSymbols.setChecked(true);
+                sliders[44].setProgress(126);
+                sliders[46].setProgress(122);
+            });
+            EditState savedAsciiState=(EditState)field(surface,"state");
+            Bitmap expectedAsciiPng=GpuExporter.render(getTargetContext(),
+                (Bitmap)field(activity,"original"),savedAsciiState,640,480);
             // Saving must not open the Android file manager. The resulting image
             // must be a public MediaStore item under Pictures/Noise!, not cache.
             Method automatic=MainActivity.class.getDeclaredMethod("chooseOutput");
@@ -394,6 +471,9 @@ public class NoiseSmokeTest extends Instrumentation {
                         Bitmap exported=BitmapFactory.decodeStream(read);
                         require(exported!=null&&exported.getWidth()==640
                             &&exported.getHeight()==480,"Gallery PNG shape");
+                        for(int yy=0;yy<480;yy+=13)for(int xx=0;xx<640;xx+=13)
+                            closeColor(exported.getPixel(xx,yy),expectedAsciiPng.getPixel(xx,yy),
+                                "Saved PNG keeps the live ASCII palette, glyphs and adjustments");
                         exported.recycle();
                     }
                     getTargetContext().getContentResolver().delete(publicUri,null,null);
@@ -401,6 +481,7 @@ public class NoiseSmokeTest extends Instrumentation {
                 }
             }
             require(inPublicAlbum,"Export stored in uninstall-proof public Pictures/Noise! folder");
+            expectedAsciiPng.recycle();
             stage("touch crop");
             Method cropMethod=MainActivity.class.getDeclaredMethod("showResizeDialog");
             cropMethod.setAccessible(true);

@@ -1,10 +1,12 @@
-# Noise! 1.9
+# Noise! 1.10
 
 Um editor de imagem Android offline com interface de vidro, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
 
-## Novidade: ASCII
+## Novidade: cores do Dither no ASCII
 
 A aba **ASCII** transforma fotografias em **arte formada por caracteres reais**, como `;`, `:`, `%` e `@`, mantendo a saída como uma imagem PNG. O fundo preto com caracteres brancos reproduz a proposta da referência; cores originais e um segundo conjunto de caracteres são opcionais.
+
+Ative **ASCII → Cores do Dither** para colorir os caracteres com a mesma paleta neon do Dither: **azul, laranja e vermelho**, conforme os tons da foto. O botão ativa o ASCII automaticamente e atualiza a prévia na hora, sem precisar ligar o efeito Dither. Desligue para voltar ao branco sobre preto ou selecione **Usar cores da foto**; os dois modos de cor são alternativos. A escolha é preservada ao recriar a tela e também no PNG salvo.
 
 O efeito possui botão independente para ligar/desligar e **seis ajustes em tempo real**: densidade, contraste, brilho, limiar, espaçamento e tamanho dos caracteres. O botão **Aplicar estilo da referência** configura rapidamente o visual preto e branco. A prévia e o PNG exportado usam o mesmo shader OpenGL ES 2.0 e o mesmo atlas de caracteres, sem converter a imagem em texto ou aplicar uma imagem fixa.
 

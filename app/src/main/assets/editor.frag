@@ -25,6 +25,7 @@ uniform vec4 uAsciiA; // columns, contrast, brightness, black threshold
 uniform vec2 uAsciiB; // character spacing, glyph size
 uniform bool uAsciiEnabled;
 uniform bool uAsciiColored;
+uniform bool uAsciiDither;
 uniform bool uAsciiSymbols;
 uniform float uPatternScale; // source-pixels per display pixel, 1.0 for export
 uniform bool uInvert;
@@ -58,6 +59,12 @@ float bayer4(vec2 p) {
     float high = (hx == hy ? 0.0 : (hx > hy ? 2.0 : 3.0));
     if (hx > 0.5 && hy > 0.5) high = 1.0;
     return (4.0 * low + high + 0.5) / 16.0;
+}
+
+// Shared color mapping for Dither and ASCII, without adding texture to glyphs.
+float neonWarmth(vec3 color) {
+    return clamp(0.44 + (color.r - color.b) * 1.32
+        + (color.r - color.g) * 0.43, 0.0, 1.0);
 }
 
 // The reference is false-color neon, not a conventional 2-color Bayer dither.
@@ -213,7 +220,7 @@ void main() {
             float levels = clamp(light + (ordered - 0.5) * 0.10, 0.0, 1.0);
             float steps = mix(3.0, 11.0, uDitherA.x);
             levels = floor(levels * steps + 0.3) / steps;
-            float warm = clamp(0.44 + (c.r - c.b) * 1.32 + (c.r - c.g) * 0.43, 0.0, 1.0);
+            float warm = neonWarmth(c);
             vec3 inkColor = neonPalette(levels, warm, rim);
 
             // Ripple traces: fine rows, with local displacement following
@@ -498,6 +505,11 @@ void main() {
             // Black paper by default, white glyphs like the supplied reference.
             vec3 glyphColor = uAsciiColored ?
                 clamp(sampleColor * 1.35 + 0.12, 0.0, 1.0) : vec3(1.0);
+            if (uAsciiDither) {
+                // One color per complete glyph: blue in cool areas, red/orange
+                // in warm areas. Reuse Dither's palette with no per-pixel rim.
+                glyphColor = neonPalette(light, neonWarmth(sampleColor), 0.0);
+            }
             c = glyphColor * ink;
         }
 

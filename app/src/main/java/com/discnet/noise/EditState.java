@@ -14,7 +14,7 @@ public final class EditState {
     final float[] color, tone, hue, style, fxA, fxB, ditherA, ditherB;
     final float[] ringsA, ringsB, crtA, crtB, glitchA, glitchB;
     final float[] asciiA, asciiB;
-    final boolean asciiEnabled, asciiColored, asciiSymbols;
+    final boolean asciiEnabled, asciiColored, asciiDither, asciiSymbols;
     final boolean invert, original;
 
     public EditState(float[] values, boolean invert, boolean original) {
@@ -39,6 +39,13 @@ public final class EditState {
     public EditState(float[] values,float[] styles,float[] filters,float[] dither,
                      float[] art,float[] ascii,boolean asciiEnabled,boolean asciiColored,
                      boolean asciiSymbols,boolean invert,boolean original) {
+        this(values,styles,filters,dither,art,ascii,asciiEnabled,asciiColored,false,
+            asciiSymbols,invert,original);
+    }
+    /** Dither colors only recolor the glyphs; the Dither texture stays independent. */
+    public EditState(float[] values,float[] styles,float[] filters,float[] dither,
+                     float[] art,float[] ascii,boolean asciiEnabled,boolean asciiColored,
+                     boolean asciiDither,boolean asciiSymbols,boolean invert,boolean original) {
         if(values == null || values.length != 9 || styles == null || styles.length != 3
             || filters == null || (filters.length != 7 && filters.length != 8)
             || dither == null || dither.length != 6 || art == null || art.length != 18
@@ -71,7 +78,8 @@ public final class EditState {
         asciiA=new float[]{asc[0],asc[1],asc[2],asc[3]};
         asciiB=new float[]{asc[4],asc[5]};
         this.asciiEnabled=asciiEnabled;
-        this.asciiColored=asciiColored;
+        this.asciiColored=asciiColored && !asciiDither;
+        this.asciiDither=asciiDither;
         this.asciiSymbols=asciiSymbols;
         this.invert=invert; this.original=original;
     }

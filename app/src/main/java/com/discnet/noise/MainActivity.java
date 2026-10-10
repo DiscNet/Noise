@@ -60,7 +60,7 @@ public class MainActivity extends Activity {
     private static final int SAVE_PERMISSION=74;
     private CropEditor cropEditor;
     private LinearLayout empty, controls;
-    private Switch invertSwitch, asciiSwitch, asciiColoredSwitch, asciiSymbolsSwitch;
+    private Switch invertSwitch, asciiSwitch, asciiColoredSwitch, asciiDitherSwitch, asciiSymbolsSwitch;
     private ScrollView controlScroll;
     private Uri input;
     private boolean comparing, exporting, loading, destroyed, resetting, comparisonTouch;
@@ -189,9 +189,21 @@ public class MainActivity extends Activity {
         invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
         asciiSwitch = asciiToggle("Ativar efeito ASCII");
         asciiColoredSwitch = asciiToggle("Usar cores da foto");
+        asciiDitherSwitch = asciiToggle("Cores do Dither");
+        asciiDitherSwitch.setContentDescription("Cores do Dither: azul, laranja e vermelho");
         asciiSymbolsSwitch = asciiToggle("Conjunto alternativo de caracteres");
         asciiSwitch.setOnCheckedChangeListener((v,checked)->publish());
-        asciiColoredSwitch.setOnCheckedChangeListener((v,checked)->publish());
+        asciiColoredSwitch.setOnCheckedChangeListener((v,checked)->{
+            if(checked)asciiDitherSwitch.setChecked(false);
+            publish();
+        });
+        asciiDitherSwitch.setOnCheckedChangeListener((v,checked)->{
+            if(checked){
+                asciiColoredSwitch.setChecked(false);
+                if(!resetting)asciiSwitch.setChecked(true);
+            }
+            publish();
+        });
         asciiSymbolsSwitch.setOnCheckedChangeListener((v,checked)->publish());
         showGroup(0); updateActions();
         if (state != null) {
@@ -216,6 +228,7 @@ public class MainActivity extends Activity {
                 for(int i=0;i<6;i++)sliders[44+i].setProgress(Math.round(savedAscii[i]*200));
             asciiSwitch.setChecked(state.getBoolean("asciiEnabled",false));
             asciiColoredSwitch.setChecked(state.getBoolean("asciiColored",false));
+            asciiDitherSwitch.setChecked(state.getBoolean("asciiDither",false));
             asciiSymbolsSwitch.setChecked(state.getBoolean("asciiSymbols",false));
             restoreWidth=state.getInt("outputWidth",0);
             restoreHeight=state.getInt("outputHeight",0);
@@ -362,15 +375,16 @@ public class MainActivity extends Activity {
         controls.removeAllViews();
         controls.addView(asciiSwitch,lp(-1,dp(48)));
         TextView description=text(
-            "A imagem continua sendo PNG, mas formada por caracteres reais.",12,Glass.MUTED);
+            "Imagem feita de caracteres. Cores do Dither: azul, laranja e vermelho.",12,Glass.MUTED);
         description.setGravity(Gravity.CENTER_VERTICAL);
         controls.addView(description,lp(-1,dp(45)));
+        controls.addView(asciiDitherSwitch,lp(-1,dp(43)));
+        controls.addView(asciiColoredSwitch,lp(-1,dp(43)));
         for(int i=44;i<50;i++){
             controls.addView(rows[i]);
             View line=new View(this);line.setBackgroundColor(0x1fffffff);
             controls.addView(line,lp(-1,dp(1)));
         }
-        controls.addView(asciiColoredSwitch,lp(-1,dp(43)));
         controls.addView(asciiSymbolsSwitch,lp(-1,dp(43)));
         TextView reference=action("✧  Aplicar estilo da referência",false);
         LinearLayout.LayoutParams presetParams=lp(-1,dp(43));
@@ -378,6 +392,7 @@ public class MainActivity extends Activity {
         controls.addView(reference,presetParams);
         reference.setOnClickListener(v->{
             asciiColoredSwitch.setChecked(false);
+            asciiDitherSwitch.setChecked(false);
             asciiSymbolsSwitch.setChecked(false);
             for(int i=0;i<6;i++)sliders[44+i].setProgress(defaultProgress(44+i));
             asciiSwitch.setChecked(true);
@@ -385,11 +400,15 @@ public class MainActivity extends Activity {
         });
         updateTabs();controlScroll.scrollTo(0,0);
     }
+    private EditState snapshotEdits(boolean showOriginal) {
+        return new EditState(values, effects, filters, ditherControls, artControls,
+            asciiControls,asciiSwitch.isChecked(),asciiColoredSwitch.isChecked(),
+            asciiDitherSwitch.isChecked(),asciiSymbolsSwitch.isChecked(),
+            invertSwitch != null && invertSwitch.isChecked(),showOriginal);
+    }
     private void publish() {
         if (preview == null || resetting) return;
-        preview.setEditState(new EditState(values, effects, filters, ditherControls, artControls,
-            asciiControls,asciiSwitch.isChecked(),asciiColoredSwitch.isChecked(),
-            asciiSymbolsSwitch.isChecked(),invertSwitch != null && invertSwitch.isChecked(), comparing));
+        preview.setEditState(snapshotEdits(comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
         if (compare != null) compare.setText(comparing ? "Original" : "Comparar");
     }
@@ -398,6 +417,7 @@ public class MainActivity extends Activity {
         for (int i=0;i<sliders.length;i++)sliders[i].setProgress(defaultProgress(i));
         invertSwitch.setChecked(false);
         asciiSwitch.setChecked(false);asciiColoredSwitch.setChecked(false);
+        asciiDitherSwitch.setChecked(false);
         asciiSymbolsSwitch.setChecked(false);
         comparing = false; resetting = false; publish();
     }
@@ -409,6 +429,7 @@ public class MainActivity extends Activity {
         compare.setEnabled(available); compare.setAlpha(available ? 1 : .45f); invertSwitch.setEnabled(available);
         for (SeekBar slider : sliders) slider.setEnabled(available);
         asciiSwitch.setEnabled(available);asciiColoredSwitch.setEnabled(available);
+        asciiDitherSwitch.setEnabled(available);
         asciiSymbolsSwitch.setEnabled(available);
     }
     private void decorateAction(TextView view,int which){
@@ -623,8 +644,7 @@ public class MainActivity extends Activity {
     private void exportTo(Uri suppliedUri,boolean publicGallery){
         if(original==null||loading||exporting)return;
         Bitmap bitmap=original;
-        EditState state=new EditState(values,effects,filters,ditherControls,artControls,
-            invertSwitch.isChecked(),false);
+        EditState state=snapshotEdits(false);
         final int width=outputWidth,height=outputHeight;
         exporting=true;updateActions();status.setText("Salvando em Imagens/Noise!…");
         worker.execute(()->{
@@ -713,6 +733,7 @@ public class MainActivity extends Activity {
         state.putFloatArray("asciiControls",asciiControls.clone());
         state.putBoolean("asciiEnabled",asciiSwitch.isChecked());
         state.putBoolean("asciiColored",asciiColoredSwitch.isChecked());
+        state.putBoolean("asciiDither",asciiDitherSwitch.isChecked());
         state.putBoolean("asciiSymbols",asciiSymbolsSwitch.isChecked());
         state.putInt("outputWidth",outputWidth); state.putInt("outputHeight",outputHeight); state.putBoolean("invert", invertSwitch.isChecked());
         state.putInt("group", selectedGroup); if (input != null) state.putString("input", input.toString());

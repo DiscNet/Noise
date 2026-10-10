@@ -39,7 +39,7 @@ final class GlPipeline {
         stageCanvas=glGetUniformLocation(stageProgram,"uCanvas");
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uRingsA", "uRingsB", "uCrtA", "uCrtB", "uGlitchA", "uGlitchB", "uAsciiA", "uAsciiB", "uAsciiEnabled", "uAsciiColored", "uAsciiSymbols", "uGlyphs", "uPatternScale", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uRingsA", "uRingsB", "uCrtA", "uCrtB", "uGlitchA", "uGlitchB", "uAsciiA", "uAsciiB", "uAsciiEnabled", "uAsciiColored", "uAsciiDither", "uAsciiSymbols", "uGlyphs", "uPatternScale", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
         glyphTexture = AsciiAtlas.upload();
@@ -107,6 +107,7 @@ final class GlPipeline {
         glUniform2fv(uniforms.get("uAsciiB"),1,state.asciiB,0);
         glUniform1i(uniforms.get("uAsciiEnabled"),state.asciiEnabled?1:0);
         glUniform1i(uniforms.get("uAsciiColored"),state.asciiColored?1:0);
+        glUniform1i(uniforms.get("uAsciiDither"),state.asciiDither?1:0);
         glUniform1i(uniforms.get("uAsciiSymbols"),state.asciiSymbols?1:0);
         // Band-limited procedural traces: one wave stays several screen pixels
         // wide while the export keeps original-resolution detail.
