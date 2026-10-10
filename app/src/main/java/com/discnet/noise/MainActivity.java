@@ -63,7 +63,8 @@ public class MainActivity extends Activity {
     private Switch invertSwitch, asciiSwitch, asciiColoredSwitch, asciiDitherSwitch, asciiSymbolsSwitch;
     private ScrollView controlScroll;
     private HorizontalScrollView categoryScroll;
-    private LinearLayout topBar, actionDock;
+    private LinearLayout topBar, actionDock, adjustmentPanel;
+    private FrameLayout editorStage;
     private Uri input;
     private boolean comparing, exporting, loading, destroyed, resetting, comparisonTouch;
     private int selectedGroup, maxTexture = 4096;
@@ -85,7 +86,7 @@ public class MainActivity extends Activity {
         LinearLayout item=new LinearLayout(this);
         item.setGravity(Gravity.CENTER);
         item.setOrientation(LinearLayout.HORIZONTAL);
-        item.setBackground(Glass.panel(this,0xa522222b,0xb015151d,17,0x31ffffff));
+        item.setBackgroundColor(0xff222329);
         item.setPadding(dp(5),0,dp(5),0);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         icon.setPadding(dp(6),dp(6),dp(6),dp(6));
@@ -105,32 +106,34 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(0xff09080f); getWindow().setNavigationBarColor(0xff09080f);
         Glass.Backdrop background = new Glass.Backdrop(this); appBackground=background; setContentView(background);
         LinearLayout root = vertical(); background.addView(root, new FrameLayout.LayoutParams(-1, -1));
-        root.setPadding(dp(10), dp(4), dp(10), dp(8));
+        root.setPadding(dp(8), dp(2), dp(8), dp(3));
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            root.setPadding(dp(10) + insets.getSystemWindowInsetLeft(), dp(4) + insets.getSystemWindowInsetTop(),
-                dp(10) + insets.getSystemWindowInsetRight(), dp(8) + insets.getSystemWindowInsetBottom());
+            root.setPadding(dp(8) + insets.getSystemWindowInsetLeft(), dp(2) + insets.getSystemWindowInsetTop(),
+                dp(8) + insets.getSystemWindowInsetRight(), dp(3) + insets.getSystemWindowInsetBottom());
             return insets;
         });
         topBar = new LinearLayout(this);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setPadding(dp(7),0,dp(7),0);
+        topBar.setPadding(dp(6),0,dp(4),0);
         root.addView(topBar,lp(-1,dp(48)));
         LinearLayout titleBlock=vertical();
         titleBlock.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("Noise!",27,Glass.INK);
+        TextView title=text("Noise!",20,Glass.INK);
         title.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
         titleBlock.addView(title,lp(-1,dp(42)));
         topBar.addView(titleBlock,new LinearLayout.LayoutParams(0,dp(44),1));
-        ImageView settings=IconArt.button(this,IconArt.SETTINGS,"Menu e configurações");
-        topBar.addView(settings,lp(dp(48),dp(48)));
-        settings.setOnClickListener(v->showOptions(settings));
-        // Frequent actions live beside the editing workspace, not in the header.
+        // Lightroom-like editing workflow: compact top actions, tools at bottom.
         open=IconArt.button(this,IconArt.GALLERY,"Abrir imagem");
         resizeButton=IconArt.button(this,IconArt.RESIZE,"Recortar imagem");
         save=IconArt.button(this,IconArt.SAVE,"Salvar PNG");
+        ImageView settings=IconArt.button(this,IconArt.SETTINGS,"Mais opções");
+        topBar.addView(open,lp(dp(42),dp(42)));
+        topBar.addView(save,lp(dp(42),dp(42)));
+        topBar.addView(settings,lp(dp(42),dp(42)));
         open.setOnClickListener(v->pickImage());
         resizeButton.setOnClickListener(v->showResizeDialog());
         save.setOnClickListener(v->chooseOutput());
+        settings.setOnClickListener(v->showOptions(settings));
 
         categoryScroll=new HorizontalScrollView(this);
         categoryScroll.setHorizontalScrollBarEnabled(false);
@@ -138,12 +141,12 @@ public class MainActivity extends Activity {
         categoryScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         LinearLayout categories=new LinearLayout(this);
         categories.setGravity(Gravity.CENTER_VERTICAL);
-        categories.setPadding(dp(4),dp(4),dp(4),dp(4));
-        categories.setBackground(Glass.panel(this,0xd31b1b24,0xd315151b,24,0x30ffffff));
-        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(48)));
-        LinearLayout.LayoutParams catParams=lp(-1,dp(48));
+        categories.setPadding(dp(4),dp(5),dp(4),dp(5));
+        categories.setBackgroundColor(0xff16171b);
+        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(56)));
+        LinearLayout.LayoutParams catParams=lp(-1,dp(56));
         catParams.leftMargin=dp(2);catParams.rightMargin=dp(2);
-        root.addView(categoryScroll,catParams);
+        // Added after the editor controls: categories stay below the sliders.
         String[] labels={"Básico","Ruído","Dither","Efeitos","Arte","ASCII"};
         for(int i=0;i<labels.length;i++){
             final int group=i;
@@ -151,17 +154,25 @@ public class MainActivity extends Activity {
             tabs[i].setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
             tabs[i].setGravity(Gravity.CENTER);
             tabs[i].setContentDescription("Categoria "+labels[i]);
-            LinearLayout.LayoutParams tabParams=lp(dp(83),dp(40));
+            LinearLayout.LayoutParams tabParams=lp(dp(87),dp(46));
             tabParams.leftMargin=dp(2);tabParams.rightMargin=dp(2);
             categories.addView(tabs[i],tabParams);
             tabs[i].setOnClickListener(v->showGroup(group));
             tabs[i].setClickable(true);tabs[i].setFocusable(true);
         }
-        gap(root, 5);
+        TextView cropTool=text("Recortar",13,Glass.MUTED);
+        cropTool.setGravity(Gravity.CENTER);
+        cropTool.setClickable(true);cropTool.setFocusable(true);
+        cropTool.setContentDescription("Abrir recorte por gestos");
+        cropTool.setOnClickListener(v->showResizeDialog());
+        LinearLayout.LayoutParams cropTabParams=lp(dp(94),dp(46));
+        cropTabParams.leftMargin=dp(3);
+        categories.addView(cropTool,cropTabParams);
 
         FrameLayout stage = new FrameLayout(this);
-        stage.setBackground(Glass.panel(this, 0xff0b0b10, 0xff121219, 24, 0x35ffffff));
-        root.addView(stage, new LinearLayout.LayoutParams(-1,0,1));
+        editorStage=stage;
+        stage.setBackgroundColor(0xff101115);
+        root.addView(stage, new LinearLayout.LayoutParams(-1,0,0.82f));
         preview = new EditorSurface(this, new EditorSurface.Listener() {
             public void ready(int maximum) { maxTexture = Math.min(4096, maximum); }
             public void failed(String message) { if (!destroyed) status.setText(message); }
@@ -172,44 +183,38 @@ public class MainActivity extends Activity {
         empty = vertical(); empty.setGravity(Gravity.CENTER); empty.setBackgroundColor(0xff0a0d17);
         FrameLayout.LayoutParams emptyParams = new FrameLayout.LayoutParams(-1, -1); emptyParams.topMargin = 0;
         stage.addView(empty, emptyParams);
-        TextView icon = text("＋", 42, Glass.INK); icon.setGravity(Gravity.CENTER);
-        icon.setBackground(Glass.panel(this, 0x6538556e, 0x60312c65, 22, 0x887abedc)); empty.addView(icon, lp(dp(70), dp(70)));
-        gap(empty, 14); TextView prompt = text("Dê um novo tom.", 22, Glass.INK); prompt.setTypeface(Typeface.DEFAULT_BOLD); empty.addView(prompt);
-        gap(empty, 8); TextView hint = text("Abra uma foto para começar", 13, Glass.MUTED); empty.addView(hint);
+        TextView icon = text("+", 25, Glass.INK);
+        icon.setGravity(Gravity.CENTER);
+        empty.addView(icon,lp(dp(36),dp(36)));
+        gap(empty,8);
+        TextView prompt=text("Abrir imagem",17,Glass.INK);
+        prompt.setGravity(Gravity.CENTER);
+        empty.addView(prompt);
+        gap(empty,4);
+        TextView hint=text("Selecione uma foto para editar",12,Glass.MUTED);
+        hint.setGravity(Gravity.CENTER);
+        empty.addView(hint);
         empty.setOnClickListener(v -> pickImage()); empty.setContentDescription("Abrir uma foto para começar");
         stageBadge = text("", 10, Glass.MUTED);
         status = text("Abra uma imagem para começar", 11, Glass.MUTED);
         status.setGravity(Gravity.CENTER);
-        root.addView(status, lp(-1, dp(18)));
-        actionDock = new LinearLayout(this);
-        actionDock.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams dockParams=lp(-1,dp(52));
-        dockParams.bottomMargin=dp(5);
-        root.addView(actionDock,dockParams);
-        LinearLayout openAction=dockAction(open,"Abrir",()->pickImage());
-        LinearLayout cropAction=dockAction(resizeButton,"Recortar",()->showResizeDialog());
-        LinearLayout saveAction=dockAction(save,"Salvar PNG",()->chooseOutput());
-        LinearLayout.LayoutParams dockItem=new LinearLayout.LayoutParams(0,-1,1);
-        dockItem.rightMargin=dp(6);
-        actionDock.addView(openAction,dockItem);
-        LinearLayout.LayoutParams middleItem=new LinearLayout.LayoutParams(0,-1,1);
-        middleItem.leftMargin=dp(3);middleItem.rightMargin=dp(3);
-        actionDock.addView(cropAction,middleItem);
-        LinearLayout.LayoutParams lastItem=new LinearLayout.LayoutParams(0,-1,1);
-        lastItem.leftMargin=dp(6);
-        actionDock.addView(saveAction,lastItem);
+        root.addView(status, lp(-1, dp(21)));
         // Compact floating graphite glass panel, controls grouped by the tabs above.
         LinearLayout panel = vertical();
-        panel.setPadding(dp(13), dp(7), dp(13), dp(8));
-        panel.setBackground(Glass.frosted(this, 28));
-        panel.setElevation(dp(12)); panel.setClipToOutline(true);
-        LinearLayout.LayoutParams panelParams = lp(-1, dp(225));
-        root.addView(panel, panelParams);
+        adjustmentPanel=panel;
+        panel.setPadding(dp(12),dp(8),dp(12),dp(3));
+        panel.setBackgroundColor(0xff18191e);
+        root.addView(panel,new LinearLayout.LayoutParams(-1,0,1.18f));
+        root.addView(categoryScroll,catParams);
         LinearLayout tools = new LinearLayout(this);
-        tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(39)));
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        panel.addView(tools,lp(-1,dp(43)));
+        TextView section=text("AJUSTES",11,Glass.MUTED);
+        section.setLetterSpacing(.12f);
+        tools.addView(section,new LinearLayout.LayoutParams(0,dp(40),1));
         compare=action("Original",false);
-        decorateAction(compare,IconArt.ORIGINAL);
-        tools.addView(compare,new LinearLayout.LayoutParams(0,dp(38),1));
+        compare.setTextSize(12);
+        tools.addView(compare,lp(dp(88),dp(40)));
         compare.setContentDescription("Segure para comparar com a imagem original");
         compare.setOnTouchListener((v,event) -> {
             if(original==null)return false;
@@ -221,9 +226,15 @@ public class MainActivity extends Activity {
             return true;
         });
         compare.setOnClickListener(v->{if(!comparisonTouch&&original!=null){comparing=!comparing;publish();}});
-        TextView reset = action("Redefinir",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(90),dp(38)));
+        TextView reset=action("Redefinir",false);
+        reset.setTextSize(12);
+        LinearLayout.LayoutParams resetParams=lp(dp(86),dp(40));
+        resetParams.leftMargin=dp(4);
+        tools.addView(reset,resetParams);
         reset.setOnClickListener(v->reset());
-        View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
+        View rule=new View(this);
+        rule.setBackgroundColor(0xff2c2d33);
+        panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
         for (int i = 0; i < 50; i++) buildAdjustment(i);
@@ -236,7 +247,7 @@ public class MainActivity extends Activity {
         invertSwitch.setContentDescription("Inverter cores");
         invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xfff1eef8,0xffc6c6cf}));
         invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff686678,0xff454550}));
-        panel.addView(invertSwitch,lp(-1,dp(40)));
+        // Invert is shown only in Basic controls instead of consuming a permanent row.
         invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
         asciiSwitch = asciiToggle("Ativar efeito ASCII");
         asciiColoredSwitch = asciiToggle("Usar cores da foto");
@@ -322,12 +333,10 @@ public class MainActivity extends Activity {
         LinearLayout heading=new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
         row.addView(heading,lp(-1,dp(25)));
-        View glyph=IconArt.inline(this,index);
-        heading.addView(glyph,lp(dp(25),dp(25)));
-        TextView label=text(NAMES[index],14,Glass.INK);
+        TextView label=text(NAMES[index],13,Glass.INK);
         label.setSingleLine(true);label.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams nameParams=new LinearLayout.LayoutParams(0,dp(25),1);
-        nameParams.leftMargin=dp(10);
+        nameParams.leftMargin=dp(2);
         heading.addView(label,nameParams);
         TextView value=text("0",12,Glass.MUTED);
         value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
@@ -376,9 +385,11 @@ public class MainActivity extends Activity {
         controls.removeAllViews();
         for(int index:GROUPS[selectedGroup]){
             controls.addView(rows[index]);
-            View separator=new View(this);separator.setBackgroundColor(0x20ffffff);
+            View separator=new View(this);
+            separator.setBackgroundColor(0xff26272e);
             controls.addView(separator,lp(-1,dp(1)));
         }
+        if(selectedGroup==0)controls.addView(invertSwitch,lp(-1,dp(48)));
         if(selectedGroup==1){
             TextView hint=text("− Suavizar     /     + Granular",12,Glass.MUTED);
             controls.addView(hint,lp(-1,dp(32)));
@@ -402,8 +413,8 @@ public class MainActivity extends Activity {
         for(int i=0;i<6;i++){
             boolean active=i==selectedGroup;
             tabs[i].setSelected(active);tabs[i].setTextColor(active?Glass.INK:Glass.MUTED);
-            tabs[i].setBackground(Glass.panel(this,active?0xb0393548:0x0022222d,
-                active?0xcb282632:0x0022222a,19,active?0x88d7cbef:0x00ffffff));
+            tabs[i].setBackground(Glass.panel(this,active?0xff303137:0xff16171b,
+                active?0xff303137:0xff16171b,12,0));
         }
         if(categoryScroll!=null){
             int destination=tabs[selectedGroup].getLeft()
@@ -416,7 +427,7 @@ public class MainActivity extends Activity {
         LinearLayout strip=new LinearLayout(this);
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(3),dp(3),dp(3),dp(3));
-        strip.setBackground(Glass.frosted(this,22));
+        strip.setBackgroundColor(0xff222329);
         LinearLayout.LayoutParams stripParams=lp(-1,dp(46));
         stripParams.topMargin=dp(6);stripParams.bottomMargin=dp(9);
         controls.addView(strip,stripParams);
@@ -426,9 +437,8 @@ public class MainActivity extends Activity {
             chip.setTextSize(13);
             chip.setTextColor(j==selectedArtMode?Glass.INK:Glass.MUTED);
             chip.setBackground(Glass.panel(this,
-                j==selectedArtMode?0xb0353441:0x0022222b,
-                j==selectedArtMode?0xcf24232e:0x00000000,19,
-                j==selectedArtMode?0x88d7cbef:0x00ffffff));
+                j==selectedArtMode?0xff3b3c44:0xff222329,
+                j==selectedArtMode?0xff3b3c44:0xff222329,10,0));
             strip.addView(chip,new LinearLayout.LayoutParams(0,dp(38),1));
             chip.setOnClickListener(v->{selectedArtMode=chosen;showArtPanel();});
         }
