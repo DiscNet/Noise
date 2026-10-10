@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
         status = text("Abra uma imagem para começar", 11, Glass.MUTED);
         status.setGravity(Gravity.CENTER);
         root.addView(status, lp(-1, dp(21)));
-        // Compact floating graphite glass panel, controls grouped by the tabs above.
+        // Opaque, functional adjustment panel: room for several visible sliders.
         LinearLayout panel = vertical();
         adjustmentPanel=panel;
         panel.setPadding(dp(12),dp(8),dp(12),dp(3));
@@ -240,9 +240,10 @@ public class MainActivity extends Activity {
         for (int i = 0; i < 50; i++) buildAdjustment(i);
         invertSwitch = new Switch(this);
         invertSwitch.setText("  Inverter cores");
-        android.graphics.drawable.Drawable toggleIcon=new IconArt(IconArt.ORIGINAL,Glass.INK);
-        toggleIcon.setBounds(0,0,dp(23),dp(23));
-        invertSwitch.setCompoundDrawables(toggleIcon,null,null,null); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
+        invertSwitch.setText("Inverter cores");
+        invertSwitch.setPadding(dp(9),0,dp(9),0);
+        invertSwitch.setTextSize(13);
+        invertSwitch.setTextColor(Glass.INK);
         invertSwitch.setSwitchMinWidth(dp(45));
         invertSwitch.setContentDescription("Inverter cores");
         invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xfff1eef8,0xffc6c6cf}));
