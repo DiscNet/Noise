@@ -191,6 +191,47 @@ public class NoiseSmokeTest extends Instrumentation {
                         "Original bypasses art "+mode);
                 styled.recycle();originalMode.recycle();
             }
+            stage("ASCII character art GPU");
+            Bitmap block=Bitmap.createBitmap(192,128,Bitmap.Config.ARGB_8888);
+            block.eraseColor(0xff000000);
+            Canvas blockCanvas=new Canvas(block);
+            Paint white=new Paint();
+            white.setColor(0xffffffff);
+            blockCanvas.drawRect(26,22,166,104,white);
+            EditState ascii=new EditState(new float[9],new float[3],new float[8],
+                EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                EditState.ASCII_DEFAULTS,true,false,false,false,false);
+            Bitmap textA=GpuExporter.render(getTargetContext(),block,ascii);
+            Bitmap textB=GpuExporter.render(getTargetContext(),block,ascii);
+            int black=0,whiteInk=0;
+            for(int yy=0;yy<128;yy++)for(int xx=0;xx<192;xx++){
+                int pixel=textA.getPixel(xx,yy);
+                require(pixel==textB.getPixel(xx,yy),"ASCII deterministic PNG");
+                require(Color.alpha(pixel)==255,"ASCII image is opaque PNG");
+                if(Color.red(pixel)<8)black++;
+                if(Color.red(pixel)>240)whiteInk++;
+                require(Math.abs(Color.red(pixel)-Color.blue(pixel))<=2,
+                    "Monochrome ASCII glyphs");
+            }
+            require(black>9000&&whiteInk>300,"ASCII must draw actual glyphs on black paper");
+            float[] denser=EditState.ASCII_DEFAULTS.clone(); denser[0]=.95f;
+            Bitmap denseText=GpuExporter.render(getTargetContext(),block,
+                new EditState(new float[9],new float[3],new float[8],
+                    EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                    denser,true,false,false,false,false));
+            int textDifference=0;
+            for(int yy=0;yy<128;yy++)for(int xx=0;xx<192;xx++)
+                if(textA.getPixel(xx,yy)!=denseText.getPixel(xx,yy))textDifference++;
+            require(textDifference>800,"ASCII density updates glyph geometry");
+            Bitmap beforeAscii=GpuExporter.render(getTargetContext(),block,
+                new EditState(new float[9],new float[3],new float[8],
+                    EditState.DITHER_DEFAULTS,EditState.ART_DEFAULTS,
+                    denser,true,false,false,false,true));
+            for(int yy=0;yy<128;yy+=11)for(int xx=0;xx<192;xx+=11)
+                closeColor(beforeAscii.getPixel(xx,yy),block.getPixel(xx,yy),
+                    "Original bypasses ASCII");
+            textA.recycle();textB.recycle();denseText.recycle();beforeAscii.recycle();
+            block.recycle();
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
@@ -208,7 +249,7 @@ public class NoiseSmokeTest extends Instrumentation {
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
             // Direct slider events must immediately reach the matching GPU uniform.
-            require(sliders.length == 44, "All 44 controls must be present");
+            require(sliders.length == 50, "All 50 controls must be present");
             runOnMainSync(() -> {
                 sliders[12].setProgress(150); // Fade
                 sliders[13].setProgress(110); // Tom de pele
@@ -260,6 +301,28 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->{
                 for(int i=26;i<44;i++)sliders[i].setProgress(
                     Math.round(EditState.ART_DEFAULTS[i-26]*200));
+            });
+            stage("ASCII UI live state");
+            Switch asciiToggle=(Switch)field(activity,"asciiSwitch");
+            Switch asciiColors=(Switch)field(activity,"asciiColoredSwitch");
+            Switch asciiSymbols=(Switch)field(activity,"asciiSymbolsSwitch");
+            runOnMainSync(()->{
+                sliders[44].setProgress(182);
+                sliders[46].setProgress(138);
+                asciiToggle.setChecked(true);
+                asciiColors.setChecked(true);
+                asciiSymbols.setChecked(true);
+            });
+            EditState asciiUi=(EditState)field(surface,"state");
+            require(asciiUi.asciiEnabled&&asciiUi.asciiColored&&asciiUi.asciiSymbols,
+                "ASCII options reach the live shader");
+            require(asciiUi.asciiA[0]>.90f&&asciiUi.asciiA[2]>.68f,
+                "ASCII density and brightness sliders update immediately");
+            runOnMainSync(()->{
+                asciiToggle.setChecked(false);
+                asciiColors.setChecked(false); asciiSymbols.setChecked(false);
+                for(int i=44;i<50;i++)
+                    sliders[i].setProgress(Math.round(EditState.ASCII_DEFAULTS[i-44]*200));
             });
             stage("live preview");
             long startFrames = surface.frameCount;
