@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.*;
 import android.os.*;
 import android.widget.*;
+import android.view.*;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -294,6 +295,7 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->{
                 try{cropMethod.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
             });
+            waitForIdleSync();
             CropEditor crop=(CropEditor)field(activity,"cropEditor");
             require(crop!=null,"In-app crop must open (not numeric dialog)");
             Rect selected=crop.currentRect();
