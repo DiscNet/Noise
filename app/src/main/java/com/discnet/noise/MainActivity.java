@@ -25,7 +25,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
-    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação", "Intensidade", "Espaçamento", "Espessura", "Centro X", "Centro Y", "Desgaste", "Intensidade", "Frequência", "Suavidade", "Curvatura", "Vinheta CRT", "Tom do fósforo", "Intensidade", "Faixas", "Deslocamento", "Falhas", "Estática", "Monocromia"};
+    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação", "Intensidade", "Espaçamento", "Espessura", "Centro X", "Centro Y", "Desgaste", "Intensidade", "Frequência", "Suavidade", "Curvatura", "Vinheta CRT", "Tom do fósforo", "Intensidade", "Faixas", "Deslocamento", "Falhas", "Estática", "Monocromia", "Densidade", "Contraste ASCII", "Brilho ASCII", "Limiar", "Espaçamento", "Tamanho"};
     private static final String[] ICONS = {"☼","◉","✧","◐","✦","◯","●","⁙","◌","≋","✧","◎",
         "◑","◕","⁙","◉","◎","≈","◇","⟳","▤","↔","↕","⌗","∴","〰"};
     private static final int[][] ART_GROUPS = {{26,27,28,29,30,31},{32,33,34,35,36,37},{38,39,40,41,42,43}};
@@ -41,14 +41,15 @@ public class MainActivity extends Activity {
     private final float[] filters = new float[8];
     private final float[] ditherControls = EditState.DITHER_DEFAULTS.clone();
     private final float[] artControls = EditState.ART_DEFAULTS.clone();
+    private final float[] asciiControls = EditState.ASCII_DEFAULTS.clone();
     private int selectedArtMode=0;
     private int outputWidth, outputHeight, restoreWidth, restoreHeight;
     private ImageView resizeButton;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicInteger loads = new AtomicInteger();
-    private final SeekBar[] sliders = new SeekBar[44];
-    private final TextView[] valueLabels = new TextView[44], tabs = new TextView[5];
-    private final LinearLayout[] rows = new LinearLayout[44];
+    private final SeekBar[] sliders = new SeekBar[50];
+    private final TextView[] valueLabels = new TextView[50], tabs = new TextView[6];
+    private final LinearLayout[] rows = new LinearLayout[50];
     private Bitmap original;
     private EditorSurface preview;
     private TextView status, compare, stageBadge;
@@ -59,7 +60,7 @@ public class MainActivity extends Activity {
     private static final int SAVE_PERMISSION=74;
     private CropEditor cropEditor;
     private LinearLayout empty, controls;
-    private Switch invertSwitch;
+    private Switch invertSwitch, asciiSwitch, asciiColoredSwitch, asciiSymbolsSwitch;
     private ScrollView controlScroll;
     private Uri input;
     private boolean comparing, exporting, loading, destroyed, resetting, comparisonTouch;
@@ -114,8 +115,8 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams catParams = lp(-1, dp(46));
         catParams.leftMargin = dp(2); catParams.rightMargin = dp(2);
         root.addView(categories, catParams);
-        String[] labels = {"Básico", "Ruído", "Dither", "Efeitos", "Arte"};
-        for (int i=0;i<5;i++) {
+        String[] labels = {"Básico", "Ruído", "Dither", "Efeitos", "Arte", "ASCII"};
+        for (int i=0;i<6;i++) {
             final int group=i;
             tabs[i]=text(labels[i],14,Glass.MUTED); tabs[i].setGravity(Gravity.CENTER);
             categories.addView(tabs[i], new LinearLayout.LayoutParams(0,-1,1));
@@ -174,7 +175,7 @@ public class MainActivity extends Activity {
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
-        for (int i = 0; i < 44; i++) buildAdjustment(i);
+        for (int i = 0; i < 50; i++) buildAdjustment(i);
         invertSwitch = new Switch(this);
         invertSwitch.setText("  Inverter cores");
         android.graphics.drawable.Drawable toggleIcon=new IconArt(IconArt.ORIGINAL,Glass.INK);
@@ -186,6 +187,12 @@ public class MainActivity extends Activity {
         invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff7a628f,0xff43404e}));
         panel.addView(invertSwitch,lp(-1,dp(44)));
         invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
+        asciiSwitch = asciiToggle("Ativar efeito ASCII");
+        asciiColoredSwitch = asciiToggle("Usar cores da foto");
+        asciiSymbolsSwitch = asciiToggle("Conjunto alternativo de caracteres");
+        asciiSwitch.setOnCheckedChangeListener((v,checked)->publish());
+        asciiColoredSwitch.setOnCheckedChangeListener((v,checked)->publish());
+        asciiSymbolsSwitch.setOnCheckedChangeListener((v,checked)->publish());
         showGroup(0); updateActions();
         if (state != null) {
             float[] saved = state.getFloatArray("values"); resetting = true;
@@ -204,12 +211,38 @@ public class MainActivity extends Activity {
             if(savedArt!=null && savedArt.length==18)
                 for(int i=0;i<18;i++)sliders[26+i].setProgress(Math.round(savedArt[i]*200));
             selectedArtMode=Math.min(2,Math.max(0,state.getInt("artMode",0)));
+            float[] savedAscii=state.getFloatArray("asciiControls");
+            if(savedAscii!=null&&savedAscii.length==6)
+                for(int i=0;i<6;i++)sliders[44+i].setProgress(Math.round(savedAscii[i]*200));
+            asciiSwitch.setChecked(state.getBoolean("asciiEnabled",false));
+            asciiColoredSwitch.setChecked(state.getBoolean("asciiColored",false));
+            asciiSymbolsSwitch.setChecked(state.getBoolean("asciiSymbols",false));
             restoreWidth=state.getInt("outputWidth",0);
             restoreHeight=state.getInt("outputHeight",0);
             resetting = false; showGroup(state.getInt("group", 0)); publish();
             String uri = state.getString("input"); if (uri != null) load(Uri.parse(uri));
         }
         if(state==null||state.getString("input")==null)showGallery();
+    }
+    private Switch asciiToggle(String label) {
+        Switch toggle=new Switch(this);
+        toggle.setText(label);
+        toggle.setTextSize(13);
+        toggle.setTextColor(Glass.INK);
+        toggle.setSwitchMinWidth(dp(45));
+        toggle.setPadding(dp(5),dp(2),dp(5),dp(2));
+        toggle.setThumbTintList(new ColorStateList(
+            new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},
+            new int[]{0xffddd0f2,0xffc7c1d0}));
+        toggle.setTrackTintList(new ColorStateList(
+            new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},
+            new int[]{0xff755e8b,0xff48424f}));
+        return toggle;
+    }
+    private int defaultProgress(int index) {
+        if(index>=44)return Math.round(EditState.ASCII_DEFAULTS[index-44]*200);
+        if(index>=26)return Math.round(EditState.ART_DEFAULTS[index-26]*200);
+        return (index<9||index>=20)?100:0;
     }
     private void buildAdjustment(int index) {
         LinearLayout row = new LinearLayout(this);
@@ -222,19 +255,19 @@ public class MainActivity extends Activity {
         Glass.Slider slider=new Glass.Slider(this,
             index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:index>=20?0xfffc89f7:index==19?0xffffae88:index>=26?0xffffb27d:0xffd5baff);
         sliders[index]=slider; slider.setContentDescription(NAMES[index]);
-        slider.setMax(200); slider.setProgress(index>=26?
-            Math.round(EditState.ART_DEFAULTS[index-26]*200):(index<9||index>=20)?100:0);
+        slider.setMax(200); slider.setProgress(defaultProgress(index));
         row.addView(slider,new LinearLayout.LayoutParams(0,dp(43),1));
         TextView value=text("0",12,Glass.INK); value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         valueLabels[index]=value; row.addView(value,lp(dp(49),dp(43)));
-        value.setOnClickListener(v->sliders[index].setProgress(index>=26?Math.round(EditState.ART_DEFAULTS[index-26]*200):(index<9||index>=20)?100:0));
+        value.setOnClickListener(v->sliders[index].setProgress(defaultProgress(index)));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar seek,int progress,boolean user){
                 if(index<9)values[index]=(progress-100)/100f;
                 else if(index<12)effects[index-9]=progress/200f;
                 else if(index<20)filters[index-12]=progress/200f;
                 else if(index<26)ditherControls[index-20]=progress/200f;
-                else artControls[index-26]=progress/200f;
+                else if(index<44)artControls[index-26]=progress/200f;
+                else asciiControls[index-44]=progress/200f;
                 valueLabels[index].setText(formatValue(index));publish();
             }
             public void onStartTrackingTouch(SeekBar seek){}
@@ -242,6 +275,8 @@ public class MainActivity extends Activity {
         });
     }
     private String formatValue(int index) {
+        if(index==44)return Math.round(24+86*asciiControls[0])+" col";
+        if(index>=44)return String.format(Locale.US,"%d",Math.round(asciiControls[index-44]*100));
         if(index>=26)return String.format(Locale.US,"%d",Math.round(artControls[index-26]*100));
         if(index>=20)return String.format(Locale.US,"%d",Math.round(ditherControls[index-20]*100));
         if(index>=12)return String.format(Locale.US,"%d",Math.round(filters[index-12]*100));
@@ -252,8 +287,9 @@ public class MainActivity extends Activity {
         return n==0?"0":String.format(Locale.US,"%+d",n);
     }
     private void showGroup(int group){
-        selectedGroup=Math.max(0,Math.min(4,group));
+        selectedGroup=Math.max(0,Math.min(5,group));
         if(selectedGroup==4){showArtPanel();return;}
+        if(selectedGroup==5){showAsciiPanel();return;}
         controls.removeAllViews();
         for(int index:GROUPS[selectedGroup]){
             controls.addView(rows[index]);
@@ -280,7 +316,7 @@ public class MainActivity extends Activity {
         controlScroll.scrollTo(0,0);
     }
     private void updateTabs(){
-        for(int i=0;i<5;i++){
+        for(int i=0;i<6;i++){
             boolean active=i==selectedGroup;
             tabs[i].setSelected(active);tabs[i].setTextColor(active?Glass.INK:Glass.MUTED);
             tabs[i].setBackground(Glass.panel(this,active?0xdda44fbc:0x00303040,
@@ -322,14 +358,48 @@ public class MainActivity extends Activity {
         apply.setOnClickListener(v->sliders[26+selectedArtMode*6].setProgress(200));
         updateTabs();controlScroll.scrollTo(0,0);
     }
+    private void showAsciiPanel(){
+        controls.removeAllViews();
+        controls.addView(asciiSwitch,lp(-1,dp(48)));
+        TextView description=text(
+            "A imagem continua sendo PNG, mas formada por caracteres reais.",12,Glass.MUTED);
+        description.setGravity(Gravity.CENTER_VERTICAL);
+        controls.addView(description,lp(-1,dp(45)));
+        for(int i=44;i<50;i++){
+            controls.addView(rows[i]);
+            View line=new View(this);line.setBackgroundColor(0x1fffffff);
+            controls.addView(line,lp(-1,dp(1)));
+        }
+        controls.addView(asciiColoredSwitch,lp(-1,dp(43)));
+        controls.addView(asciiSymbolsSwitch,lp(-1,dp(43)));
+        TextView reference=action("✧  Aplicar estilo da referência",false);
+        LinearLayout.LayoutParams presetParams=lp(-1,dp(43));
+        presetParams.topMargin=dp(8);
+        controls.addView(reference,presetParams);
+        reference.setOnClickListener(v->{
+            asciiColoredSwitch.setChecked(false);
+            asciiSymbolsSwitch.setChecked(false);
+            for(int i=0;i<6;i++)sliders[44+i].setProgress(defaultProgress(44+i));
+            asciiSwitch.setChecked(true);
+            status.setText("ASCII branco sobre preto · ajuste cada caractere");
+        });
+        updateTabs();controlScroll.scrollTo(0,0);
+    }
     private void publish() {
         if (preview == null || resetting) return;
-        preview.setEditState(new EditState(values, effects, filters, ditherControls, artControls, invertSwitch != null && invertSwitch.isChecked(), comparing));
+        preview.setEditState(new EditState(values, effects, filters, ditherControls, artControls,
+            asciiControls,asciiSwitch.isChecked(),asciiColoredSwitch.isChecked(),
+            asciiSymbolsSwitch.isChecked(),invertSwitch != null && invertSwitch.isChecked(), comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
         if (compare != null) compare.setText(comparing ? "Original" : "Comparar");
     }
     private void reset() {
-        resetting = true; for (int i=0;i<sliders.length;i++)sliders[i].setProgress(i>=26?Math.round(EditState.ART_DEFAULTS[i-26]*200):(i<9||i>=20)?100:0); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
+        resetting = true;
+        for (int i=0;i<sliders.length;i++)sliders[i].setProgress(defaultProgress(i));
+        invertSwitch.setChecked(false);
+        asciiSwitch.setChecked(false);asciiColoredSwitch.setChecked(false);
+        asciiSymbolsSwitch.setChecked(false);
+        comparing = false; resetting = false; publish();
     }
     private void updateActions() {
         boolean available = original != null && !loading;
@@ -338,6 +408,8 @@ public class MainActivity extends Activity {
         resizeButton.setEnabled(available && !exporting); resizeButton.setAlpha(resizeButton.isEnabled()?1:.4f);
         compare.setEnabled(available); compare.setAlpha(available ? 1 : .45f); invertSwitch.setEnabled(available);
         for (SeekBar slider : sliders) slider.setEnabled(available);
+        asciiSwitch.setEnabled(available);asciiColoredSwitch.setEnabled(available);
+        asciiSymbolsSwitch.setEnabled(available);
     }
     private void decorateAction(TextView view,int which){
         android.graphics.drawable.Drawable icon=new IconArt(which,Glass.INK);
@@ -638,6 +710,10 @@ public class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putFloatArray("filters",filters.clone()); state.putFloatArray("ditherControls",ditherControls.clone());
         state.putFloatArray("artControls",artControls.clone());state.putInt("artMode",selectedArtMode);
+        state.putFloatArray("asciiControls",asciiControls.clone());
+        state.putBoolean("asciiEnabled",asciiSwitch.isChecked());
+        state.putBoolean("asciiColored",asciiColoredSwitch.isChecked());
+        state.putBoolean("asciiSymbols",asciiSymbolsSwitch.isChecked());
         state.putInt("outputWidth",outputWidth); state.putInt("outputHeight",outputHeight); state.putBoolean("invert", invertSwitch.isChecked());
         state.putInt("group", selectedGroup); if (input != null) state.putString("input", input.toString());
     }

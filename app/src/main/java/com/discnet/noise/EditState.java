@@ -8,9 +8,13 @@ public final class EditState {
         0f,.5f,.5f,.5f,.5f,.5f,   // CRT: strength, scan pitch, softness, curvature, vignette, tint
         0f,.5f,.5f,.5f,.5f,1f    // glitch: strength, stripes, shift, frequency, grain, monochrome
     };
+    // Character art: density, contrast, brightness, threshold, spacing, glyph scale.
+    public static final float[] ASCII_DEFAULTS = {.50f,.50f,.50f,.15f,.10f,.50f};
     public static final EditState NEUTRAL = new EditState(new float[9],new float[3],new float[8],DITHER_DEFAULTS,ART_DEFAULTS,false,false);
     final float[] color, tone, hue, style, fxA, fxB, ditherA, ditherB;
     final float[] ringsA, ringsB, crtA, crtB, glitchA, glitchB;
+    final float[] asciiA, asciiB;
+    final boolean asciiEnabled, asciiColored, asciiSymbols;
     final boolean invert, original;
 
     public EditState(float[] values, boolean invert, boolean original) {
@@ -29,9 +33,16 @@ public final class EditState {
     /** Three independently adjustable analog-art effects with six controls each. */
     public EditState(float[] values,float[] styles,float[] filters,float[] dither,
                      float[] art,boolean invert,boolean original) {
+        this(values,styles,filters,dither,art,ASCII_DEFAULTS,false,false,false,invert,original);
+    }
+    /** The same character atlas and settings are consumed by GPU preview and export. */
+    public EditState(float[] values,float[] styles,float[] filters,float[] dither,
+                     float[] art,float[] ascii,boolean asciiEnabled,boolean asciiColored,
+                     boolean asciiSymbols,boolean invert,boolean original) {
         if(values == null || values.length != 9 || styles == null || styles.length != 3
             || filters == null || (filters.length != 7 && filters.length != 8)
-            || dither == null || dither.length != 6 || art == null || art.length != 18)
+            || dither == null || dither.length != 6 || art == null || art.length != 18
+            || ascii == null || ascii.length != 6)
             throw new IllegalArgumentException("Invalid adjustment count");
         float[] v=values.clone();
         for(int i=0;i<9;i++)v[i]=Float.isFinite(v[i])?Math.max(-1f,Math.min(1f,v[i])):0f;
@@ -55,6 +66,13 @@ public final class EditState {
         crtB=new float[]{ar[10],ar[11]};
         glitchA=new float[]{ar[12],ar[13],ar[14],ar[15]};
         glitchB=new float[]{ar[16],ar[17]};
+        float[] asc=ascii.clone();
+        for(int i=0;i<asc.length;i++)asc[i]=safe(asc[i]);
+        asciiA=new float[]{asc[0],asc[1],asc[2],asc[3]};
+        asciiB=new float[]{asc[4],asc[5]};
+        this.asciiEnabled=asciiEnabled;
+        this.asciiColored=asciiColored;
+        this.asciiSymbols=asciiSymbols;
         this.invert=invert; this.original=original;
     }
     private static float safe(float v){return Float.isFinite(v)?Math.max(0f,Math.min(1f,v)):0f;}

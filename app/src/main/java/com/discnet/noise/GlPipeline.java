@@ -13,7 +13,7 @@ import static android.opengl.GLES20.*;
 final class GlPipeline {
     private final FloatBuffer vertices = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     private final HashMap<String, Integer> uniforms = new HashMap<>();
-    private int program, texture, position, coordinate;
+    private int program, texture, glyphTexture, position, coordinate;
     private int stageProgram, stagePosition, stageCanvas;
     private int width, height;
     GlPipeline(Context context) throws IOException {
@@ -39,9 +39,10 @@ final class GlPipeline {
         stageCanvas=glGetUniformLocation(stageProgram,"uCanvas");
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uRingsA", "uRingsB", "uCrtA", "uCrtB", "uGlitchA", "uGlitchB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uRingsA", "uRingsB", "uCrtA", "uCrtB", "uGlitchA", "uGlitchB", "uAsciiA", "uAsciiB", "uAsciiEnabled", "uAsciiColored", "uAsciiSymbols", "uGlyphs", "uPatternScale", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
+        glyphTexture = AsciiAtlas.upload();
     }
     static int maximumTextureSize() { int[] limit = new int[1]; glGetIntegerv(GL_MAX_TEXTURE_SIZE, limit, 0); return limit[0]; }
     void upload(Bitmap bitmap) {
@@ -83,7 +84,10 @@ final class GlPipeline {
         // Preserve complete image and original aspect ratio (fit-center, no crop).
         vertices.put(new float[]{-sx,-sy,0,1, sx,-sy,1,1,
                                   -sx,sy,0,0, sx,sy,1,0}).position(0);
-        glUseProgram(program); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, texture);
+        glUseProgram(program);
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, glyphTexture);
+        glUniform1i(uniforms.get("uGlyphs"), 1);
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(uniforms.get("uImage"), 0); glUniform2f(uniforms.get("uSize"), width, height);
         glUniform4fv(uniforms.get("uColor"), 1, state.color, 0);
         glUniform4fv(uniforms.get("uTone"), 1, state.tone, 0);
@@ -99,6 +103,11 @@ final class GlPipeline {
         glUniform2fv(uniforms.get("uCrtB"),1,state.crtB,0);
         glUniform4fv(uniforms.get("uGlitchA"),1,state.glitchA,0);
         glUniform2fv(uniforms.get("uGlitchB"),1,state.glitchB,0);
+        glUniform4fv(uniforms.get("uAsciiA"),1,state.asciiA,0);
+        glUniform2fv(uniforms.get("uAsciiB"),1,state.asciiB,0);
+        glUniform1i(uniforms.get("uAsciiEnabled"),state.asciiEnabled?1:0);
+        glUniform1i(uniforms.get("uAsciiColored"),state.asciiColored?1:0);
+        glUniform1i(uniforms.get("uAsciiSymbols"),state.asciiSymbols?1:0);
         // Band-limited procedural traces: one wave stays several screen pixels
         // wide while the export keeps original-resolution detail.
         float patternScale = export ? 1f : Math.max(1f, Math.max(
@@ -114,6 +123,7 @@ final class GlPipeline {
     }
     void release() {
         if (texture != 0) glDeleteTextures(1, new int[]{texture}, 0);
+        if (glyphTexture != 0) glDeleteTextures(1, new int[]{glyphTexture}, 0);
         if (program != 0) glDeleteProgram(program);
         if (stageProgram != 0) glDeleteProgram(stageProgram);
     }
