@@ -1,5 +1,5 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.discnet.noise'; compileSdk 35
- defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 8; versionName '1.7'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
+ defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 9; versionName '1.8'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
