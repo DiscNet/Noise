@@ -20,6 +20,12 @@ uniform vec4 uCrtA; // blend, scanline pitch, softness, barrel distortion
 uniform vec2 uCrtB; // edge vignette, phosphor cool/warm tint
 uniform vec4 uGlitchA; // blend, row size, shift, corruption frequency
 uniform vec2 uGlitchB; // grain, grayscale
+uniform sampler2D uGlyphs; // two rows of real monospaced character shapes
+uniform vec4 uAsciiA; // columns, contrast, brightness, black threshold
+uniform vec2 uAsciiB; // character spacing, glyph size
+uniform bool uAsciiEnabled;
+uniform bool uAsciiColored;
+uniform bool uAsciiSymbols;
 uniform float uPatternScale; // source-pixels per display pixel, 1.0 for export
 uniform bool uInvert;
 uniform bool uOriginal;
@@ -455,14 +461,57 @@ void main() {
             c=mix(c,glitchColor,uGlitchA.x);
         }
 
+        // Full character art, not a text file or an overlay of raw pixels:
+        // each image-space cell chooses a real glyph from the GPU atlas using
+        // a locally averaged luminance. Every fragment in the cell uses the
+        // same character and therefore draws complete, stable letterforms.
+        if (uAsciiEnabled) {
+            float columns = mix(24.0, 110.0, uAsciiA.x);
+            // Monospaced characters are taller than wide; preserve their
+            // physical proportions regardless of the source image ratio.
+            vec2 gridCount = vec2(columns,
+                max(1.0, columns * uSize.y / max(1.0, uSize.x) / 1.36));
+            vec2 cell = floor(vTexCoord * gridCount);
+            vec2 cellCenter = (cell + 0.5) / gridCount;
+            vec2 delta = 0.23 / gridCount;
+            vec3 sampleColor = straight(texture2D(uImage,
+                clamp(cellCenter, vec2(0.0), vec2(1.0))));
+            float light = (
+                luminance(straight(texture2D(uImage,clamp(cellCenter+vec2(-delta.x,-delta.y),vec2(0.0),vec2(1.0)))))
+              + luminance(straight(texture2D(uImage,clamp(cellCenter+vec2( delta.x,-delta.y),vec2(0.0),vec2(1.0)))))
+              + luminance(straight(texture2D(uImage,clamp(cellCenter+vec2(-delta.x, delta.y),vec2(0.0),vec2(1.0)))))
+              + luminance(straight(texture2D(uImage,clamp(cellCenter+vec2( delta.x, delta.y),vec2(0.0),vec2(1.0)))))
+            ) * 0.25;
+            light = clamp((light - 0.5) * mix(0.65, 3.0, uAsciiA.y)
+                + 0.5 + (uAsciiA.z-0.5)*1.1 - uAsciiA.w*0.38, 0.0, 1.0);
+            float glyphIndex = floor(light * 15.999);
+            vec2 local = fract(vTexCoord * gridCount);
+            float glyphScale = mix(0.68, 1.20, uAsciiB.y)
+                * mix(1.0, 0.58, uAsciiB.x);
+            vec2 glyphUv = (local - 0.5) / glyphScale + 0.5;
+            vec2 inBounds = step(vec2(0.0), glyphUv)
+                          * step(glyphUv, vec2(1.0));
+            float row = uAsciiSymbols ? 1.0 : 0.0;
+            vec2 atlasUv = (vec2(glyphIndex, row) + clamp(glyphUv,0.0,1.0))
+                / vec2(16.0, 2.0);
+            float ink = texture2D(uGlyphs, atlasUv).a * inBounds.x * inBounds.y;
+            // Black paper by default, white glyphs like the supplied reference.
+            vec3 glyphColor = uAsciiColored ?
+                clamp(sampleColor * 1.35 + 0.12, 0.0, 1.0) : vec3(1.0);
+            c = glyphColor * ink;
+        }
+
         if (uInvert) c = 1.0 - c;
     }
 
+    // ASCII is a fully rasterized photo with an opaque black/white paper
+    // background, including when the original input had transparent pixels.
+    float outputAlpha = (uAsciiEnabled && !uOriginal) ? 1.0 : source.a;
     if (uExport) {
-        gl_FragColor = vec4(source.a > 0.0001 ? c : vec3(0.0), source.a);
+        gl_FragColor = vec4(outputAlpha > 0.0001 ? c : vec3(0.0), outputAlpha);
     } else {
         float grid = mod(floor(gl_FragCoord.x / 16.0) + floor(gl_FragCoord.y / 16.0), 2.0);
         vec3 background = mix(vec3(0.065, 0.065, 0.08), vec3(0.11, 0.11, 0.13), grid);
-        gl_FragColor = vec4(mix(background, c, source.a), 1.0);
+        gl_FragColor = vec4(mix(background, c, outputAlpha), 1.0);
     }
 }
