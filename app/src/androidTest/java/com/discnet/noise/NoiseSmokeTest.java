@@ -174,7 +174,7 @@ public class NoiseSmokeTest extends Instrumentation {
             Bitmap hardEdge=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);
             hardEdge.eraseColor(0xff000000);
             Canvas hardCanvas=new Canvas(hardEdge);
-            Paint middle=new Paint(); middle.setColor(0xff707070);
+            Paint middle=new Paint(); middle.setColor(0xff888888);
             hardCanvas.drawRect(30,30,65,65,middle);
             float[] normalGlow={0f,1f,0f}, doubledGlow={0f,2f,0f};
             EditState doubledState=new EditState(new float[9],doubledGlow,false,false);
