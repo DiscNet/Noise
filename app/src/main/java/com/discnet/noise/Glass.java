@@ -19,8 +19,7 @@ final class Glass {
     }
     static void button(View view, boolean primary) {
         Context c = view.getContext();
-        GradientDrawable bg = primary ? panel(c, 0xffd0baff, 0xffbc9cff, 18, 0x77fff5ff)
-            : panel(c, 0x9b252331, 0xb91c1b25, 18, 0x35ffffff);
+        Drawable bg=liquid(c,18,primary);
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22ffffff), bg, null));
         view.setMinimumHeight(dp(c, 44));
         view.setPadding(dp(c, 10), dp(c, 6), dp(c, 10), dp(c, 6));
@@ -51,9 +50,65 @@ final class Glass {
     /** Translucent glass surface with layered specular stroke and soft tint.
      * Actual backdrop blur requires capturing SurfaceView separately, which is
      * intentionally avoided to keep the OpenGL preview frame rate stable. */
-    static GradientDrawable frosted(Context c,float radius) {
-        GradientDrawable result=panel(c,0xb638304a,0xc31a1928,radius,0x76d1b5fa);
-        return result;
+    static Drawable frosted(Context c,float radius) {
+        return liquid(c,radius,false);
+    }
+    /** iOS Liquid Glass-inspired custom material for Android Views:
+      * semi-transparent chromatic gradient, refractive-looking highlights and
+      * layered border illumination. No iOS APIs or screen scraping is used.
+      * Performance is constant and it works back to Android 8.
+      */
+    static Drawable liquid(Context c,float radius,boolean primary) {
+        return new LiquidDrawable(dp(c,radius),primary);
+    }
+    private static final class LiquidDrawable extends Drawable {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float r;
+        private final boolean primary;
+        LiquidDrawable(float r,boolean primary){this.r=r;this.primary=primary;}
+        @Override public void draw(Canvas canvas){
+            android.graphics.Rect bounds=getBounds();
+            float l=bounds.left,t=bounds.top,w=bounds.width(),h=bounds.height();
+            if(w<=0||h<=0)return;
+            float rad=Math.min(r,Math.min(w,h)*.5f);
+            android.graphics.RectF shape=new android.graphics.RectF(l,t,l+w,t+h);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new LinearGradient(l,t,l+w,t+h,
+                primary?new int[]{0xeeffe1ff,0xf6d2b1ff,0xffdca5fd}:
+                    new int[]{0xb0564b75,0x9b292238,0xb7272039,0xa54c335b},
+                null,Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(shape,rad,rad,paint);
+            paint.setShader(null);
+            canvas.save();
+            android.graphics.Path clip=new android.graphics.Path();
+            clip.addRoundRect(shape,rad,rad,android.graphics.Path.Direction.CW);
+            canvas.clipPath(clip);
+            paint.setShader(new RadialGradient(l+w*.18f,t-h*.26f,
+                Math.max(w,h)*1.05f,
+                new int[]{0x84ffffff,0x27ff8fe5,0x00ffffff},
+                new float[]{0f,.42f,1f},Shader.TileMode.CLAMP));
+            canvas.drawRect(shape,paint);paint.setShader(null);
+            paint.setShader(new LinearGradient(l,t,l,t+h,
+                0x55ffffff,0x00ffffff,Shader.TileMode.CLAMP));
+            canvas.drawRect(l,t,l+w,t+Math.max(1,h*.46f),paint);
+            paint.setShader(null);
+            canvas.restore();
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(1f,Math.min(w,h)*.018f));
+            paint.setColor(primary?0xc6ffffff:0x8cfae9ff);
+            canvas.drawRoundRect(new android.graphics.RectF(l+.8f,t+.8f,
+                l+w-.8f,t+h-.8f),rad,rad,paint);
+            paint.setStrokeWidth(1.15f);
+            paint.setColor(0x78ffb7fc);
+            canvas.drawRoundRect(new android.graphics.RectF(l+2.4f,t+2.4f,
+                l+w-2.4f,t+h-2.4f),Math.max(0,rad-2),Math.max(0,rad-2),paint);
+            paint.setStyle(Paint.Style.FILL);paint.setColor(0x58ffffff);
+            canvas.drawRoundRect(new android.graphics.RectF(l+w*.18f,t+1.7f,
+                l+w*.83f,t+3.3f),2,2,paint);
+        }
+        @Override public void setAlpha(int alpha){paint.setAlpha(alpha);invalidateSelf();}
+        @Override public void setColorFilter(android.graphics.ColorFilter cf){paint.setColorFilter(cf);invalidateSelf();}
+        @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
     }
     static final class Slider extends SeekBar {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);

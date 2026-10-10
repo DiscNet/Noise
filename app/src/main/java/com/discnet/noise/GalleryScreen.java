@@ -27,7 +27,7 @@ final class GalleryScreen extends FrameLayout {
         void onGrantPermission();
         void onClose();
     }
-    private static final int LIMIT=500;
+    private static final int RECENT_LIMIT=500; // limit applies only to recents, never folders
     private final Activity activity;
     private final Listener listener;
     private final ExecutorService work=Executors.newFixedThreadPool(3);
@@ -36,6 +36,7 @@ final class GalleryScreen extends FrameLayout {
     };
     private final ArrayList<Photo> photos=new ArrayList<>();
     private final ArrayList<Photo> filtered=new ArrayList<>();
+    private int folderRequest=0;
     private final ArrayList<String> albumNames=new ArrayList<>();
     private final ArrayList<String> bucketKeys=new ArrayList<>();
     private final Spinner albums;
@@ -83,7 +84,7 @@ final class GalleryScreen extends FrameLayout {
         albums.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
-                filter(position);
+                selectAlbum(position);
             }
         });
         notice=txt("Carregando fotos recentes...",14,Glass.MUTED);
@@ -122,6 +123,7 @@ final class GalleryScreen extends FrameLayout {
     void refresh(boolean hasAccess){
         if(released)return;
         int token=++generation;
+        folderRequest++;
         if(!hasAccess){
             photos.clear();filtered.clear();adapter.notifyDataSetChanged();
             albumNames.clear();bucketKeys.clear();albumNames.add("Todas as fotos");
@@ -135,6 +137,7 @@ final class GalleryScreen extends FrameLayout {
         notice.setVisibility(VISIBLE);
         work.execute(()->{
             ArrayList<Photo> found=new ArrayList<>();
+            LinkedHashMap<String,String> discovered=new LinkedHashMap<>();
             try{
                 String[] columns={MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
                     MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
@@ -145,13 +148,17 @@ final class GalleryScreen extends FrameLayout {
                         int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                         int bucket=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID);
                         int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
-                        while(cursor.moveToNext()&&found.size()<LIMIT){
+                        // Iterate all rows to discover every album, even ones
+                        // whose latest image falls outside the recent-500 view.
+                        while(cursor.moveToNext()){
                             String key=cursor.getString(bucket);
                             String label=cursor.getString(name);
                             Uri uri=ContentUris.withAppendedId(
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id));
-                            found.add(new Photo(uri,key==null?"":key,
-                                label==null||label.isEmpty()?"Sem álbum":label));
+                            Photo photo=new Photo(uri,key==null?"":key,
+                                label==null||label.isEmpty()?"Sem álbum":label);
+                            if(found.size()<RECENT_LIMIT)found.add(photo);
+                            discovered.put(photo.bucket,photo.album);
                         }
                     }
                 }
@@ -162,14 +169,12 @@ final class GalleryScreen extends FrameLayout {
                 photos.clear();photos.addAll(found);
                 albumNames.clear();bucketKeys.clear();
                 albumNames.add("Todas as fotos");bucketKeys.add("");
-                LinkedHashMap<String,String> unique=new LinkedHashMap<>();
-                for(Photo item:found)unique.put(item.bucket,item.album);
-                for(Map.Entry<String,String> item:unique.entrySet()){
+                for(Map.Entry<String,String> item:discovered.entrySet()){
                     bucketKeys.add(item.getKey());
                     albumNames.add(item.getValue());
                 }
                 updateAlbums();
-                filter(0);
+                showRecent();
                 notice.setText(found.isEmpty()?"Nenhuma foto encontrada neste dispositivo.":"");
                 notice.setVisibility(found.isEmpty()?VISIBLE:GONE);
             });
@@ -186,12 +191,51 @@ final class GalleryScreen extends FrameLayout {
         };
         albums.setAdapter(list);
     }
-    private void filter(int index){
+    /** All images in a selected folder, not the recent subset. */
+    private void selectAlbum(int index){
         if(index<0||index>=bucketKeys.size())return;
-        String key=bucketKeys.get(index);
-        filtered.clear();
-        for(Photo p:photos)if(index==0||p.bucket.equals(key))filtered.add(p);
-        adapter.notifyDataSetChanged();
+        if(index==0){showRecent();return;}
+        final String selectedBucket=bucketKeys.get(index);
+        final int token=++folderRequest;
+        final int galleryToken=generation;
+        notice.setVisibility(VISIBLE);
+        notice.setText("Carregando todas as fotos da pasta...");
+        work.execute(()->{
+            ArrayList<Photo> folder=new ArrayList<>();
+            try{
+                String[] projection={MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
+                try(Cursor cursor=activity.getContentResolver().query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    MediaStore.Images.Media.BUCKET_ID+"=?",
+                    new String[]{selectedBucket},
+                    MediaStore.Images.Media.DATE_ADDED+" DESC")){
+                    if(cursor!=null){
+                        int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
+                        int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
+                        while(cursor.moveToNext()){
+                            String album=cursor.getString(name);
+                            folder.add(new Photo(ContentUris.withAppendedId(
+                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id)),
+                                selectedBucket,album==null?"Sem álbum":album));
+                        }
+                    }
+                }
+            }catch(SecurityException | IllegalArgumentException ignored){}
+            ui.post(()->{
+                if(released||galleryToken!=generation||token!=folderRequest)return;
+                filtered.clear();filtered.addAll(folder);adapter.notifyDataSetChanged();
+                notice.setText(folder.isEmpty()?"Esta pasta não tem fotos acessíveis.":"");
+                notice.setVisibility(folder.isEmpty()?VISIBLE:GONE);
+            });
+        });
+    }
+    private void showRecent(){
+        folderRequest++;
+        filtered.clear();filtered.addAll(photos);adapter.notifyDataSetChanged();
+        notice.setVisibility(filtered.isEmpty()?VISIBLE:GONE);
+        notice.setText(filtered.isEmpty()?"Nenhuma foto encontrada.":"");
     }
     private final class PhotoAdapter extends BaseAdapter {
         @Override public int getCount(){return filtered.size();}

@@ -5,10 +5,13 @@ import android.content.Intent;
 import android.graphics.*;
 import android.os.*;
 import android.widget.*;
+import android.view.*;
 import java.io.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import android.net.Uri;
+import android.provider.MediaStore;
+import android.database.Cursor;
 
 /** Runs on a real Android emulator, including the production GLES shader and export path. */
 public class NoiseSmokeTest extends Instrumentation {
@@ -252,6 +255,73 @@ public class NoiseSmokeTest extends Instrumentation {
             long framesBeforeExportUpdate = surface.frameCount;
             runOnMainSync(() -> sliders[0].setProgress(126)); SystemClock.sleep(150);
             require(surface.frameCount > framesBeforeExportUpdate, "Preview alive after PNG export");
+            stage("automatic public save");
+            // Saving must not open the Android file manager. The resulting image
+            // must be a public MediaStore item under Pictures/Noise!, not cache.
+            Method automatic=MainActivity.class.getDeclaredMethod("chooseOutput");
+            automatic.setAccessible(true);
+            runOnMainSync(()->{
+                try{automatic.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            deadline=SystemClock.uptimeMillis()+18000;
+            while((Boolean)field(activity,"exporting")&&SystemClock.uptimeMillis()<deadline)
+                SystemClock.sleep(30);
+            require(!(Boolean)field(activity,"exporting"),"Public export finishes");
+            boolean inPublicAlbum=false;
+            try(Cursor records=getTargetContext().getContentResolver().query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                new String[]{MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.RELATIVE_PATH},
+                MediaStore.Images.Media.RELATIVE_PATH+"=?",
+                new String[]{"Pictures/Noise!/"},null)){
+                while(records!=null&&records.moveToNext()){
+                    inPublicAlbum=true;
+                    Uri publicUri=android.content.ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,records.getLong(0));
+                    try(java.io.InputStream read=getTargetContext().getContentResolver().openInputStream(publicUri)){
+                        Bitmap exported=BitmapFactory.decodeStream(read);
+                        require(exported!=null&&exported.getWidth()==640
+                            &&exported.getHeight()==480,"Gallery PNG shape");
+                        exported.recycle();
+                    }
+                    getTargetContext().getContentResolver().delete(publicUri,null,null);
+                    break;
+                }
+            }
+            require(inPublicAlbum,"Export stored in uninstall-proof public Pictures/Noise! folder");
+            stage("touch crop");
+            Method cropMethod=MainActivity.class.getDeclaredMethod("showResizeDialog");
+            cropMethod.setAccessible(true);
+            runOnMainSync(()->{
+                try{cropMethod.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            waitForIdleSync();
+            CropEditor crop=(CropEditor)field(activity,"cropEditor");
+            require(crop!=null,"In-app crop must open (not numeric dialog)");
+            Rect selected=crop.currentRect();
+            require(selected.width()==900&&selected.height()==900,"Initial crop shows full image");
+            // Exercise the actual gesture handler by moving the upper-left handle.
+            ViewGroup container=(ViewGroup)crop.getChildAt(0);
+            View gesture=container.getChildAt(2);
+            float scale=Math.min((gesture.getWidth()-20f)/900f,
+                (gesture.getHeight()-40f)/900f);
+            float left=(gesture.getWidth()-900*scale)*.5f;
+            float top=(gesture.getHeight()-900*scale)*.5f;
+            float down=android.os.SystemClock.uptimeMillis();
+            final float sx=left+1,sy=top+1;
+            runOnMainSync(()->{
+                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
+                    (long)down,(long)down,android.view.MotionEvent.ACTION_DOWN,sx,sy,0));
+                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
+                    (long)down,(long)down+80,android.view.MotionEvent.ACTION_MOVE,sx+90,sy+90,0));
+                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
+                    (long)down,(long)down+100,android.view.MotionEvent.ACTION_UP,sx+90,sy+90,0));
+            });
+            Rect moved=crop.currentRect();
+            require(moved.width()<selected.width()&&moved.height()<selected.height(),
+                "Crop corners should change crop area by touch");
+            runOnMainSync(activity::onBackPressed);
+            require(field(activity,"cropEditor")==null,"Back closes crop overlay");
             stage("screenshot");
             Bitmap screenshot = getUiAutomation().takeScreenshot();
             require(screenshot != null, "Screenshot");

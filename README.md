@@ -1,31 +1,26 @@
-# Noise! 1.6
+# Noise! 1.7
 
-Editor de fotos Android offline, com processamento GLSL em tempo real (OpenGL ES 2.0), interface dark glass e exportação PNG.
+Editor de fotos offline para Android 8+ com prévia em OpenGL ES 2.0 e exportação PNG.
 
-## Galeria ao abrir
+## Recorte direto
+O botão de edição de proporções abre um **editor de recorte personalizado** sobre a fotografia. Arraste qualquer um dos quatro cantos da moldura ou mova a seleção pelo centro; grade de terços, regiões externas escurecidas e resolução do recorte são mostradas em tempo real. **Aplicar recorte** produz uma imagem com exatamente aqueles pixels, sem exigir números ou sliders. **Cancelar** mantém a imagem como estava. Após aplicar, o editor trabalha com a foto cortada; para recuperar pixels que foram removidos, reabra a imagem original.
 
-- A tela inicial apresenta uma **grade de fotografias recentes** indexadas pelo MediaStore (máximo de 500 por carregamento) e uma seleção de **álbuns/pastas**. Miniaturas são carregadas em threads separadas e guardadas num cache de memória.
-- A primeira execução pode pedir permissão para ler as fotos; se não for concedida, é possível usar o **seletor de fotos do próprio Android** sem liberar acesso à galeria inteira.
-- O botão de galeria no editor reabre os últimos arquivos/pastas; o ícone no cabeçalho da galeria abre o **Photo Picker** no Android 13+ ou a atividade de galeria do celular em versões anteriores.
-- Não usamos mais `ACTION_OPEN_DOCUMENT` (gerenciador de arquivos) para escolher imagens.
+## Galeria e álbuns
+A aba inicial traz até 500 **fotos recentes**, para carregamento ágil. Diferente das versões anteriores, os álbuns são descobertos no **MediaStore inteiro**, e escolher uma pasta consulta **todas as imagens dela**, sem limite artificial de recentes. Miniaturas ficam em cache e são carregadas sob demanda. Para usuários que negam permissão de acesso a fotos, a galeria padrão (Photo Picker do Android 13+ ou app Galeria do dispositivo em versões anteriores) funciona como alternativa. Fotos nunca são enviadas para a rede.
 
-## Redimensionar com gestos
+## Exportação automática e permanente
+Toque no ícone **Salvar**. O PNG é gravado automaticamente em **Imagens / Noise!**, que corresponde ao caminho público **Pictures/Noise!** do armazenamento do aparelho. Não há diálogo de selecionar pasta nem uso de `ACTION_CREATE_DOCUMENT`. A foto fica visível ao aplicativo de Galeria, ao explorador do usuário e **permanece após desinstalar o Noise!**.
 
-O botão Redimensionar abre **duas barras de arrastar**, com preview ilustrativo da proporção, trava de proporção original e atalhos **25%, 50%, 100%, 200%**. Não há caixas numéricas para preencher. As dimensões são aplicadas à **exportação** sem destruir a foto original. O tamanho máximo permanece 4096×4096 px.
+- Android 10+: inserção pública via `MediaStore.Images` com `RELATIVE_PATH=Pictures/Noise!` e `IS_PENDING` para que um arquivo parcial não seja exibido na Galeria.
+- Android 8 e 9: acesso à pasta pública de Imagens com permissão de armazenamento, `FileOutputStream` e `MediaScannerConnection`.
+- Permissões de fotos e armazenamento são solicitadas somente quando necessárias.
 
-## Imagem e atmosfera
+## UI e aparência
+Superfícies de vidro cromático inspiradas nas diretrizes atuais do Liquid Glass: translucidez, luz especular na borda, reflexos interiores, cantos e destaques suaves. São **componentes personalizados do Android**, e não os elementos proprietários do iOS, portanto não reproduzem a mesma refração física em todos os dispositivos.
 
-- A área atrás da foto é renderizada com shader leve: gradiente grafite/violeta, pequenos grãos, linhas sutis e iluminação ambiente suave.
-- Prévia da imagem no formato original, encaixada sem cortes nem distorções.
-- **Glow nas linhas do Dither:** haloes coloridos mais definidos ao redor dos traços brilhantes, preservando o fundo escuro.
-- **Desfoque rotativo:** a vinheta é aplicada por último para que o blur não apague nem sobreponha as bordas escurecidas.
-- **Ícones verdadeiros:** desenhos vetoriais antialiasing consistentes para controles de edição, ações e atalhos; não dependem de emojis/fontes.
-- Efeitos anteriores (Fade, Tom de pele, Poeira, Vinheta, Aberrações, Névoa, Nitidez e demais controles Dither) continuam disponíveis.
+Permanecem os recursos 1.6: Dither neon detalhado, glow ao redor das linhas, ícones vetoriais, desfoque rotativo aplicado antes da vinheta, poeira analógica e fundo luminoso de edição.
 
-## Desenvolvimento
+## Compilação
+Java 17, Gradle 8.9, Android SDK 35. `gradle --no-daemon assembleDebug assembleDebugAndroidTest`. No GitHub Actions, o APK só é publicado quando o build e os testes Android são aprovados.
 
-JDK 17, Android SDK 35, Gradle 8.9. Execute `gradle --no-daemon assembleDebug assembleDebugAndroidTest`. O GitHub Actions verifica o editor e publica APK apenas quando todos os testes no emulador passam.
-
-**Privacidade:** fotos continuam no aparelho; nenhum upload ou serviço de rede é necessário. A permissão de galeria é opcional para quem usa o seletor nativo do Android.
-
-[Baixar último APK](https://github.com/DiscNet/Noise/releases/latest)
+[Último APK](https://github.com/DiscNet/Noise/releases/latest)
