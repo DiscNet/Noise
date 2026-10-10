@@ -1,22 +1,19 @@
-# Noise! 1.12
+# Noise! 1.13
 
-Um editor de imagem Android offline com interface de vidro, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
+Um editor de imagem Android offline com interface simples, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
 
-## Novo na versão 1.12
+## Interface 1.13 — painel de edição de verdade
 
-- **APK com versão no nome**: os próximos lançamentos geram arquivos no formato `Noise! V1.12.apk`, usando a versão declarada no Gradle.
-- **Mais espaço para editar**: atalhos compactos em uma linha, cabeçalho reduzido e controles menores sem sacrificar a área de toque.
-- **Intensidade até 200%**: Dither, Glow, Fade, Tom de pele, Poeira, Vinheta, Névoa, Nitidez, Realce de bordas, Anéis, CRT e Glitch. Os controles espaciais permanecem limitados a 100% para evitar distorção involuntária.
-- **Sem desfoques indesejados**: Glow usa luz aditiva local sem borrar pixels originais; Névoa usa ajustes tonais sem difusão; Desfoque rotativo foi substituído por Realce de bordas.
+O editor agora prioriza a **usabilidade para ajustes**, inspirado na organização do Lightroom Mobile sem copiar seus ícones nem sua identidade gráfica:
 
-## Layout 1.11 — base preservada
+- **Prévia equilibrada:** aproximadamente 40% da área flexível.
+- **Painel de ajustes amplo:** aproximadamente 60% da área flexível, com rolagem vertical e sliders em tempo real.
+- **Categorias no rodapé:** Básico, Ruído, Dither, Efeitos, Arte, ASCII e ação Recortar. Podem ser percorridas horizontalmente.
+- **Cabeçalho compacto:** Noise!, Abrir, Salvar e Mais. Recorte permanece acessível na faixa de ferramentas inferior e no menu.
+- **Sem glassmorphism:** cores sólidas cinza-escuro, sem transparência de vidro, brilhos, chanfros, orbes, fitas coloridas e fundos luminosos.
+- **Menos ícones:** pequenos vetores no cabeçalho; valores e nomes dos parâmetros ficam claros, sem ícones ao lado de cada slider.
 
-O editor foi reorganizado para facilitar a edição em telas pequenas, mantendo o processamento GPU e todos os efeitos:
-- **Topo simplificado:** marca Noise! e um único menu para ações secundárias.
-- **Ações ao alcance do dedo:** Abrir, Recortar e Salvar PNG agrupados logo abaixo da prévia em botões discretos.
-- **Abas horizontais roláveis:** Básico, Ruído, Dither, Efeitos, Arte e ASCII com alvos de toque confortáveis.
-- **Controles com espaço:** nome e valor numa linha curta acima de um slider de largura total.
-- **Vidro discreto:** fundo grafite, superfícies translúcidas e realces sutis em vez de fitas coloridas.
+Os controles de intensidade até **200%** da versão 1.12, todos os efeitos GPU, a galeria, o recorte por gestos e o salvamento público de PNG foram preservados. O APK continua versionado, como `Noise.V1.13.apk` no GitHub Releases.
 
 ## Cores do Dither no ASCII
 
@@ -40,7 +37,7 @@ A intensidade inicial dos três modos é **zero**, para que nenhuma foto seja al
 
 ## Interface e referências
 
-A nova interface prioriza a imagem editada: tons grafite, vidro translúcido sem exagero, navegação de categorias rolável e botões de edição agrupados. Os efeitos são processados em tempo real; as telas são Views Android desenhadas por código, não capturas estáticas.
+A interface atual utiliza fundos opacos e neutros, a foto acima, o painel de ajuste amplo abaixo e as ferramentas no rodapé. Os efeitos são processados em tempo real por OpenGL ES 2.0. Não há recursos de vidro ou sobreposições decorativas.
 
 ## Demais ferramentas
 
