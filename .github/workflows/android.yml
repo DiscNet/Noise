@@ -93,4 +93,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes "Noise! V${APP_VERSION}: interface mais compacta e confortável, controles de intensidade até 200%, Glow nítido sem rastros, Névoa sem blur e Realce de bordas no lugar do desfoque rotativo. Mantém a edição GPU em tempo real, ASCII, Dither, galeria, recorte e salvamento em Pictures/Noise!. Android 8+."
+          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes "Noise! V${APP_VERSION}: interface redesenhada a partir do fluxo de edição Lightroom: prévia equilibrada, painel inferior amplo, categorias na parte inferior, ações pequenas no cabeçalho e recorte como ferramenta. Tema simples com superfícies opacas sem vidro, sem brilho ou gradientes decorativos. Mantém 50 ajustes, intensidade até 200%, ASCII, Dither, recorte, galeria e PNG. Android 8+."

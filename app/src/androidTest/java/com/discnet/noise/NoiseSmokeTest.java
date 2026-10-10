@@ -319,23 +319,37 @@ public class NoiseSmokeTest extends Instrumentation {
             SystemClock.sleep(400);
             stage("clean navigation");
             LinearLayout topBar=(LinearLayout)field(activity,"topBar");
-            LinearLayout actionDock=(LinearLayout)field(activity,"actionDock");
+            LinearLayout adjustmentPanel=(LinearLayout)field(activity,"adjustmentPanel");
+            FrameLayout editorStage=(FrameLayout)field(activity,"editorStage");
             HorizontalScrollView categoryScroll=(HorizontalScrollView)field(activity,"categoryScroll");
             TextView[] tabs=(TextView[])field(activity,"tabs");
-            require(topBar.getChildCount()==2,
-                "Minimal header contains branding and only one menu button");
-            require(actionDock.getChildCount()==3,
-                "Open, crop and save live together below the image");
-            require(actionDock.getHeight()>=48,
-                "Primary touch targets must have comfortable dimensions");
+            require(topBar.getChildCount()==4,
+                "Compact top bar contains title, gallery, save and menu");
+            require(topBar.getHeight()<=Glass.dp(getTargetContext(),52),
+                "Top bar must leave vertical space for actual editing");
+            require(adjustmentPanel.getHeight()>editorStage.getHeight()*1.2f,
+                "Editor controls must occupy more space than the image viewport");
+            require(adjustmentPanel.getHeight()>=Glass.dp(getTargetContext(),250),
+                "The editor is no longer cramped in a 225dp bottom strip");
+            LinearLayout root=(LinearLayout)((ViewGroup)field(activity,"appBackground")).getChildAt(0);
+            require(root.indexOfChild(categoryScroll)>root.indexOfChild(adjustmentPanel),
+                "Tool categories belong below editing controls, Lightroom-style");
             require(categoryScroll.getChildCount()==1 &&
                 categoryScroll.getChildAt(0).getWidth()>categoryScroll.getWidth(),
-                "Six effect tabs are horizontally scrollable, not squeezed");
+                "All effect tabs are horizontally scrollable, not squeezed");
             runOnMainSync(()->tabs[5].performClick());
             waitForIdleSync();
             require((Integer)field(activity,"selectedGroup")==5,
                 "ASCII tab is reachable on narrow screens");
             runOnMainSync(()->tabs[0].performClick());
+            require(((ViewGroup)field(activity,"controls")).getChildCount()>8,
+                "Basic controls including inversion remain reachable");
+            android.graphics.drawable.Drawable workspace=Glass.frosted(getTargetContext(),10);
+            require(workspace instanceof android.graphics.drawable.GradientDrawable &&
+                ((android.graphics.drawable.GradientDrawable)workspace).getColor()!=null &&
+                Color.alpha(((android.graphics.drawable.GradientDrawable)workspace)
+                    .getColor().getDefaultColor())==255,
+                "Controls use solid opaque panels rather than glass");
             // Direct slider events must immediately reach the matching GPU uniform.
             require(sliders.length == 50, "All 50 controls must be present");
             require(sliders[9].getMax()==400 && sliders[10].getMax()==400
