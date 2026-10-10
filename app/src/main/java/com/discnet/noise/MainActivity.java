@@ -139,8 +139,8 @@ public class MainActivity extends Activity {
         categories.setGravity(Gravity.CENTER_VERTICAL);
         categories.setPadding(dp(4),dp(4),dp(4),dp(4));
         categories.setBackground(Glass.panel(this,0xd31b1b24,0xd315151b,24,0x30ffffff));
-        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(52)));
-        LinearLayout.LayoutParams catParams=lp(-1,dp(52));
+        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(56)));
+        LinearLayout.LayoutParams catParams=lp(-1,dp(56));
         catParams.leftMargin=dp(2);catParams.rightMargin=dp(2);
         root.addView(categoryScroll,catParams);
         String[] labels={"Básico","Ruído","Dither","Efeitos","Arte","ASCII"};
@@ -150,7 +150,7 @@ public class MainActivity extends Activity {
             tabs[i].setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
             tabs[i].setGravity(Gravity.CENTER);
             tabs[i].setContentDescription("Categoria "+labels[i]);
-            LinearLayout.LayoutParams tabParams=lp(dp(90),dp(44));
+            LinearLayout.LayoutParams tabParams=lp(dp(90),dp(48));
             tabParams.leftMargin=dp(2);tabParams.rightMargin=dp(2);
             categories.addView(tabs[i],tabParams);
             tabs[i].setOnClickListener(v->showGroup(group));
@@ -220,7 +220,7 @@ public class MainActivity extends Activity {
             return true;
         });
         compare.setOnClickListener(v->{if(!comparisonTouch&&original!=null){comparing=!comparing;publish();}});
-        TextView reset = action("Reset",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(100),dp(42)));
+        TextView reset = action("Redefinir",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(100),dp(42)));
         reset.setOnClickListener(v->reset());
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
@@ -233,8 +233,8 @@ public class MainActivity extends Activity {
         invertSwitch.setCompoundDrawables(toggleIcon,null,null,null); invertSwitch.setTextSize(14); invertSwitch.setTextColor(Glass.INK);
         invertSwitch.setSwitchMinWidth(dp(45));
         invertSwitch.setContentDescription("Inverter cores");
-        invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xffd3c0ff,0xffd3d0dc}));
-        invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff7a628f,0xff43404e}));
+        invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xfff1eef8,0xffc6c6cf}));
+        invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff686678,0xff454550}));
         panel.addView(invertSwitch,lp(-1,dp(46)));
         invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
         asciiSwitch = asciiToggle("Ativar efeito ASCII");
@@ -296,10 +296,10 @@ public class MainActivity extends Activity {
         toggle.setPadding(dp(5),dp(2),dp(5),dp(2));
         toggle.setThumbTintList(new ColorStateList(
             new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},
-            new int[]{0xffddd0f2,0xffc7c1d0}));
+            new int[]{0xfff1eef8,0xffc7c7d1}));
         toggle.setTrackTintList(new ColorStateList(
             new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},
-            new int[]{0xff755e8b,0xff48424f}));
+            new int[]{0xff686678,0xff43434f}));
         return toggle;
     }
     private int defaultProgress(int index) {
@@ -405,7 +405,7 @@ public class MainActivity extends Activity {
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(3),dp(3),dp(3),dp(3));
         strip.setBackground(Glass.frosted(this,22));
-        LinearLayout.LayoutParams stripParams=lp(-1,dp(45));
+        LinearLayout.LayoutParams stripParams=lp(-1,dp(56));
         stripParams.topMargin=dp(6);stripParams.bottomMargin=dp(9);
         controls.addView(strip,stripParams);
         for(int j=0;j<3;j++){
@@ -417,7 +417,7 @@ public class MainActivity extends Activity {
                 j==selectedArtMode?0xb0353441:0x0022222b,
                 j==selectedArtMode?0xcf24232e:0x00000000,19,
                 j==selectedArtMode?0x88d7cbef:0x00ffffff));
-            strip.addView(chip,new LinearLayout.LayoutParams(0,dp(39),1));
+            strip.addView(chip,new LinearLayout.LayoutParams(0,dp(48),1));
             chip.setOnClickListener(v->{selectedArtMode=chosen;showArtPanel();});
         }
         TextView caption=text(ART_DESCRIPTIONS[selectedArtMode],12,Glass.MUTED);
@@ -429,7 +429,7 @@ public class MainActivity extends Activity {
             controls.addView(line,lp(-1,dp(1)));
         }
         TextView apply=action("✧   Aplicar efeito",false);
-        LinearLayout.LayoutParams presetParams=lp(-1,dp(43));presetParams.topMargin=dp(8);
+        LinearLayout.LayoutParams presetParams=lp(-1,dp(48));presetParams.topMargin=dp(8);
         controls.addView(apply,presetParams);
         apply.setOnClickListener(v->sliders[26+selectedArtMode*6].setProgress(200));
         updateTabs();controlScroll.scrollTo(0,0);
