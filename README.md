@@ -1,8 +1,17 @@
-# Noise! 1.10
+# Noise! 1.11
 
 Um editor de imagem Android offline com interface de vidro, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
 
-## Novidade: cores do Dither no ASCII
+## Novo layout 1.11
+
+O editor foi reorganizado para facilitar a edição em telas pequenas, mantendo o processamento GPU e todos os efeitos:
+- **Topo simplificado:** marca Noise! e um único menu para ações secundárias.
+- **Ações ao alcance do dedo:** Abrir, Recortar e Salvar PNG agrupados logo abaixo da prévia.
+- **Abas horizontais roláveis:** Básico, Ruído, Dither, Efeitos, Arte e ASCII com alvos de toque confortáveis.
+- **Controles com espaço:** nome e valor acima de um slider de largura total.
+- **Vidro discreto:** fundo grafite, superfícies translúcidas e realces sutis em vez de fitas coloridas.
+
+## Cores do Dither no ASCII
 
 A aba **ASCII** transforma fotografias em **arte formada por caracteres reais**, como `;`, `:`, `%` e `@`, mantendo a saída como uma imagem PNG. O fundo preto com caracteres brancos reproduz a proposta da referência; cores originais e um segundo conjunto de caracteres são opcionais.
 
@@ -24,7 +33,7 @@ A intensidade inicial dos três modos é **zero**, para que nenhuma foto seja al
 
 ## Interface e referências
 
-A quarta imagem inspirou o **novo plano de fundo** com fitas abstratas ondulantes em gradiente violeta, pêssego e rosa sobre preto, além de uma textura de brilho diagonal nos painéis de vidro. A interface é desenhada por código Android e continua interativa, sem transformar uma captura de tela em UI. Os elementos são inspirações estilísticas, não cópias de arte ou código de terceiros.
+A nova interface prioriza a imagem editada: tons grafite, vidro translúcido sem exagero, navegação de categorias rolável e botões de edição agrupados. Os efeitos são processados em tempo real; as telas são Views Android desenhadas por código, não capturas estáticas.
 
 ## Demais ferramentas
 

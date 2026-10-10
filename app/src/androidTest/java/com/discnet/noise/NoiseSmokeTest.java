@@ -300,6 +300,25 @@ public class NoiseSmokeTest extends Instrumentation {
             EditorSurface surface = (EditorSurface) field(activity, "preview");
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
+            stage("clean navigation");
+            LinearLayout topBar=(LinearLayout)field(activity,"topBar");
+            LinearLayout actionDock=(LinearLayout)field(activity,"actionDock");
+            HorizontalScrollView categoryScroll=(HorizontalScrollView)field(activity,"categoryScroll");
+            TextView[] tabs=(TextView[])field(activity,"tabs");
+            require(topBar.getChildCount()==2,
+                "Minimal header contains branding and only one menu button");
+            require(actionDock.getChildCount()==3,
+                "Open, crop and save live together below the image");
+            require(actionDock.getHeight()>=48,
+                "Primary touch targets must have comfortable dimensions");
+            require(categoryScroll.getChildCount()==1 &&
+                categoryScroll.getChildAt(0).getWidth()>categoryScroll.getWidth(),
+                "Six effect tabs are horizontally scrollable, not squeezed");
+            runOnMainSync(()->tabs[5].performClick());
+            waitForIdleSync();
+            require((Integer)field(activity,"selectedGroup")==5,
+                "ASCII tab is reachable on narrow screens");
+            runOnMainSync(()->tabs[0].performClick());
             // Direct slider events must immediately reach the matching GPU uniform.
             require(sliders.length == 50, "All 50 controls must be present");
             runOnMainSync(() -> {
