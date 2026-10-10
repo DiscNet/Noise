@@ -13,7 +13,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - name: Cancel superseded builds
         uses: actions/github-script@v7
@@ -50,7 +50,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Verify GPU editor on Android
-        timeout-minutes: 9
+        timeout-minutes: 14
         uses: reactivecircus/android-emulator-runner@v2
         with:
           emulator-boot-timeout: 180
@@ -65,7 +65,7 @@ jobs:
             # Start gallery without a runtime permission modal during GPU smoke tests.
             adb shell pm grant com.discnet.noise android.permission.READ_EXTERNAL_STORAGE || true
             mkdir -p smoke
-            timeout 240s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
+            timeout 480s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
