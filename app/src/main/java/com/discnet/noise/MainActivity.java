@@ -25,7 +25,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
-    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação", "Intensidade", "Espaçamento", "Espessura", "Centro X", "Centro Y", "Desgaste", "Intensidade", "Frequência", "Suavidade", "Curvatura", "Vinheta CRT", "Tom do fósforo", "Intensidade", "Faixas", "Deslocamento", "Falhas", "Estática", "Monocromia", "Densidade", "Contraste ASCII", "Brilho ASCII", "Limiar", "Espaçamento", "Tamanho"};
+    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Glow sem blur", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Realce de bordas", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação", "Intensidade", "Espaçamento", "Espessura", "Centro X", "Centro Y", "Desgaste", "Intensidade", "Frequência", "Suavidade", "Curvatura", "Vinheta CRT", "Tom do fósforo", "Intensidade", "Faixas", "Deslocamento", "Falhas", "Estática", "Monocromia", "Densidade", "Contraste ASCII", "Brilho ASCII", "Limiar", "Espaçamento", "Tamanho"};
     private static final String[] ICONS = {"☼","◉","✧","◐","✦","◯","●","⁙","◌","≋","✧","◎",
         "◑","◕","⁙","◉","◎","≈","◇","⟳","▤","↔","↕","⌗","∴","〰"};
     private static final int[][] ART_GROUPS = {{26,27,28,29,30,31},{32,33,34,35,36,37},{38,39,40,41,42,43}};
@@ -80,16 +80,20 @@ public class MainActivity extends Activity {
     private LinearLayout vertical() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
     private LinearLayout.LayoutParams lp(int w, int h) { return new LinearLayout.LayoutParams(w, h); }
     private void gap(LinearLayout l, int height) { l.addView(new View(this), lp(1, dp(height))); }
+    /** Compact single-line actions; keep the full 48dp card touch target. */
     private LinearLayout dockAction(ImageView icon, String caption, Runnable command) {
-        LinearLayout item=vertical();
+        LinearLayout item=new LinearLayout(this);
         item.setGravity(Gravity.CENTER);
-        item.setBackground(Glass.panel(this,0xa522222b,0xb015151d,20,0x3cffffff));
-        item.setPadding(dp(5),dp(4),dp(5),dp(4));
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setBackground(Glass.panel(this,0xa522222b,0xb015151d,17,0x31ffffff));
+        item.setPadding(dp(5),0,dp(5),0);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        item.addView(icon,lp(dp(44),dp(44)));
+        icon.setPadding(dp(6),dp(6),dp(6),dp(6));
+        item.addView(icon,lp(dp(33),dp(40)));
         TextView name=text(caption,12,Glass.INK);
-        name.setGravity(Gravity.CENTER);name.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        item.addView(name,lp(-1,dp(20)));
+        name.setGravity(Gravity.CENTER_VERTICAL);
+        name.setSingleLine(true);
+        item.addView(name,lp(-2,dp(40)));
         item.setClickable(true);item.setFocusable(true);
         item.setContentDescription(caption);
         item.setOnClickListener(v->command.run());
@@ -110,16 +114,13 @@ public class MainActivity extends Activity {
         topBar = new LinearLayout(this);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setPadding(dp(7),0,dp(7),0);
-        root.addView(topBar,lp(-1,dp(60)));
+        root.addView(topBar,lp(-1,dp(48)));
         LinearLayout titleBlock=vertical();
         titleBlock.setGravity(Gravity.CENTER_VERTICAL);
         TextView title=text("Noise!",27,Glass.INK);
         title.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
-        titleBlock.addView(title,lp(-1,dp(32)));
-        TextView subtitle=text("EDITOR DE IMAGENS",10,Glass.MUTED);
-        subtitle.setLetterSpacing(.18f);
-        titleBlock.addView(subtitle,lp(-1,dp(18)));
-        topBar.addView(titleBlock,new LinearLayout.LayoutParams(0,dp(55),1));
+        titleBlock.addView(title,lp(-1,dp(42)));
+        topBar.addView(titleBlock,new LinearLayout.LayoutParams(0,dp(44),1));
         ImageView settings=IconArt.button(this,IconArt.SETTINGS,"Menu e configurações");
         topBar.addView(settings,lp(dp(48),dp(48)));
         settings.setOnClickListener(v->showOptions(settings));
@@ -139,8 +140,8 @@ public class MainActivity extends Activity {
         categories.setGravity(Gravity.CENTER_VERTICAL);
         categories.setPadding(dp(4),dp(4),dp(4),dp(4));
         categories.setBackground(Glass.panel(this,0xd31b1b24,0xd315151b,24,0x30ffffff));
-        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(56)));
-        LinearLayout.LayoutParams catParams=lp(-1,dp(56));
+        categoryScroll.addView(categories,new android.widget.FrameLayout.LayoutParams(-2,dp(48)));
+        LinearLayout.LayoutParams catParams=lp(-1,dp(48));
         catParams.leftMargin=dp(2);catParams.rightMargin=dp(2);
         root.addView(categoryScroll,catParams);
         String[] labels={"Básico","Ruído","Dither","Efeitos","Arte","ASCII"};
@@ -150,13 +151,13 @@ public class MainActivity extends Activity {
             tabs[i].setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
             tabs[i].setGravity(Gravity.CENTER);
             tabs[i].setContentDescription("Categoria "+labels[i]);
-            LinearLayout.LayoutParams tabParams=lp(dp(90),dp(48));
+            LinearLayout.LayoutParams tabParams=lp(dp(83),dp(40));
             tabParams.leftMargin=dp(2);tabParams.rightMargin=dp(2);
             categories.addView(tabs[i],tabParams);
             tabs[i].setOnClickListener(v->showGroup(group));
             tabs[i].setClickable(true);tabs[i].setFocusable(true);
         }
-        gap(root, 10);
+        gap(root, 5);
 
         FrameLayout stage = new FrameLayout(this);
         stage.setBackground(Glass.panel(this, 0xff0b0b10, 0xff121219, 24, 0x35ffffff));
@@ -179,11 +180,11 @@ public class MainActivity extends Activity {
         stageBadge = text("", 10, Glass.MUTED);
         status = text("Abra uma imagem para começar", 11, Glass.MUTED);
         status.setGravity(Gravity.CENTER);
-        root.addView(status, lp(-1, dp(26)));
+        root.addView(status, lp(-1, dp(18)));
         actionDock = new LinearLayout(this);
         actionDock.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams dockParams=lp(-1,dp(80));
-        dockParams.bottomMargin=dp(10);
+        LinearLayout.LayoutParams dockParams=lp(-1,dp(52));
+        dockParams.bottomMargin=dp(5);
         root.addView(actionDock,dockParams);
         LinearLayout openAction=dockAction(open,"Abrir",()->pickImage());
         LinearLayout cropAction=dockAction(resizeButton,"Recortar",()->showResizeDialog());
@@ -199,16 +200,16 @@ public class MainActivity extends Activity {
         actionDock.addView(saveAction,lastItem);
         // Compact floating graphite glass panel, controls grouped by the tabs above.
         LinearLayout panel = vertical();
-        panel.setPadding(dp(16), dp(12), dp(16), dp(12));
+        panel.setPadding(dp(13), dp(7), dp(13), dp(8));
         panel.setBackground(Glass.frosted(this, 28));
         panel.setElevation(dp(12)); panel.setClipToOutline(true);
-        LinearLayout.LayoutParams panelParams = lp(-1, dp(270));
+        LinearLayout.LayoutParams panelParams = lp(-1, dp(225));
         root.addView(panel, panelParams);
         LinearLayout tools = new LinearLayout(this);
-        tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(46)));
+        tools.setGravity(Gravity.CENTER_VERTICAL); panel.addView(tools, lp(-1,dp(39)));
         compare=action("Original",false);
         decorateAction(compare,IconArt.ORIGINAL);
-        tools.addView(compare,new LinearLayout.LayoutParams(0,dp(42),1));
+        tools.addView(compare,new LinearLayout.LayoutParams(0,dp(38),1));
         compare.setContentDescription("Segure para comparar com a imagem original");
         compare.setOnTouchListener((v,event) -> {
             if(original==null)return false;
@@ -220,7 +221,7 @@ public class MainActivity extends Activity {
             return true;
         });
         compare.setOnClickListener(v->{if(!comparisonTouch&&original!=null){comparing=!comparing;publish();}});
-        TextView reset = action("Redefinir",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(100),dp(42)));
+        TextView reset = action("Redefinir",false); decorateAction(reset,IconArt.RESET); tools.addView(reset,lp(dp(90),dp(38)));
         reset.setOnClickListener(v->reset());
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
@@ -235,7 +236,7 @@ public class MainActivity extends Activity {
         invertSwitch.setContentDescription("Inverter cores");
         invertSwitch.setThumbTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xfff1eef8,0xffc6c6cf}));
         invertSwitch.setTrackTintList(new ColorStateList(new int[][]{new int[]{android.R.attr.state_checked},new int[]{}},new int[]{0xff686678,0xff454550}));
-        panel.addView(invertSwitch,lp(-1,dp(46)));
+        panel.addView(invertSwitch,lp(-1,dp(40)));
         invertSwitch.setOnCheckedChangeListener((v, checked)->publish());
         asciiSwitch = asciiToggle("Ativar efeito ASCII");
         asciiColoredSwitch = asciiToggle("Usar cores da foto");
@@ -307,29 +308,35 @@ public class MainActivity extends Activity {
         if(index>=26)return Math.round(EditState.ART_DEFAULTS[index-26]*200);
         return (index<9||index>=20)?100:0;
     }
+    /** Only effect strength knobs exceed 100%. Positions and spatial controls do not. */
+    private boolean hasExtendedRange(int index) {
+        return index==9||index==10 || (index>=12&&index<=15)
+            || index==17||index==18||index==19
+            || index==26||index==32||index==38;
+    }
     private void buildAdjustment(int index) {
         LinearLayout row=vertical();
-        row.setPadding(dp(4),dp(7),dp(4),dp(9));
-        row.setMinimumHeight(dp(80));
+        row.setPadding(dp(4),dp(2),dp(4),dp(3));
+        row.setMinimumHeight(dp(60));
         rows[index]=row;
         LinearLayout heading=new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(heading,lp(-1,dp(32)));
+        row.addView(heading,lp(-1,dp(25)));
         View glyph=IconArt.inline(this,index);
         heading.addView(glyph,lp(dp(25),dp(25)));
         TextView label=text(NAMES[index],14,Glass.INK);
         label.setSingleLine(true);label.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams nameParams=new LinearLayout.LayoutParams(0,dp(32),1);
+        LinearLayout.LayoutParams nameParams=new LinearLayout.LayoutParams(0,dp(25),1);
         nameParams.leftMargin=dp(10);
         heading.addView(label,nameParams);
         TextView value=text("0",12,Glass.MUTED);
         value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         valueLabels[index]=value;
-        heading.addView(value,lp(dp(70),dp(32)));
+        heading.addView(value,lp(dp(72),dp(25)));
         Glass.Slider slider=new Glass.Slider(this,0xffd0c5e4);
         sliders[index]=slider;slider.setContentDescription(NAMES[index]);
-        slider.setMax(200);slider.setProgress(defaultProgress(index));
-        row.addView(slider,lp(-1,dp(44)));
+        slider.setMax(hasExtendedRange(index)?400:200);slider.setProgress(defaultProgress(index));
+        row.addView(slider,lp(-1,dp(35)));
         value.setOnClickListener(v->sliders[index].setProgress(defaultProgress(index)));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar seek,int progress,boolean user){
@@ -346,6 +353,11 @@ public class MainActivity extends Activity {
         });
     }
     private String formatValue(int index) {
+        if(hasExtendedRange(index)){
+            float amount=index<12?effects[index-9]:
+                index<20?filters[index-12]:artControls[index-26];
+            return Math.round(amount*100f)+"%";
+        }
         if(index==44)return Math.round(24+86*asciiControls[0])+" col";
         if(index>=44)return String.format(Locale.US,"%d",Math.round(asciiControls[index-44]*100));
         if(index>=26)return String.format(Locale.US,"%d",Math.round(artControls[index-26]*100));
@@ -372,9 +384,9 @@ public class MainActivity extends Activity {
             controls.addView(hint,lp(-1,dp(32)));
         }
         if(selectedGroup==2){
-            TextView preset=action("✦   Aplicar Neon da referência",false);
+            TextView preset=action("Aplicar Neon",false);
             preset.setContentDescription("Aplicar estilo neon ondulado com brilhos e pontos");
-            controls.addView(preset,lp(-1,dp(42)));
+            controls.addView(preset,lp(-1,dp(38)));
             preset.setOnClickListener(v->{
                 sliders[9].setProgress(188);
                 sliders[10].setProgress(132);
@@ -405,7 +417,7 @@ public class MainActivity extends Activity {
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(3),dp(3),dp(3),dp(3));
         strip.setBackground(Glass.frosted(this,22));
-        LinearLayout.LayoutParams stripParams=lp(-1,dp(56));
+        LinearLayout.LayoutParams stripParams=lp(-1,dp(46));
         stripParams.topMargin=dp(6);stripParams.bottomMargin=dp(9);
         controls.addView(strip,stripParams);
         for(int j=0;j<3;j++){
@@ -417,19 +429,19 @@ public class MainActivity extends Activity {
                 j==selectedArtMode?0xb0353441:0x0022222b,
                 j==selectedArtMode?0xcf24232e:0x00000000,19,
                 j==selectedArtMode?0x88d7cbef:0x00ffffff));
-            strip.addView(chip,new LinearLayout.LayoutParams(0,dp(48),1));
+            strip.addView(chip,new LinearLayout.LayoutParams(0,dp(38),1));
             chip.setOnClickListener(v->{selectedArtMode=chosen;showArtPanel();});
         }
         TextView caption=text(ART_DESCRIPTIONS[selectedArtMode],12,Glass.MUTED);
         caption.setGravity(Gravity.CENTER);
-        controls.addView(caption,lp(-1,dp(37)));
+        controls.addView(caption,lp(-1,dp(27)));
         for(int idx:ART_GROUPS[selectedArtMode]){
             controls.addView(rows[idx]);
             View line=new View(this);line.setBackgroundColor(0x1fffffff);
             controls.addView(line,lp(-1,dp(1)));
         }
-        TextView apply=action("✧   Aplicar efeito",false);
-        LinearLayout.LayoutParams presetParams=lp(-1,dp(48));presetParams.topMargin=dp(8);
+        TextView apply=action("Ativar efeito",false);
+        LinearLayout.LayoutParams presetParams=lp(-1,dp(38));presetParams.topMargin=dp(4);
         controls.addView(apply,presetParams);
         apply.setOnClickListener(v->sliders[26+selectedArtMode*6].setProgress(200));
         updateTabs();controlScroll.scrollTo(0,0);
@@ -440,7 +452,7 @@ public class MainActivity extends Activity {
         TextView description=text(
             "Imagem feita de caracteres. Cores do Dither: azul, laranja e vermelho.",12,Glass.MUTED);
         description.setGravity(Gravity.CENTER_VERTICAL);
-        controls.addView(description,lp(-1,dp(45)));
+        controls.addView(description,lp(-1,dp(31)));
         controls.addView(asciiDitherSwitch,lp(-1,dp(43)));
         controls.addView(asciiColoredSwitch,lp(-1,dp(43)));
         for(int i=44;i<50;i++){
@@ -449,9 +461,9 @@ public class MainActivity extends Activity {
             controls.addView(line,lp(-1,dp(1)));
         }
         controls.addView(asciiSymbolsSwitch,lp(-1,dp(43)));
-        TextView reference=action("✧  Aplicar estilo da referência",false);
-        LinearLayout.LayoutParams presetParams=lp(-1,dp(43));
-        presetParams.topMargin=dp(8);
+        TextView reference=action("Estilo de referência",false);
+        LinearLayout.LayoutParams presetParams=lp(-1,dp(38));
+        presetParams.topMargin=dp(3);
         controls.addView(reference,presetParams);
         reference.setOnClickListener(v->{
             asciiColoredSwitch.setChecked(false);
