@@ -54,10 +54,13 @@ public final class EditState {
         float[] v=values.clone();
         for(int i=0;i<9;i++)v[i]=Float.isFinite(v[i])?Math.max(-1f,Math.min(1f,v[i])):0f;
         float[] st=styles.clone(), fx=new float[8], dp=dither.clone(), ar=art.clone();
-        for(int i=0;i<3;i++)st[i]=safe(st[i]);
-        for(int i=0;i<filters.length;i++)fx[i]=safe(filters[i]);
+        for(int i=0;i<3;i++)st[i]=i<2?safeGain(st[i]):safe(st[i]);
+        // Intensities may reach 200%; geometry/positions remain within 0..100%.
+        for(int i=0;i<filters.length;i++)
+            fx[i]=(i==0||i==1||i==2||i==3||i==5||i==6||i==7)
+                ?safeGain(filters[i]):safe(filters[i]);
         for(int i=0;i<6;i++)dp[i]=safe(dp[i]);
-        for(int i=0;i<18;i++)ar[i]=safe(ar[i]);
+        for(int i=0;i<18;i++)ar[i]=(i%6==0)?safeGain(ar[i]):safe(ar[i]);
         color=new float[]{1+v[0],v[1],(float)Math.pow(2,3*v[2]),(float)Math.pow(2,v[3])};
         tone=new float[]{v[4],v[5],v[6],v[7]};
         hue=new float[]{(float)Math.cos(v[8]*Math.PI),
@@ -84,4 +87,5 @@ public final class EditState {
         this.invert=invert; this.original=original;
     }
     private static float safe(float v){return Float.isFinite(v)?Math.max(0f,Math.min(1f,v)):0f;}
+    private static float safeGain(float v){return Float.isFinite(v)?Math.max(0f,Math.min(2f,v)):0f;}
 }

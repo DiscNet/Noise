@@ -126,7 +126,8 @@ void main() {
             vec3 skin = clamp(vec3(c.r * 1.08 + 0.022,
                                    c.g * 1.018 + 0.008,
                                    c.b * 0.89), 0.0, 1.0);
-            c = mix(c, skin, uFxA.y * warmMask);
+            c = mix(c, clamp(skin*(1.0+0.20*max(uFxA.y-1.0,0.0)),0.0,1.0),
+                min(uFxA.y,1.0) * warmMask);
         }
 
         // Fade: film-matte tonal compression with raised blacks and muted whites.
@@ -148,19 +149,13 @@ void main() {
             c = clamp(c + (c - localAverage) * 1.35 * uFxB.z, 0.0, 1.0);
         }
 
-        // Névoa: subtle spatial diffusion and atmosphere rather than static white overlay.
+        // Atmospheric lift: tonal only. No multi-tap blur or displaced samples.
         if (uFxB.y > 0.001) {
-            float radius = (2.0 + 0.008 * min(uSize.x, uSize.y)) * uFxB.y;
-            vec2 shift = vec2(radius) / uSize;
-            vec3 diffused = straight(texture2D(uImage, vTexCoord + vec2(shift.x, 0.0))) +
-                            straight(texture2D(uImage, vTexCoord - vec2(shift.x, 0.0))) +
-                            straight(texture2D(uImage, vTexCoord + vec2(0.0, shift.y))) +
-                            straight(texture2D(uImage, vTexCoord - vec2(0.0, shift.y)));
-            diffused *= 0.25;
-            c = mix(c, diffused, uFxB.y * 0.41);
-            c = c * (1.0 - uFxB.y * 0.16)
-              + vec3(0.11, 0.125, 0.145) * uFxB.y;
-            c = clamp(c, 0.0, 1.0);
+            float mist = clamp(uFxB.y * 0.34, 0.0, 0.68);
+            float shadows = 1.0 - smoothstep(0.13, 0.84, luminance(c));
+            vec3 atmosphere = clamp(c * 0.93 +
+                vec3(0.16, 0.175, 0.19) * (0.35 + 0.65 * shadows),0.0,1.0);
+            c = mix(c, atmosphere, mist);
         }
 
         if (uStyle.z > 0.001) {
@@ -270,42 +265,28 @@ void main() {
             neon += inkColor * halo * (0.46 + 1.16 * uStyle.y);
             neon += inkColor * smoothstep(0.28, 0.85, ambient) *
                  (0.021 + 0.13 * uStyle.y) * silhouette;
-            vec3 dithered = clamp(neon, 0.0, 1.0);
-            c = mix(c, dithered, amount);
+            // Beyond 100% increases emitted ink rather than extrapolating the
+            // mix and generating negative / inverted pixel values.
+            vec3 dithered = clamp(neon * (1.0 + 0.75 * max(amount - 1.0, 0.0)),
+                                  0.0, 1.0);
+            c = mix(c, dithered, min(amount, 1.0));
         }
 
+        // Sharp, isotropic glow. Never replace the source pixel with blurred
+        // colors or use long-distance shifted samples (no motion trails).
         if (uStyle.y > 0.001) {
-            // Isotropic 8-direction bloom kernel; symmetrical in X and Y.
-            // No shifted one-way sampling or motion-blur streaks.
-            float r = (1.8 + 11.0 * uStyle.y);
-            vec2 uv = vec2(r) / uSize;
-            vec2 diag = uv * 0.70710678;
-            vec3 bloom = vec3(0.0);
-            float energy = 0.0;
-            for (int i=0; i<8; i++) {
-                vec2 d = vec2(0.0);
-                if(i==0)d=vec2(uv.x,0.0);
-                if(i==1)d=vec2(-uv.x,0.0);
-                if(i==2)d=vec2(0.0,uv.y);
-                if(i==3)d=vec2(0.0,-uv.y);
-                if(i==4)d=vec2(diag.x,diag.y);
-                if(i==5)d=vec2(-diag.x,-diag.y);
-                if(i==6)d=vec2(diag.x,-diag.y);
-                if(i==7)d=vec2(-diag.x,diag.y);
-                vec3 sampleColor = straight(texture2D(uImage,clamp(vTexCoord+d,vec2(0.0),vec2(1.0))));
-                float bright = smoothstep(0.43,0.86,luminance(sampleColor));
-                bloom += sampleColor * bright;
-                energy += bright;
-            }
-            bloom /= 8.0;
-            // Keep the original image sharp: add thresholded scattered light,
-            // do not average its base pixels.
-            vec3 haloColor = mix(bloom,
-                neonPalette(clamp(luminance(bloom)*1.6,0.0,1.0),
-                clamp(0.48+(bloom.r-bloom.b)*1.3,0.0,1.0),0.0),
-                uStyle.x*0.5);
-            c = clamp(c + haloColor * uStyle.y *
-                (0.40 + energy * 0.095), 0.0, 1.0);
+            vec2 delta = vec2(max(1.0,uPatternScale)*1.4) / uSize;
+            vec3 neighbors = (
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(delta.x,0.0),vec2(0.0),vec2(1.0)))) +
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(delta.x,0.0),vec2(0.0),vec2(1.0)))) +
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(0.0,delta.y),vec2(0.0),vec2(1.0)))) +
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(0.0,delta.y),vec2(0.0),vec2(1.0))))
+            ) * 0.25;
+            float core = smoothstep(0.34,0.88,luminance(c));
+            float edgeHalo = smoothstep(0.52,0.93,luminance(neighbors));
+            vec3 light = max(c * core, neighbors * (edgeHalo * 0.38));
+            c = clamp(c + light * uStyle.y * (0.45 * core + 0.18 * edgeHalo),
+                      0.0, 1.0);
         }
 
         // Analog film dust: multiscale fibers, hairline scratches, flecks,
@@ -343,39 +324,32 @@ void main() {
             float warm = hash(zone+92.9);
             vec3 dustInk = mix(vec3(0.09,0.055,0.08),
                                vec3(0.98,0.87,0.69),step(0.32,warm));
-            c = mix(c,dustInk,dirty*uFxA.z*0.90);
+            c = mix(c,dustInk,clamp(dirty*uFxA.z*0.90,0.0,1.0));
             c += vec3(0.38,0.31,0.24)*ring*uFxA.z*0.24;
             c += grain*grainAmp;
             c=clamp(c,0.0,1.0);
         }
 
-        // Rotational radial blur: tangent to concentric rings and constrained
-        // to the outer image. Angle increases with distance and slider.
+        // Edge detail replaces rotational blur: never rotate/move source pixels.
         if (uFxB.w > 0.001) {
-            vec2 centerVec=(vTexCoord-0.5)*vec2(uSize.x/uSize.y,1.0);
-            float radial=length(centerVec);
-            float maxRad=length(vec2(0.5*uSize.x/uSize.y,0.5));
-            float edge=smoothstep(0.44,0.94,radial/maxRad);
-            float angle=0.083*uFxB.w*edge;
-            vec3 radialSum=vec3(0.0);
-            for(int i=0;i<8;i++){
-                float t=(float(i)-3.5)/3.5;
-                float a=angle*t;
-                float co=cos(a), si=sin(a);
-                vec2 rotated=vec2(centerVec.x*co-centerVec.y*si,
-                                  centerVec.x*si+centerVec.y*co);
-                vec2 uv=clamp(rotated/vec2(uSize.x/uSize.y,1.0)+0.5,
-                              vec2(0.0),vec2(1.0));
-                radialSum += straight(texture2D(uImage,uv));
-            }
-            c=mix(c,radialSum/8.0,edge*uFxB.w);
+            vec2 stepPx = vec2(max(1.0,uPatternScale)*1.35) / uSize;
+            float hx = abs(luminance(straight(texture2D(uImage,
+                clamp(vTexCoord+vec2(stepPx.x,0.0),vec2(0.0),vec2(1.0)))))
+                -luminance(straight(texture2D(uImage,
+                clamp(vTexCoord-vec2(stepPx.x,0.0),vec2(0.0),vec2(1.0))))));
+            float hy = abs(luminance(straight(texture2D(uImage,
+                clamp(vTexCoord+vec2(0.0,stepPx.y),vec2(0.0),vec2(1.0)))))
+                -luminance(straight(texture2D(uImage,
+                clamp(vTexCoord-vec2(0.0,stepPx.y),vec2(0.0),vec2(1.0))))));
+            float line = clamp((hx+hy)*uFxB.w*0.58,0.0,0.90);
+            c = clamp(c + vec3(line),0.0,1.0);
         }
 
         // Vinheta stays centered in source-image coordinates.
         if (uFxA.w > 0.001) {
             float edgeDistance = length((vTexCoord - 0.5) * 2.0);
             float falloff = smoothstep(0.35, 1.34, edgeDistance);
-            c *= 1.0 - 0.93 * uFxA.w * falloff;
+            c *= max(0.0,1.0 - 0.93 * uFxA.w * falloff);
         }
 
         // 01 • Vinyl / topographic concentric engraving.
@@ -400,8 +374,9 @@ void main() {
             float wear=1.0-uRingsB.y*(
                 step(.84,scratch)*.48+step(.961,fineDust)*.34);
             float illuminated=stroke*clamp(wear,0.0,1.0);
-            vec3 ringInk=vec3(illuminated*.94+fineDust*uRingsB.y*.018);
-            c=mix(c,ringInk,uRingsA.x);
+            vec3 ringInk=vec3(clamp(illuminated*(.94 + .68*max(uRingsA.x-1.0,0.0))
+                 +fineDust*uRingsB.y*.018,0.0,1.0));
+            c=mix(c,ringInk,min(uRingsA.x,1.0));
         }
 
         // 02 • Analog CRT: curved phosphor display / scan lines / black bezel.
@@ -430,7 +405,7 @@ void main() {
                               mix(0.3,2.2,uCrtB.x));
             tube*=tubeUv.x>0.0&&tubeUv.x<1.0&&tubeUv.y>0.0&&tubeUv.y<1.0?
                   corners*tubeMask : 0.0;
-            c=mix(c,clamp(tube,0.0,1.0),uCrtA.x);
+            c=mix(c,clamp(tube*(1.0+max(0.0,uCrtA.x-1.0)*0.82),0.0,1.0),min(uCrtA.x,1.0));
         }
 
         // 03 • Distorted monochrome signal: band-limited analog tape tearing.
@@ -455,7 +430,8 @@ void main() {
                            clamp(warped-dir,vec2(.0),vec2(1.0))))));
             float ripple=sin(pixel.y/max(1.5,uPatternScale*1.8)*3.14159
                              +wave*1.45)*.12;
-            float contrast=clamp((lumin-.5)*2.7+.5+edge*1.55+ripple,0.0,1.0);
+            float contrast=clamp((lumin-.5)*(2.7+1.4*max(uGlitchA.x-1.0,0.0))
+                           +.5+edge*1.55+ripple,0.0,1.0);
             float threshold=hash(floor(pixel/vec2(2.0,3.0)))*
                             uGlitchB.x*.24-.12*uGlitchB.x;
             float monochrome=smoothstep(.43+threshold,.57+threshold,contrast);
@@ -465,7 +441,7 @@ void main() {
             float staticNoise=hash(floor(pixel)+vec2(71.6,16.2))-.5;
             vec3 signalBW=vec3(clamp(monochrome+staticNoise*uGlitchB.x*.34,0.0,1.0));
             vec3 glitchColor=mix(shifted,signalBW,uGlitchB.y);
-            c=mix(c,glitchColor,uGlitchA.x);
+            c=mix(c,glitchColor,min(uGlitchA.x,1.0));
         }
 
         // Full character art, not a text file or an overlay of raw pixels:

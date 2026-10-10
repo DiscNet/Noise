@@ -1,14 +1,21 @@
-# Noise! 1.11
+# Noise! 1.12
 
 Um editor de imagem Android offline com interface de vidro, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
 
-## Novo layout 1.11
+## Novo na versão 1.12
+
+- **APK com versão no nome**: os próximos lançamentos geram arquivos no formato `Noise! V1.12.apk`, usando a versão declarada no Gradle.
+- **Mais espaço para editar**: atalhos compactos em uma linha, cabeçalho reduzido e controles menores sem sacrificar a área de toque.
+- **Intensidade até 200%**: Dither, Glow, Fade, Tom de pele, Poeira, Vinheta, Névoa, Nitidez, Realce de bordas, Anéis, CRT e Glitch. Os controles espaciais permanecem limitados a 100% para evitar distorção involuntária.
+- **Sem desfoques indesejados**: Glow usa luz aditiva local sem borrar pixels originais; Névoa usa ajustes tonais sem difusão; Desfoque rotativo foi substituído por Realce de bordas.
+
+## Layout 1.11 — base preservada
 
 O editor foi reorganizado para facilitar a edição em telas pequenas, mantendo o processamento GPU e todos os efeitos:
 - **Topo simplificado:** marca Noise! e um único menu para ações secundárias.
-- **Ações ao alcance do dedo:** Abrir, Recortar e Salvar PNG agrupados logo abaixo da prévia.
+- **Ações ao alcance do dedo:** Abrir, Recortar e Salvar PNG agrupados logo abaixo da prévia em botões discretos.
 - **Abas horizontais roláveis:** Básico, Ruído, Dither, Efeitos, Arte e ASCII com alvos de toque confortáveis.
-- **Controles com espaço:** nome e valor acima de um slider de largura total.
+- **Controles com espaço:** nome e valor numa linha curta acima de um slider de largura total.
 - **Vidro discreto:** fundo grafite, superfícies translúcidas e realces sutis em vez de fitas coloridas.
 
 ## Cores do Dither no ASCII
@@ -37,7 +44,7 @@ A nova interface prioriza a imagem editada: tons grafite, vidro translúcido sem
 
 ## Demais ferramentas
 
-Galeria com fotos recentes e álbuns completos, recorte de imagem por arraste dos cantos, original/comparação, neon dither ajustável, ruído orgânico, pó e vinheta, brilho difuso sem arrasto direcional, desfoque radial rotativo e salvamento automático em PNG na pasta pública **Imagens/Noise!**, que persiste após desinstalar o aplicativo.
+Galeria com fotos recentes e álbuns completos, recorte de imagem por arraste dos cantos, original/comparação, neon dither ajustável, ruído orgânico, pó e vinheta, brilho difuso sem arrasto direcional, realce de bordas sem deslocamento e salvamento automático em PNG na pasta pública **Imagens/Noise!**, que persiste após desinstalar o aplicativo.
 
 ## Build
 
