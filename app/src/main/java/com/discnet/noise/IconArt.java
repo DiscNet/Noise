@@ -28,7 +28,7 @@ final class IconArt extends Drawable {
     }
     static View inline(Context context,int symbol){
         View view=new View(context);
-        view.setBackground(new IconArt(symbol,0xffd6c4ea));
+        view.setBackground(new IconArt(symbol>=26?symbol+100:symbol,0xffd6c4ea));
         view.setContentDescription("Ícone de "+symbol);
         return view;
     }
@@ -112,13 +112,13 @@ final class IconArt extends Drawable {
             case 22:poly(canvas,12,3,12,21);poly(canvas,8,7,12,3,16,7);poly(canvas,8,17,12,21,16,17);break;
             case 23:rect(canvas,5,5,19,19);poly(canvas,8,11,11,8,16,13);break;
             case 24:for(int i=0;i<3;i++)for(int j=0;j<3;j++)circle(canvas,6+i*6,6+j*6,1);break;
-            case 26: case 27: case 28: case 29: case 30: case 31:
+            case 126: case 127: case 128: case 129: case 130: case 131:
                 circle(canvas,12,12,3);circle(canvas,12,12,6);circle(canvas,12,12,9);break;
-            case 32: case 33: case 34: case 35: case 36: case 37:
+            case 132: case 133: case 134: case 135: case 136: case 137:
                 rect(canvas,2,4,22,20);
                 for(int n=0;n<4;n++)ln(canvas,5,7+n*3.2f,19,7+n*3.2f);
                 break;
-            case 38: case 39: case 40: case 41: case 42: case 43:
+            case 138: case 139: case 140: case 141: case 142: case 143:
                 poly(canvas,3,6,11,6,7,11,21,11,14,17,21,17);
                 ln(canvas,4,20,9,20);break;
             default:circle(canvas,12,12,8);
