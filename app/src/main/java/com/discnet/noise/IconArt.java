@@ -21,8 +21,9 @@ final class IconArt extends Drawable {
         view.setContentDescription(description);
         view.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         Glass.button(view,false);
-        view.setPadding(Glass.dp(context,11),Glass.dp(context,11),
-            Glass.dp(context,11),Glass.dp(context,11));
+        // 18dp vector inside a comfortable 42dp touch target.
+        view.setPadding(Glass.dp(context,12),Glass.dp(context,12),
+            Glass.dp(context,12),Glass.dp(context,12));
         view.setClickable(true);view.setFocusable(true);
         return view;
     }
