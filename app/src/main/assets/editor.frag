@@ -399,7 +399,7 @@ void main() {
             vec2 tubeUv=barrel*.5+.5;
             float bezelDist=max(abs(barrel.x)/.89,abs(barrel.y)/.90);
             float feather=mix(.038,.105,uCrtA.z);
-            float tube=1.0-smoothstep(1.0-feather,1.0+feather,bezelDist);
+            float tubeMask=1.0-smoothstep(1.0-feather,1.0+feather,bezelDist);
             // Row spacing refers to image coordinates and avoids preview moire.
             float scanPitch=max(mix(2.8,12.0,uCrtA.y),uPatternScale*2.4);
             float scanPhase=fract(tubeUv.y*uSize.y/scanPitch);
@@ -416,7 +416,7 @@ void main() {
             float corners=pow(clamp(1.0-max(abs(barrel.x),abs(barrel.y))*.72,0.0,1.0),
                               mix(0.3,2.2,uCrtB.x));
             tube*=tubeUv.x>0.0&&tubeUv.x<1.0&&tubeUv.y>0.0&&tubeUv.y<1.0?
-                  corners*tube : 0.0;
+                  corners*tubeMask : 0.0;
             c=mix(c,clamp(tube,0.0,1.0),uCrtA.x);
         }
 
