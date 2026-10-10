@@ -86,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.8 ($TAG)" --notes "Noise! 1.8: Novos efeitos 100% ajustáveis: Anéis concêntricos analógicos, CRT com scanlines e curvatura, Glitch monocromático. 18 parâmetros em tempo real, exportação GPU e interface com fitas gradientes rosa, violeta e âmbar. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.9 ($TAG)" --notes "Noise! 1.9: Nova aba ASCII com caracteres reais formando a imagem, 6 ajustes em tempo real, dois conjuntos de símbolos, cores opcionais, comparação com original e exportação PNG pelo mesmo shader GPU. Mantém todos os efeitos anteriores. Android 8+."
