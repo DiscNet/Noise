@@ -148,14 +148,14 @@ public class NoiseSmokeTest extends Instrumentation {
                 closeColor(bypassAll.getPixel(x,y),effectsImage.getPixel(x,y),
                         "Original bypasses all creative filters");
             bypassAll.recycle();
-            // New eighth filter: rotational rim blur.
+            // Eighth filter now enhances outlines without rotating/blurring pixels.
             float[] rotation = new float[8];rotation[7]=0.93f;
             Bitmap rotatedEdges=GpuExporter.render(getTargetContext(),effectsImage,
                 new EditState(new float[9],new float[3],rotation,false,false));
-            int blurPixels=0;
+            int outlinePixels=0;
             for(int yy=0;yy<96;yy++)for(int xx=0;xx<128;xx++)
-                if(rotatedEdges.getPixel(xx,yy)!=plainFx.getPixel(xx,yy))blurPixels++;
-            require(blurPixels>50,"Rotational blur modifies image edges");
+                if(rotatedEdges.getPixel(xx,yy)!=plainFx.getPixel(xx,yy))outlinePixels++;
+            require(outlinePixels>50,"Edge enhancement changes outlines without rotating the image");
             rotatedEdges.recycle();
             // Resize from original 128x96 to 64x48 directly on the render target.
             Bitmap resized=GpuExporter.render(getTargetContext(),effectsImage,
@@ -170,6 +170,23 @@ public class NoiseSmokeTest extends Instrumentation {
             for(int y=0;y<96;y++)for(int x=0;x<128;x++)
                 if(luminous.getPixel(x,y)!=plainFx.getPixel(x,y))changedGlow++;
             require(changedGlow>20, "Standalone Glow must work without Dither");
+            stage("200 percent glow and no distant ghosting");
+            Bitmap hardEdge=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);
+            hardEdge.eraseColor(0xff000000);
+            Canvas hardCanvas=new Canvas(hardEdge);
+            Paint middle=new Paint(); middle.setColor(0xff707070);
+            hardCanvas.drawRect(30,30,65,65,middle);
+            float[] normalGlow={0f,1f,0f}, doubledGlow={0f,2f,0f};
+            EditState doubledState=new EditState(new float[9],doubledGlow,false,false);
+            require(doubledState.style[1]>1.99f,"GPU state retains 200% glow");
+            Bitmap glow100=GpuExporter.render(getTargetContext(),hardEdge,
+                new EditState(new float[9],normalGlow,false,false));
+            Bitmap glow200=GpuExporter.render(getTargetContext(),hardEdge,doubledState);
+            require(Color.red(glow200.getPixel(48,48)) > Color.red(glow100.getPixel(48,48)),
+                "200% glow must brighten original pixels beyond 100%");
+            closeColor(glow200.getPixel(12,48),0xff000000,
+                "No motion-like light ghosting far from high contrast edge");
+            glow100.recycle(); glow200.recycle();hardEdge.recycle();
             stage("art effects GPU");
             // Three distinct editable visual styles from the user's references.
             for(int mode=0;mode<3;mode++){
@@ -321,6 +338,20 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->tabs[0].performClick());
             // Direct slider events must immediately reach the matching GPU uniform.
             require(sliders.length == 50, "All 50 controls must be present");
+            require(sliders[9].getMax()==400 && sliders[10].getMax()==400
+                && sliders[26].getMax()==400 && sliders[32].getMax()==400
+                && sliders[38].getMax()==400,
+                "Effect strength sliders reach 200 percent");
+            require(sliders[11].getMax()==200 && sliders[27].getMax()==200
+                && sliders[44].getMax()==200,
+                "Spatial and character controls keep safe ranges");
+            runOnMainSync(()->sliders[10].setProgress(400));
+            EditState highGlow=(EditState)field(surface,"state");
+            require(highGlow.style[1]>1.99f,"Live slider reaches 200 percent GPU uniform");
+            TextView[] valueLabels=(TextView[])field(activity,"valueLabels");
+            require("200%".contentEquals(valueLabels[10].getText()),
+                "UI correctly labels 200% rather than displaying 100%");
+            runOnMainSync(()->sliders[10].setProgress(0));
             runOnMainSync(() -> {
                 sliders[12].setProgress(150); // Fade
                 sliders[13].setProgress(110); // Tom de pele
