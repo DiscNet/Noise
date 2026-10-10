@@ -25,21 +25,30 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends Activity {
-    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação"};
+    private static final String[] NAMES = {"Saturação", "Vibração", "Exposição", "Contraste", "Highlights", "Branco", "Preto", "Ruído", "Matiz", "Dither", "Brilho difuso", "Desvio RGB", "Fade", "Tom de pele", "Poeira", "Vinheta", "Aberrações", "Névoa", "Nitidez", "Desfoque rotativo", "Profundidade", "Posição X", "Posição Y", "Escala", "Densidade", "Ondulação", "Intensidade", "Espaçamento", "Espessura", "Centro X", "Centro Y", "Desgaste", "Intensidade", "Frequência", "Suavidade", "Curvatura", "Vinheta CRT", "Tom do fósforo", "Intensidade", "Faixas", "Deslocamento", "Falhas", "Estática", "Monocromia"};
     private static final String[] ICONS = {"☼","◉","✧","◐","✦","◯","●","⁙","◌","≋","✧","◎",
         "◑","◕","⁙","◉","◎","≈","◇","⟳","▤","↔","↕","⌗","∴","〰"};
+    private static final int[][] ART_GROUPS = {{26,27,28,29,30,31},{32,33,34,35,36,37},{38,39,40,41,42,43}};
+    private static final String[] ART_TITLES={"Anéis", "CRT", "Glitch"};
+    private static final String[] ART_DESCRIPTIONS={
+        "Gravação concêntrica • linhas finas e desgaste analógico",
+        "Tela curva • varredura de fósforo e bordas suaves",
+        "Sinal corrompido • rupturas e interferência monocromática"
+    };
     private static final int[][] GROUPS = {{0, 3, 1, 2, 4, 5, 6, 8}, {7}, {9, 11, 20, 21, 22, 23, 24, 25}, {12, 13, 14, 15, 16, 17, 10, 18, 19}};
     private final float[] values = new float[9];
     private final float[] effects = new float[3];
     private final float[] filters = new float[8];
     private final float[] ditherControls = EditState.DITHER_DEFAULTS.clone();
+    private final float[] artControls = EditState.ART_DEFAULTS.clone();
+    private int selectedArtMode=0;
     private int outputWidth, outputHeight, restoreWidth, restoreHeight;
     private ImageView resizeButton;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicInteger loads = new AtomicInteger();
-    private final SeekBar[] sliders = new SeekBar[26];
-    private final TextView[] valueLabels = new TextView[26], tabs = new TextView[4];
-    private final LinearLayout[] rows = new LinearLayout[26];
+    private final SeekBar[] sliders = new SeekBar[44];
+    private final TextView[] valueLabels = new TextView[44], tabs = new TextView[5];
+    private final LinearLayout[] rows = new LinearLayout[44];
     private Bitmap original;
     private EditorSurface preview;
     private TextView status, compare, stageBadge;
@@ -103,10 +112,10 @@ public class MainActivity extends Activity {
         categories.setPadding(dp(3), dp(3), dp(3), dp(3));
         categories.setBackground(Glass.panel(this, 0xc12a2536, 0xc3211d2c, 28, 0x56bba5d9));
         LinearLayout.LayoutParams catParams = lp(-1, dp(46));
-        catParams.leftMargin = dp(10); catParams.rightMargin = dp(10);
+        catParams.leftMargin = dp(2); catParams.rightMargin = dp(2);
         root.addView(categories, catParams);
-        String[] labels = {"Básico", "Ruído", "Dither", "Efeitos"};
-        for (int i=0;i<4;i++) {
+        String[] labels = {"Básico", "Ruído", "Dither", "Efeitos", "Arte"};
+        for (int i=0;i<5;i++) {
             final int group=i;
             tabs[i]=text(labels[i],14,Glass.MUTED); tabs[i].setGravity(Gravity.CENTER);
             categories.addView(tabs[i], new LinearLayout.LayoutParams(0,-1,1));
@@ -165,7 +174,7 @@ public class MainActivity extends Activity {
         View rule = new View(this); rule.setBackgroundColor(0x2cffffff); panel.addView(rule,lp(-1,dp(1)));
         controlScroll = new ScrollView(this); controlScroll.setFillViewport(false); controlScroll.setVerticalScrollBarEnabled(false);
         panel.addView(controlScroll, new LinearLayout.LayoutParams(-1, 0, 1)); controls = vertical(); controlScroll.addView(controls);
-        for (int i = 0; i < 26; i++) buildAdjustment(i);
+        for (int i = 0; i < 44; i++) buildAdjustment(i);
         invertSwitch = new Switch(this);
         invertSwitch.setText("  Inverter cores");
         android.graphics.drawable.Drawable toggleIcon=new IconArt(IconArt.ORIGINAL,Glass.INK);
@@ -191,6 +200,10 @@ public class MainActivity extends Activity {
             float[] savedDither=state.getFloatArray("ditherControls");
             if(savedDither!=null&&savedDither.length==6)
                 for(int i=0;i<6;i++)sliders[20+i].setProgress(Math.round(savedDither[i]*200));
+            float[] savedArt=state.getFloatArray("artControls");
+            if(savedArt!=null && savedArt.length==18)
+                for(int i=0;i<18;i++)sliders[26+i].setProgress(Math.round(savedArt[i]*200));
+            selectedArtMode=Math.min(2,Math.max(0,state.getInt("artMode",0)));
             restoreWidth=state.getInt("outputWidth",0);
             restoreHeight=state.getInt("outputHeight",0);
             resetting = false; showGroup(state.getInt("group", 0)); publish();
@@ -207,19 +220,21 @@ public class MainActivity extends Activity {
         label.setSingleLine(true); label.setGravity(Gravity.CENTER_VERTICAL);
         row.addView(label,lp(dp(94),dp(45)));
         Glass.Slider slider=new Glass.Slider(this,
-            index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:index>=20?0xfffc89f7:index==19?0xffffae88:0xffd5baff);
+            index==9?0xffff64ca:index==10?0xffffb76c:index==11?0xff89aaff:index>=20?0xfffc89f7:index==19?0xffffae88:index>=26?0xffffb27d:0xffd5baff);
         sliders[index]=slider; slider.setContentDescription(NAMES[index]);
-        slider.setMax(200); slider.setProgress((index<9||index>=20)?100:0);
+        slider.setMax(200); slider.setProgress(index>=26?
+            Math.round(EditState.ART_DEFAULTS[index-26]*200):(index<9||index>=20)?100:0);
         row.addView(slider,new LinearLayout.LayoutParams(0,dp(43),1));
         TextView value=text("0",12,Glass.INK); value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         valueLabels[index]=value; row.addView(value,lp(dp(49),dp(43)));
-        value.setOnClickListener(v->sliders[index].setProgress((index<9||index>=20)?100:0));
+        value.setOnClickListener(v->sliders[index].setProgress(index>=26?Math.round(EditState.ART_DEFAULTS[index-26]*200):(index<9||index>=20)?100:0));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar seek,int progress,boolean user){
                 if(index<9)values[index]=(progress-100)/100f;
                 else if(index<12)effects[index-9]=progress/200f;
                 else if(index<20)filters[index-12]=progress/200f;
-                else ditherControls[index-20]=progress/200f;
+                else if(index<26)ditherControls[index-20]=progress/200f;
+                else artControls[index-26]=progress/200f;
                 valueLabels[index].setText(formatValue(index));publish();
             }
             public void onStartTrackingTouch(SeekBar seek){}
@@ -227,6 +242,7 @@ public class MainActivity extends Activity {
         });
     }
     private String formatValue(int index) {
+        if(index>=26)return String.format(Locale.US,"%d",Math.round(artControls[index-26]*100));
         if(index>=20)return String.format(Locale.US,"%d",Math.round(ditherControls[index-20]*100));
         if(index>=12)return String.format(Locale.US,"%d",Math.round(filters[index-12]*100));
         if(index>=9)return String.format(Locale.US,"%d",Math.round(effects[index-9]*100));
@@ -235,8 +251,9 @@ public class MainActivity extends Activity {
         int n=Math.round(values[index]*100);
         return n==0?"0":String.format(Locale.US,"%+d",n);
     }
-    private void showGroup(int group) {
-        selectedGroup=Math.max(0,Math.min(3,group));
+    private void showGroup(int group){
+        selectedGroup=Math.max(0,Math.min(4,group));
+        if(selectedGroup==4){showArtPanel();return;}
         controls.removeAllViews();
         for(int index:GROUPS[selectedGroup]){
             controls.addView(rows[index]);
@@ -250,32 +267,69 @@ public class MainActivity extends Activity {
         if(selectedGroup==2){
             TextView preset=action("✦   Aplicar Neon da referência",false);
             preset.setContentDescription("Aplicar estilo neon ondulado com brilhos e pontos");
-            LinearLayout.LayoutParams presetParams=lp(-1,dp(42));
-            controls.addView(preset,presetParams);
+            controls.addView(preset,lp(-1,dp(42)));
             preset.setOnClickListener(v->{
-                sliders[9].setProgress(188);  // 94% dither: connected wavy traces
-                sliders[10].setProgress(132); // 66% glow: luminous halos
-                sliders[11].setProgress(26);  // 13% RGB shift: subtle chromatic fringes
+                sliders[9].setProgress(188);
+                sliders[10].setProgress(132);
+                sliders[11].setProgress(26);
                 for(int i=20;i<26;i++)sliders[i].setProgress(100);
                 status.setText("Neon da referência aplicado · ajuste a intensidade");
             });
         }
-        for(int i=0;i<4;i++){
+        updateTabs();
+        controlScroll.scrollTo(0,0);
+    }
+    private void updateTabs(){
+        for(int i=0;i<5;i++){
             boolean active=i==selectedGroup;
             tabs[i].setSelected(active);tabs[i].setTextColor(active?Glass.INK:Glass.MUTED);
             tabs[i].setBackground(Glass.panel(this,active?0xdda44fbc:0x00303040,
                 active?0xc33e344d:0x00222a40,23,active?0xaff7a3ec:0x18ffffff));
         }
-        controlScroll.scrollTo(0,0);
+    }
+    private void showArtPanel(){
+        controls.removeAllViews();
+        LinearLayout strip=new LinearLayout(this);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setPadding(dp(3),dp(3),dp(3),dp(3));
+        strip.setBackground(Glass.frosted(this,22));
+        LinearLayout.LayoutParams stripParams=lp(-1,dp(45));
+        stripParams.topMargin=dp(6);stripParams.bottomMargin=dp(9);
+        controls.addView(strip,stripParams);
+        for(int j=0;j<3;j++){
+            final int chosen=j;
+            TextView chip=action(ART_TITLES[j],false);
+            chip.setTextSize(13);
+            chip.setTextColor(j==selectedArtMode?0xffffe4ba:Glass.MUTED);
+            chip.setBackground(Glass.panel(this,
+                j==selectedArtMode?0xcc91566e:0x00717188,
+                j==selectedArtMode?0xb3492953:0x00000000,19,
+                j==selectedArtMode?0x99ffc2de:0x00ffffff));
+            strip.addView(chip,new LinearLayout.LayoutParams(0,dp(39),1));
+            chip.setOnClickListener(v->{selectedArtMode=chosen;showArtPanel();});
+        }
+        TextView caption=text(ART_DESCRIPTIONS[selectedArtMode],12,Glass.MUTED);
+        caption.setGravity(Gravity.CENTER);
+        controls.addView(caption,lp(-1,dp(37)));
+        for(int idx:ART_GROUPS[selectedArtMode]){
+            controls.addView(rows[idx]);
+            View line=new View(this);line.setBackgroundColor(0x1fffffff);
+            controls.addView(line,lp(-1,dp(1)));
+        }
+        TextView apply=action("✧   Aplicar efeito",false);
+        LinearLayout.LayoutParams presetParams=lp(-1,dp(43));presetParams.topMargin=dp(8);
+        controls.addView(apply,presetParams);
+        apply.setOnClickListener(v->sliders[26+selectedArtMode*6].setProgress(200));
+        updateTabs();controlScroll.scrollTo(0,0);
     }
     private void publish() {
         if (preview == null || resetting) return;
-        preview.setEditState(new EditState(values, effects, filters, ditherControls, invertSwitch != null && invertSwitch.isChecked(), comparing));
+        preview.setEditState(new EditState(values, effects, filters, ditherControls, artControls, invertSwitch != null && invertSwitch.isChecked(), comparing));
         if (stageBadge != null) stageBadge.setText(comparing ? "PRÉVIA  /  ORIGINAL" : "PRÉVIA  /  EDITADA");
         if (compare != null) compare.setText(comparing ? "Original" : "Comparar");
     }
     private void reset() {
-        resetting = true; for (int i=0;i<sliders.length;i++)sliders[i].setProgress((i<9||i>=20)?100:0); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
+        resetting = true; for (int i=0;i<sliders.length;i++)sliders[i].setProgress(i>=26?Math.round(EditState.ART_DEFAULTS[i-26]*200):(i<9||i>=20)?100:0); invertSwitch.setChecked(false); comparing = false; resetting = false; publish();
     }
     private void updateActions() {
         boolean available = original != null && !loading;
@@ -497,7 +551,7 @@ public class MainActivity extends Activity {
     private void exportTo(Uri suppliedUri,boolean publicGallery){
         if(original==null||loading||exporting)return;
         Bitmap bitmap=original;
-        EditState state=new EditState(values,effects,filters,ditherControls,
+        EditState state=new EditState(values,effects,filters,ditherControls,artControls,
             invertSwitch.isChecked(),false);
         final int width=outputWidth,height=outputHeight;
         exporting=true;updateActions();status.setText("Salvando em Imagens/Noise!…");
@@ -583,6 +637,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putFloatArray("filters",filters.clone()); state.putFloatArray("ditherControls",ditherControls.clone());
+        state.putFloatArray("artControls",artControls.clone());state.putInt("artMode",selectedArtMode);
         state.putInt("outputWidth",outputWidth); state.putInt("outputHeight",outputHeight); state.putBoolean("invert", invertSwitch.isChecked());
         state.putInt("group", selectedGroup); if (input != null) state.putString("input", input.toString());
     }

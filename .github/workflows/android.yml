@@ -86,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.7 ($TAG)" --notes "Noise! 1.7: Recorte livre por cantos arrastáveis, álbuns com todas as fotos, salvamento automático público em Pictures/Noise!, UI com Liquid Glass inspirado em iOS e seleção sem gerenciador de arquivos. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."
+          gh release create "$TAG" Noise.apk --title "Noise! 1.8 ($TAG)" --notes "Noise! 1.8: Novos efeitos 100% ajustáveis: Anéis concêntricos analógicos, CRT com scanlines e curvatura, Glitch monocromático. 18 parâmetros em tempo real, exportação GPU e interface com fitas gradientes rosa, violeta e âmbar. APK de teste, Android 8+. Se a assinatura antiga impedir a atualização, desinstale a versão 1.0 antes."

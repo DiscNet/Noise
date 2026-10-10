@@ -14,6 +14,12 @@ uniform vec4 uFxA;    // Fade, skin tone, dust, vignette
 uniform vec4 uFxB;    // aberration, mist, sharpen, rotational blur
 uniform vec4 uDitherA; // depth, pattern offset X and Y, pattern scale
 uniform vec2 uDitherB; // dot density, wave distortion
+uniform vec4 uRingsA; // blend, spacing, line thickness, center X
+uniform vec2 uRingsB; // center Y, scratches
+uniform vec4 uCrtA; // blend, scanline pitch, softness, barrel distortion
+uniform vec2 uCrtB; // edge vignette, phosphor cool/warm tint
+uniform vec4 uGlitchA; // blend, row size, shift, corruption frequency
+uniform vec2 uGlitchB; // grain, grayscale
 uniform float uPatternScale; // source-pixels per display pixel, 1.0 for export
 uniform bool uInvert;
 uniform bool uOriginal;
@@ -357,6 +363,96 @@ void main() {
             float edgeDistance = length((vTexCoord - 0.5) * 2.0);
             float falloff = smoothstep(0.35, 1.34, edgeDistance);
             c *= 1.0 - 0.93 * uFxA.w * falloff;
+        }
+
+        // 01 • Vinyl / topographic concentric engraving.
+        // All the knobs affect independent visible properties; this is
+        // procedural artwork, not a still image laid over the photograph.
+        if (uRingsA.x > 0.001) {
+            vec2 center = vec2(uRingsA.w, uRingsB.x);
+            vec2 pos=(vTexCoord-center)*uSize;
+            float radius=length(pos);
+            float angle=atan(pos.y,pos.x);
+            float pitch=max(mix(7.0,37.0,uRingsA.y),2.8*uPatternScale);
+            float width=max(mix(0.65,4.2,uRingsA.z),0.82*uPatternScale);
+            // Subtle vinyl wobble, reduced for closely spaced rings.
+            float relief=sin(angle*13.0+radius*.028)*uRingsB.y*1.05
+                        +sin(angle*29.0-radius*.019)*uRingsB.y*.55;
+            float ringDist=abs(mod(radius+relief+pitch*.5,pitch)-pitch*.5);
+            float stroke=1.0-smoothstep(width*.42,width*.42+uPatternScale*.72,ringDist);
+            vec2 flakeCell=floor(vTexCoord*uSize/vec2(7.0,13.0));
+            float scratch=hash(flakeCell+vec2(29.7,10.2));
+            float fineDust=hash(floor(vTexCoord*uSize)+vec2(1.9,81.7));
+            // Random tiny breaks, dents and scratches as in pressed records.
+            float wear=1.0-uRingsB.y*(
+                step(.84,scratch)*.48+step(.961,fineDust)*.34);
+            float illuminated=stroke*clamp(wear,0.0,1.0);
+            vec3 ringInk=vec3(illuminated*.94+fineDust*uRingsB.y*.018);
+            c=mix(c,ringInk,uRingsA.x);
+        }
+
+        // 02 • Analog CRT: curved phosphor display / scan lines / black bezel.
+        if (uCrtA.x > 0.001) {
+            vec2 centered=vTexCoord*2.0-1.0;
+            float curv=mix(.0,.25,uCrtA.w);
+            vec2 barrel=centered*(1.0+curv*dot(centered,centered));
+            vec2 tubeUv=barrel*.5+.5;
+            float bezelDist=max(abs(barrel.x)/.89,abs(barrel.y)/.90);
+            float feather=mix(.038,.105,uCrtA.z);
+            float tubeMask=1.0-smoothstep(1.0-feather,1.0+feather,bezelDist);
+            // Row spacing refers to image coordinates and avoids preview moire.
+            float scanPitch=max(mix(2.8,12.0,uCrtA.y),uPatternScale*2.4);
+            float scanPhase=fract(tubeUv.y*uSize.y/scanPitch);
+            float line=1.0-smoothstep(.07,.07+mix(.15,.44,uCrtA.z),
+                                      abs(scanPhase-.40));
+            float luminanceInput=luminance(straight(texture2D(uImage,
+                 clamp(tubeUv,vec2(.0),vec2(1.0)))));
+            float signal=clamp(.51 + (luminanceInput-.5)*.77,0.0,1.0);
+            float scan=signal*(.19+.93*line);
+            float fineGrain=hash(floor(tubeUv*uSize/2.0)+vec2(31.2,78.1))-.5;
+            scan=clamp(scan+fineGrain*.038,0.0,1.0);
+            vec3 phosphor=mix(vec3(.72,.78,.85),vec3(.90,.82,.96),uCrtB.y);
+            vec3 tube=phosphor*scan;
+            float corners=pow(clamp(1.0-max(abs(barrel.x),abs(barrel.y))*.72,0.0,1.0),
+                              mix(0.3,2.2,uCrtB.x));
+            tube*=tubeUv.x>0.0&&tubeUv.x<1.0&&tubeUv.y>0.0&&tubeUv.y<1.0?
+                  corners*tubeMask : 0.0;
+            c=mix(c,clamp(tube,0.0,1.0),uCrtA.x);
+        }
+
+        // 03 • Distorted monochrome signal: band-limited analog tape tearing.
+        if (uGlitchA.x > 0.001) {
+            vec2 pixel=vTexCoord*uSize;
+            float band=max(mix(2.0,27.0,uGlitchA.y),uPatternScale*2.0);
+            vec2 stripe=floor(vec2(pixel.y/band,0.0));
+            float scramble=hash(stripe+vec2(7.3,5.7));
+            float wave=sin(pixel.y*.14+sin(pixel.y*.031)*6.0);
+            float interruption=step(1.0-uGlitchA.w*.74,scramble);
+            float offset=(wave*.24+interruption*(scramble-.45)*2.0)
+                         *uGlitchA.z*uSize.x*.12;
+            vec2 warped=clamp(vTexCoord+vec2(offset/uSize.x,0.0),
+                               vec2(0.0),vec2(1.0));
+            vec3 shifted=straight(texture2D(uImage,warped));
+            float lumin=luminance(shifted);
+            // Sobel-lite contrast creates high frequency contour stacks.
+            vec2 dir=vec2(max(1.0,uPatternScale)*2.0/uSize.x,0.0);
+            float edge=abs(luminance(straight(texture2D(uImage,
+                           clamp(warped+dir,vec2(.0),vec2(1.0)))))
+                     -luminance(straight(texture2D(uImage,
+                           clamp(warped-dir,vec2(.0),vec2(1.0))))));
+            float ripple=sin(pixel.y/max(1.5,uPatternScale*1.8)*3.14159
+                             +wave*1.45)*.12;
+            float contrast=clamp((lumin-.5)*2.7+.5+edge*1.55+ripple,0.0,1.0);
+            float threshold=hash(floor(pixel/vec2(2.0,3.0)))*
+                            uGlitchB.x*.24-.12*uGlitchB.x;
+            float monochrome=smoothstep(.43+threshold,.57+threshold,contrast);
+            float dropout=step(1.0-uGlitchA.w*.25,
+                 hash(stripe+vec2(81.1,22.9)));
+            monochrome=mix(monochrome,1.0-monochrome,dropout*.68);
+            float staticNoise=hash(floor(pixel)+vec2(71.6,16.2))-.5;
+            vec3 signalBW=vec3(clamp(monochrome+staticNoise*uGlitchB.x*.34,0.0,1.0));
+            vec3 glitchColor=mix(shifted,signalBW,uGlitchB.y);
+            c=mix(c,glitchColor,uGlitchA.x);
         }
 
         if (uInvert) c = 1.0 - c;

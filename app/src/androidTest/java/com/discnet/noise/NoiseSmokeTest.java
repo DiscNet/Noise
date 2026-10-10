@@ -170,6 +170,27 @@ public class NoiseSmokeTest extends Instrumentation {
             for(int y=0;y<96;y++)for(int x=0;x<128;x++)
                 if(luminous.getPixel(x,y)!=plainFx.getPixel(x,y))changedGlow++;
             require(changedGlow>20, "Standalone Glow must work without Dither");
+            stage("art effects GPU");
+            // Three distinct editable visual styles from the user's references.
+            for(int mode=0;mode<3;mode++){
+                float[] params=EditState.ART_DEFAULTS.clone();
+                params[mode*6]=.94f;
+                EditState artState=new EditState(new float[9],new float[3],new float[8],
+                    EditState.DITHER_DEFAULTS,params,false,false);
+                Bitmap styled=GpuExporter.render(getTargetContext(),effectsImage,artState);
+                int changedPixels=0;
+                for(int yy=0;yy<effectsImage.getHeight();yy++)
+                    for(int xx=0;xx<effectsImage.getWidth();xx++)
+                        if(styled.getPixel(xx,yy)!=plainFx.getPixel(xx,yy))changedPixels++;
+                require(changedPixels>1500,"Mode "+mode+" must produce distinct, nontrivial output");
+                Bitmap originalMode=GpuExporter.render(getTargetContext(),effectsImage,
+                    new EditState(new float[9],new float[3],new float[8],
+                        EditState.DITHER_DEFAULTS,params,false,true));
+                for(int yy=0;yy<96;yy+=13)for(int xx=0;xx<128;xx+=13)
+                    closeColor(originalMode.getPixel(xx,yy),effectsImage.getPixel(xx,yy),
+                        "Original bypasses art "+mode);
+                styled.recycle();originalMode.recycle();
+            }
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
@@ -187,7 +208,7 @@ public class NoiseSmokeTest extends Instrumentation {
             SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
             SystemClock.sleep(400);
             // Direct slider events must immediately reach the matching GPU uniform.
-            require(sliders.length == 26, "All 26 controls must be present");
+            require(sliders.length == 44, "All 44 controls must be present");
             runOnMainSync(() -> {
                 sliders[12].setProgress(150); // Fade
                 sliders[13].setProgress(110); // Tom de pele
@@ -217,6 +238,28 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->{
                 sliders[19].setProgress(0);
                 for(int i=20;i<26;i++)sliders[i].setProgress(100);
+            });
+            runOnMainSync(()->{
+                sliders[26].setProgress(175); sliders[27].setProgress(32);
+                sliders[28].setProgress(180);sliders[29].setProgress(90);
+                sliders[30].setProgress(120);sliders[31].setProgress(70);
+                sliders[32].setProgress(160);sliders[33].setProgress(80);
+                sliders[34].setProgress(170);sliders[35].setProgress(142);
+                sliders[36].setProgress(110);sliders[37].setProgress(140);
+                sliders[38].setProgress(184);sliders[39].setProgress(100);
+                sliders[40].setProgress(150);sliders[41].setProgress(130);
+                sliders[42].setProgress(88);sliders[43].setProgress(200);
+            });
+            EditState analog=(EditState)field(surface,"state");
+            require(analog.ringsA[0]>.8f&&analog.ringsA[2]>.85f,
+                "Ring amount and thickness update immediately");
+            require(analog.crtA[0]>.75f&&analog.crtA[3]>.7f,
+                "CRT strength and curvature update immediately");
+            require(analog.glitchA[0]>.9f&&analog.glitchB[1]>.99f,
+                "Glitch bands and grayscale update immediately");
+            runOnMainSync(()->{
+                for(int i=26;i<44;i++)sliders[i].setProgress(
+                    Math.round(EditState.ART_DEFAULTS[i-26]*200));
             });
             stage("live preview");
             long startFrames = surface.frameCount;

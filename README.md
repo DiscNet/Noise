@@ -1,39 +1,29 @@
-<div align="center">
-  <img src=".github/assets/noise-hero.svg" alt="Noise! — editor de imagens para Android, com interface escura e prévia ilustrativa do efeito dither" width="100%">
+# Noise! 1.8
 
-  **Editor de imagens offline para Android.** Efeitos criativos, ajustes em tempo real e exportação em PNG.
+Um editor de imagem Android offline com interface de vidro, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
 
-  [**Baixar APK**](https://github.com/DiscNet/Noise/releases/latest) · [Explorar código](app/src/main) · [Compilar](#compilação)
-</div>
+## Novidade: ARTE
 
-<br>
+Três efeitos exclusivos, criados proceduralmente a partir das três primeiras imagens de referência. **Não são imagens aplicadas como overlay estático.** Todos os 18 controles podem ser ajustados com barras, em tempo real, em qualquer combinação e no PNG exportado.
 
-<div align="center">
-  <img src=".github/assets/noise-effects.svg" alt="Ilustrações dos efeitos Dither Neon, Ruído Analógico e da interface Liquid Glass do Noise!" width="100%">
-  <sub>Arte ilustrativa dos efeitos e da identidade visual do app.</sub>
-</div>
+| Efeito | Proposta visual | Ajustes independentes |
+|---|---|---|
+| **Anéis** | círculos concêntricos brancos sobre preto, com desgaste irregular (primeira referência) | Intensidade, Espaçamento, Espessura, Centro X, Centro Y, Desgaste |
+| **CRT** | tubo analógico em tons cinza-azulados, curvatura, scanlines e bordas escuras (segunda referência) | Intensidade, Frequência, Suavidade, Curvatura, Vinheta CRT, Tom do fósforo |
+| **Glitch** | fotografia distorcida, interferência horizontal, faixas quebradas e alto contraste monocromático (terceira referência) | Intensidade, Faixas, Deslocamento, Falhas, Estática, Monocromia |
 
-## Recursos
+A intensidade inicial dos três modos é **zero**, para que nenhuma foto seja alterada ao abrir. Selecione **Arte → Anéis / CRT / Glitch → Aplicar efeito** para ativar o modo a 100%, e personalize qualquer valor de 0 a 100. Os demais efeitos já existentes (Básico, Ruído, Dither e Efeitos) continuam disponíveis; os estilos também podem ser sobrepostos entre si.
 
-- ◈ **Cor & luz:** saturação, vibração, exposição, contraste, matiz e outros ajustes com prévia pela GPU.
-- ⁙ **Texturas & efeitos:** ruído, dither neon, brilho difuso, desvio RGB, poeira, vinheta, desfoque e inversão de cores.
-- ⌗ **Recorte livre:** ajuste a seleção arrastando os cantos da imagem.
-- ▧ **Galeria integrada:** fotos recentes e acesso a todas as imagens do álbum selecionado.
-- ↓ **Salvamento direto:** PNG em `Imagens/Noise!` (`Pictures/Noise!`), preservado após desinstalar o app.
+## Interface e referências
 
-## Download
+A quarta imagem inspirou o **novo plano de fundo** com fitas abstratas ondulantes em gradiente violeta, pêssego e rosa sobre preto, além de uma textura de brilho diagonal nos painéis de vidro. A interface é desenhada por código Android e continua interativa, sem transformar uma captura de tela em UI. Os elementos são inspirações estilísticas, não cópias de arte ou código de terceiros.
 
-**[→ Última versão do Noise!](https://github.com/DiscNet/Noise/releases/latest)**  
-Android 8.0+ · Sem conta · Edição offline
+## Demais ferramentas
 
-## Compilação
+Galeria com fotos recentes e álbuns completos, recorte de imagem por arraste dos cantos, original/comparação, neon dither ajustável, ruído orgânico, pó e vinheta, brilho difuso sem arrasto direcional, desfoque radial rotativo e salvamento automático em PNG na pasta pública **Imagens/Noise!**, que persiste após desinstalar o aplicativo.
 
-Requer **Java 17**, **Gradle 8.9** e **Android SDK 35**.
+## Build
 
-```bash
-gradle --no-daemon assembleDebug
-```
+JDK 17, Gradle 8.9 e Android SDK 35. Execute `gradle --no-daemon assembleDebug assembleDebugAndroidTest`. O CI testa os shaders no emulador e só publica a release quando os testes instrumentados passam.
 
-APK gerado em `app/build/outputs/apk/debug/app-debug.apk`.
-
-<sub>Noise! v1.7 · DiscNet · OpenGL ES 2.0</sub>
+[Instalar a versão mais recente](https://github.com/DiscNet/Noise/releases/latest)

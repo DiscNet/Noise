@@ -39,7 +39,7 @@ final class GlPipeline {
         stageCanvas=glGetUniformLocation(stageProgram,"uCanvas");
         position = glGetAttribLocation(program, "aPosition");
         coordinate = glGetAttribLocation(program, "aTexCoord");
-        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
+        for (String name : new String[]{"uImage", "uSize", "uColor", "uTone", "uHue", "uStyle", "uFxA", "uFxB", "uDitherA", "uDitherB", "uRingsA", "uRingsB", "uCrtA", "uCrtB", "uGlitchA", "uGlitchB", "uPatternScale", "uInvert", "uOriginal", "uExport"})
             uniforms.put(name, glGetUniformLocation(program, name));
         glDisable(GL_DEPTH_TEST); glDisable(GL_BLEND); glDisable(GL_DITHER);
     }
@@ -93,6 +93,12 @@ final class GlPipeline {
         glUniform4fv(uniforms.get("uFxB"), 1, state.fxB, 0);
         glUniform4fv(uniforms.get("uDitherA"),1,state.ditherA,0);
         glUniform2fv(uniforms.get("uDitherB"),1,state.ditherB,0);
+        glUniform4fv(uniforms.get("uRingsA"),1,state.ringsA,0);
+        glUniform2fv(uniforms.get("uRingsB"),1,state.ringsB,0);
+        glUniform4fv(uniforms.get("uCrtA"),1,state.crtA,0);
+        glUniform2fv(uniforms.get("uCrtB"),1,state.crtB,0);
+        glUniform4fv(uniforms.get("uGlitchA"),1,state.glitchA,0);
+        glUniform2fv(uniforms.get("uGlitchB"),1,state.glitchB,0);
         // Band-limited procedural traces: one wave stays several screen pixels
         // wide while the export keeps original-resolution detail.
         float patternScale = export ? 1f : Math.max(1f, Math.max(
