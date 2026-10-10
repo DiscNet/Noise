@@ -24,26 +24,54 @@ final class Glass {
         view.setMinimumHeight(dp(c, 44));
         view.setPadding(dp(c, 10), dp(c, 6), dp(c, 10), dp(c, 6));
     }
-    /** Backdrop: soft diffused orbs, never a distracting rainbow gradient. */
+    /** Satin-gradient background inspired by the motion and chromatic ribbons
+      * of the user's final artwork. Vector paths, no baked reference image. */
     static final class Backdrop extends FrameLayout {
-        private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Backdrop(Context c) {
-            super(c);
-            setBackgroundColor(0xff09080f);
-            setWillNotDraw(false);
+        private final Paint light=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path sweep=new Path();
+        Backdrop(Context context){
+            super(context);setBackgroundColor(0xff07050c);setWillNotDraw(false);
         }
-        private void orb(Canvas c,float x,float y,float radius,int color) {
-            glow.setShader(new RadialGradient(x,y,radius,color,Color.TRANSPARENT,
+        private void orb(Canvas canvas,float cx,float cy,float radius,int color){
+            light.setStyle(Paint.Style.FILL);
+            light.setShader(new RadialGradient(cx,cy,radius,color,0x00000000,
                 Shader.TileMode.CLAMP));
-            c.drawCircle(x,y,radius,glow);
-            glow.setShader(null);
+            canvas.drawCircle(cx,cy,radius,light);light.setShader(null);
         }
-        @Override protected void onDraw(Canvas c) {
-            super.onDraw(c);
+        private void ribbon(Canvas canvas,float x0,float y0,float x1,float y1,
+                            float x2,float y2,float x3,float y3,float thick,
+                            float w,float h){
+            sweep.reset();sweep.moveTo(x0*w,y0*h);
+            sweep.cubicTo(x1*w,y1*h,x2*w,y2*h,x3*w,y3*h);
+            light.setStyle(Paint.Style.STROKE);
+            light.setStrokeCap(Paint.Cap.ROUND);light.setStrokeJoin(Paint.Join.ROUND);
+            // Diffuse purple fringe wraps a warm pink-orange inner reflection.
+            light.setStrokeWidth(thick*2.6f*w);
+            light.setShader(new LinearGradient(0,0,w,h,
+                new int[]{0x00262484,0x72352291,0x4cdd48b4,0x001c0c32},
+                new float[]{0f,.33f,.79f,1f},Shader.TileMode.CLAMP));
+            canvas.drawPath(sweep,light);
+            light.setStrokeWidth(thick*.92f*w);
+            light.setShader(new LinearGradient(0,h*.1f,w,h*.9f,
+                new int[]{0x00ffa34d,0xa3ffad83,0x98c44daf,0x06ffc2a4},
+                new float[]{0f,.28f,.73f,1f},Shader.TileMode.CLAMP));
+            canvas.drawPath(sweep,light);
+            light.setStrokeWidth(Math.max(1f,thick*.15f*w));
+            light.setShader(new LinearGradient(0,h*.16f,w,h*.88f,
+                0xb6ffcb96,0x96e65add,Shader.TileMode.CLAMP));
+            canvas.drawPath(sweep,light);
+            light.setShader(null);light.setStyle(Paint.Style.FILL);
+        }
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);
             float w=getWidth(),h=getHeight();
-            orb(c,w*.86f,h*.19f,w*.76f,0x552d1c58);
-            orb(c,w*.06f,h*.72f,w*.64f,0x403b125e);
-            orb(c,w*.87f,h*.88f,w*.55f,0x393c2349);
+            if(w<=0||h<=0)return;
+            orb(canvas,w*.12f,-h*.13f,w*.8f,0x624b286e);
+            orb(canvas,w*.94f,h*.39f,w*.66f,0x51301f6a);
+            orb(canvas,w*.12f,h*.90f,w*.79f,0x54371a75);
+            ribbon(canvas,-.50f,.17f,.25f,.04f,.70f,.55f,1.35f,.12f,.025f,w,h);
+            ribbon(canvas,-.24f,.83f,.58f,.49f,.36f,.99f,1.23f,.73f,.032f,w,h);
+            ribbon(canvas,-.27f,.99f,.43f,.59f,.67f,1.31f,1.25f,1.07f,.020f,w,h);
         }
     }
 
@@ -92,6 +120,13 @@ final class Glass {
                 0x55ffffff,0x00ffffff,Shader.TileMode.CLAMP));
             canvas.drawRect(l,t,l+w,t+Math.max(1,h*.46f),paint);
             paint.setShader(null);
+            // Fine diagonal metal-mesh highlights on the frosted material.
+            paint.setStrokeWidth(1f);
+            paint.setColor(0x13ffc5ee);
+            float step=Math.max(12f,Math.min(w,h)*.22f);
+            for(float xx=-h;xx<w+h;xx+=step) {
+                canvas.drawLine(l+xx,t,l+xx+h,t+h,paint);
+            }
             canvas.restore();
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(Math.max(1f,Math.min(w,h)*.018f));
