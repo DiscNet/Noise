@@ -5,6 +5,10 @@ import android.app.AlertDialog;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.provider.MediaStore;
+import android.provider.MediaStore.Images;
+import android.content.ContentValues;
+import android.media.MediaScannerConnection;
+import android.os.Environment;
 import android.text.*;
 import android.text.InputType;
 import android.os.*;
@@ -43,6 +47,8 @@ public class MainActivity extends Activity {
     private Glass.Backdrop appBackground;
     private GalleryScreen galleryScreen;
     private static final int GALLERY_PERMISSION=73;
+    private static final int SAVE_PERMISSION=74;
+    private CropEditor cropEditor;
     private LinearLayout empty, controls;
     private Switch invertSwitch;
     private ScrollView controlScroll;
@@ -84,7 +90,7 @@ public class MainActivity extends Activity {
         header.addView(title, new LinearLayout.LayoutParams(0, dp(54), 1));
         open=IconArt.button(this,IconArt.GALLERY,"Galeria de fotos");
         header.addView(open, lp(dp(46), dp(46)));
-        resizeButton=IconArt.button(this,IconArt.RESIZE,"Redimensionar a imagem");
+        resizeButton=IconArt.button(this,IconArt.RESIZE,"Recortar imagem pelos cantos");
         LinearLayout.LayoutParams resParams=lp(dp(44),dp(44));resParams.leftMargin=dp(3);
         header.addView(resizeButton,resParams);
         save=IconArt.button(this,IconArt.SAVE,"Salvar PNG");
@@ -292,12 +298,12 @@ public class MainActivity extends Activity {
     }
     private void showOptions(View anchor){
         PopupMenu menu=new PopupMenu(this,anchor);
-        menu.getMenu().add("Abrir foto"); menu.getMenu().add("Redimensionar");
+        menu.getMenu().add("Abrir foto"); menu.getMenu().add("Recortar");
         menu.getMenu().add("Salvar PNG"); menu.getMenu().add("Redefinir ajustes");
         menu.setOnMenuItemClickListener(item->{
             String title=item.getTitle().toString();
             if(title.equals("Abrir foto"))pickImage();
-            else if(title.equals("Redimensionar"))showResizeDialog();
+            else if(title.equals("Recortar"))showResizeDialog();
             else if(title.equals("Salvar PNG"))chooseOutput();
             else reset();
             return true;
@@ -305,113 +311,44 @@ public class MainActivity extends Activity {
         menu.show();
     }
     /** Export-only dimensions: the source bitmap is never destructively changed. */
-    /** Drag-based dimension editing. No keyboard and no numeric text fields. */
+    /** A full-screen in-app crop canvas replaces numeric resizing and sliders.
+     * Dragging a handle chooses exactly which pixels to keep.
+     */
     private void showResizeDialog(){
-        if(original==null){Toast.makeText(this,"Abra uma imagem primeiro",Toast.LENGTH_SHORT).show();return;}
-        LinearLayout form=vertical();
-        form.setPadding(dp(18),dp(8),dp(18),dp(4));
-        TextView info=text("ARRASTE PARA ALTERAR AS DIMENSÕES",11,Glass.MUTED);
-        info.setLetterSpacing(.12f);form.addView(info,lp(-1,dp(30)));
-        FrameLayout ratioFrame=new FrameLayout(this);
-        ratioFrame.setBackground(Glass.panel(this,0xff242032,0xff171523,16,0x55cda9ee));
-        form.addView(ratioFrame,lp(-1,dp(140)));
-        View shape=new View(this);
-        shape.setBackground(Glass.panel(this,0xa46d3b91,0x78603491,9,0xccf0b3ff));
-        ratioFrame.addView(shape,new FrameLayout.LayoutParams(dp(100),dp(100),Gravity.CENTER));
-        gap(form,10);
-        TextView widthLabel=text("",14,Glass.INK);form.addView(widthLabel,lp(-1,dp(30)));
-        Glass.Slider width=new Glass.Slider(this,0xffff87d4);
-        width.setMax(4095);
-        width.setProgress(Math.max(0,Math.min(4095,outputWidth-1)));
-        form.addView(width,lp(-1,dp(42)));
-        TextView heightLabel=text("",14,Glass.INK);form.addView(heightLabel,lp(-1,dp(30)));
-        Glass.Slider height=new Glass.Slider(this,0xff95aaff);
-        height.setMax(4095);
-        height.setProgress(Math.max(0,Math.min(4095,outputHeight-1)));
-        form.addView(height,lp(-1,dp(42)));
-        CheckBox lock=new CheckBox(this);
-        lock.setText("Manter proporção original");
-        lock.setTextColor(Glass.INK);
-        lock.setChecked(Math.abs((float)outputWidth/outputHeight-
-                 (float)original.getWidth()/original.getHeight())<0.015f);
-        form.addView(lock,lp(-1,dp(43)));
-        TextView presetsTitle=text("TAMANHOS RÁPIDOS",11,Glass.MUTED);
-        presetsTitle.setLetterSpacing(.10f);form.addView(presetsTitle,lp(-1,dp(30)));
-        LinearLayout presets=new LinearLayout(this);form.addView(presets,lp(-1,dp(44)));
-        TextView footer=text("Exportação PNG · máximo 4096 px por dimensão.\nA foto original não é alterada.",
-            11,Glass.MUTED);footer.setGravity(Gravity.CENTER);
-        form.addView(footer,lp(-1,dp(47)));
-        final boolean[] blockEvents={false};
-        Runnable update=()->{
-            int w=width.getProgress()+1,h=height.getProgress()+1;
-            widthLabel.setText("Largura    "+w+" px");
-            heightLabel.setText("Altura       "+h+" px");
-            float f=Math.min(116f/w,116f/h);
-            int pw=Math.max(6,Math.round(w*f)),ph=Math.max(6,Math.round(h*f));
-            FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(
-                dp(pw),dp(ph),Gravity.CENTER);
-            shape.setLayoutParams(sp);
-        };
-        width.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar seek,int progress,boolean fromUser){
-                if(blockEvents[0])return;
-                blockEvents[0]=true;
-                if(lock.isChecked()){
-                    int newH=Math.max(1,Math.min(4096,Math.round(
-                       (progress+1)*(float)original.getHeight()/original.getWidth())));
-                    height.setProgress(newH-1);
-                }
-                blockEvents[0]=false;update.run();
-            }
-            public void onStartTrackingTouch(SeekBar seek){}
-            public void onStopTrackingTouch(SeekBar seek){}
-        });
-        height.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar seek,int progress,boolean fromUser){
-                if(blockEvents[0])return;
-                blockEvents[0]=true;
-                if(lock.isChecked()){
-                    int newW=Math.max(1,Math.min(4096,Math.round(
-                        (progress+1)*(float)original.getWidth()/original.getHeight())));
-                    width.setProgress(newW-1);
-                }
-                blockEvents[0]=false;update.run();
-            }
-            public void onStartTrackingTouch(SeekBar seek){}
-            public void onStopTrackingTouch(SeekBar seek){}
-        });
-        lock.setOnCheckedChangeListener((button,checked)->{
-            if(checked)width.setProgress(width.getProgress()==4095?4094:width.getProgress()+1);
-            update.run();
-        });
-        for(final int percent:new int[]{25,50,100,200}){
-            TextView preset=action(percent+"%",false);
-            LinearLayout.LayoutParams item=new LinearLayout.LayoutParams(0,dp(40),1);
-            item.setMargins(dp(2),0,dp(2),0);
-            presets.addView(preset,item);
-            preset.setOnClickListener(v->{
-                blockEvents[0]=true;
-                float factor=percent/100f;
-                float scale=Math.min(factor,Math.min(
-                    4096f/original.getWidth(),4096f/original.getHeight()));
-                width.setProgress(Math.max(0,Math.round(original.getWidth()*scale)-1));
-                height.setProgress(Math.max(0,Math.round(original.getHeight()*scale)-1));
-                blockEvents[0]=false;update.run();
-            });
+        if(original==null||loading||exporting){
+            Toast.makeText(this,"Abra uma foto primeiro",Toast.LENGTH_SHORT).show();return;
         }
-        update.run();
-        AlertDialog dialog=new AlertDialog.Builder(this)
-            .setTitle("Redimensionar").setView(form)
-            .setNegativeButton("Cancelar",null)
-            .setNeutralButton("Original",(d,w)->{
-                outputWidth=original.getWidth();outputHeight=original.getHeight();
-                updateSizeLabel();
-            })
-            .setPositiveButton("Aplicar",(d,w)->{
-                outputWidth=width.getProgress()+1;outputHeight=height.getProgress()+1;
-                updateSizeLabel();
-            }).create();
-        dialog.show();
+        if(cropEditor!=null)return;
+        Bitmap current=original;
+        cropEditor=new CropEditor(this,current,new CropEditor.Listener(){
+            public void cancel(){closeCropEditor();}
+            public void apply(Rect area){
+                if(area.width()<1||area.height()<1)return;
+                if(area.left==0&&area.top==0&&
+                   area.width()==current.getWidth()&&area.height()==current.getHeight()){
+                    closeCropEditor();return;
+                }
+                Bitmap trimmed=Bitmap.createBitmap(current,area.left,area.top,
+                    area.width(),area.height());
+                // Cropping is actual bitmap geometry. Both the editor preview
+                // and GPU export now see exactly the same selected pixels.
+                closeCropEditor();
+                if(trimmed!=current){
+                    restoreWidth=restoreHeight=0;
+                    setImage(trimmed);
+                    status.setText("Recorte aplicado · "+
+                         trimmed.getWidth()+" × "+trimmed.getHeight()+" px");
+                }
+            }
+        });
+        appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));
+        cropEditor.bringToFront();
+    }
+    private void closeCropEditor(){
+        if(cropEditor!=null){
+            appBackground.removeView(cropEditor);
+            cropEditor=null;
+        }
     }
     private void pickImage(){if(!loading)showGallery();}
     /** Opens the Android system Photo Picker or the device's Gallery activity,
@@ -476,8 +413,11 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(request,names,grants);
         if(request==GALLERY_PERMISSION && galleryScreen!=null)
             galleryScreen.refresh(hasGalleryPermission());
+        if(request==SAVE_PERMISSION && grants.length>0 &&
+            grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();
     }
     @Override public void onBackPressed(){
+        if(cropEditor!=null){closeCropEditor();return;}
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE && original!=null){
             closeGallery();return;
         }
@@ -485,9 +425,14 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
     private void chooseOutput() {
-        if (original == null || exporting || loading) return;
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT); intent.setType("image/png"); intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.putExtra(Intent.EXTRA_TITLE, "Noise-" + System.currentTimeMillis() + ".png"); startActivityForResult(intent, 2);
+        if(original==null||exporting||loading)return;
+        if(Build.VERSION.SDK_INT<29 &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                 !=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},SAVE_PERMISSION);
+            return;
+        }
+        exportTo(null,true);
     }
     private void load(Uri uri) {
         int token = loads.incrementAndGet(), limit = maxTexture; loading = true; status.setText("Abrindo imagem…"); updateActions();
@@ -543,21 +488,89 @@ public class MainActivity extends Activity {
         } catch (IOException ignored) { /* Non-EXIF formats are valid images too. */ }
         return bitmap;
     }
-    private void export(Uri uri) {
-        Bitmap bitmap = original; EditState state = new EditState(values, effects, filters, ditherControls, invertSwitch.isChecked(), false);
-        final int saveWidth=outputWidth, saveHeight=outputHeight;
-        exporting = true; updateActions(); status.setText("Salvando sua imagem…");
-        worker.execute(() -> {
-            Bitmap output = null;
-            try {
-                output = GpuExporter.render(this, bitmap, state,saveWidth,saveHeight);
-                try (OutputStream stream = getContentResolver().openOutputStream(uri, "wt")) {
-                    if (stream == null || !output.compress(Bitmap.CompressFormat.PNG, 100, stream)) throw new IOException("PNG");
+    /** Retained for instrumentation and for writing a caller-owned URI. */
+    private void export(Uri uri){exportTo(uri,false);}
+
+    /** Store directly in public Pictures/Noise! (NOT cache or Android/data).
+     * MediaStore entries remain in the user's gallery after app uninstall.
+     */
+    private void exportTo(Uri suppliedUri,boolean publicGallery){
+        if(original==null||loading||exporting)return;
+        Bitmap bitmap=original;
+        EditState state=new EditState(values,effects,filters,ditherControls,
+            invertSwitch.isChecked(),false);
+        final int width=outputWidth,height=outputHeight;
+        exporting=true;updateActions();status.setText("Salvando em Imagens/Noise!…");
+        worker.execute(()->{
+            Bitmap output=null;
+            Uri inserted=null,uri=suppliedUri;
+            File legacyFile=null;
+            boolean pending=false;
+            try{
+                output=GpuExporter.render(this,bitmap,state,width,height);
+                String name="Noise-"+System.currentTimeMillis()+".png";
+                if(publicGallery){
+                    if(Build.VERSION.SDK_INT>=29){
+                        ContentValues values=new ContentValues();
+                        values.put(Images.Media.DISPLAY_NAME,name);
+                        values.put(Images.Media.MIME_TYPE,"image/png");
+                        values.put(Images.Media.RELATIVE_PATH,
+                            Environment.DIRECTORY_PICTURES+"/Noise!");
+                        values.put(Images.Media.IS_PENDING,1);
+                        inserted=getContentResolver().insert(
+                            Images.Media.EXTERNAL_CONTENT_URI,values);
+                        if(inserted==null)throw new IOException("MediaStore indisponível");
+                        uri=inserted; pending=true;
+                    }else{
+                        File pictures=Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_PICTURES);
+                        File folder=new File(pictures,"Noise!");
+                        if(!folder.exists()&&!folder.mkdirs())
+                            throw new IOException("Não foi possível criar a pasta Noise!");
+                        legacyFile=new File(folder,name);
+                    }
                 }
-                runOnUiThread(() -> { if (!destroyed) { exporting = false; updateActions(); status.setText("PNG salvo. Seu novo visual está pronto."); Toast.makeText(this, "Imagem salva!", Toast.LENGTH_SHORT).show(); } });
-            } catch (Exception | OutOfMemoryError e) {
-                runOnUiThread(() -> { if (!destroyed) { exporting = false; updateActions(); status.setText("Não foi possível salvar. Tente outra pasta ou imagem menor."); } });
-            } finally { if (output != null) output.recycle(); }
+                if(legacyFile!=null){
+                    try(OutputStream stream=new FileOutputStream(legacyFile)){
+                        if(!output.compress(Bitmap.CompressFormat.PNG,100,stream))
+                            throw new IOException("Falha na codificação PNG");
+                    }
+                    MediaScannerConnection.scanFile(this,
+                        new String[]{legacyFile.getAbsolutePath()},
+                        new String[]{"image/png"},null);
+                }else{
+                    if(uri==null)throw new IOException("Destino não informado");
+                    try(OutputStream stream=getContentResolver().openOutputStream(uri,"w")){
+                        if(stream==null||!output.compress(Bitmap.CompressFormat.PNG,100,stream))
+                            throw new IOException("Não foi possível salvar PNG");
+                    }
+                    if(pending){
+                        ContentValues complete=new ContentValues();
+                        complete.put(Images.Media.IS_PENDING,0);
+                        getContentResolver().update(uri,complete,null,null);
+                        pending=false;
+                    }
+                }
+                runOnUiThread(()->{
+                    if(!destroyed){
+                        exporting=false;updateActions();
+                        status.setText("Salvo em Imagens/Noise! · disponível na Galeria");
+                        Toast.makeText(this,"Imagem salva em Imagens/Noise!",Toast.LENGTH_LONG).show();
+                    }
+                });
+            }catch(Exception|OutOfMemoryError problem){
+                if(inserted!=null){
+                    try{getContentResolver().delete(inserted,null,null);}catch(Exception ignored){}
+                }
+                if(legacyFile!=null)legacyFile.delete();
+                runOnUiThread(()->{
+                    if(!destroyed){
+                        exporting=false;updateActions();
+                        status.setText("Erro ao salvar na pasta Noise!");
+                        Toast.makeText(this,"Não foi possível salvar a imagem",Toast.LENGTH_LONG).show();
+                    }
+                });
+            }finally{if(output!=null)output.recycle();}
         });
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -566,7 +579,7 @@ public class MainActivity extends Activity {
         if (request == 1) {
             try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (SecurityException ignored) {}
             load(uri);
-        } else if (request == 2 && original != null && !exporting) export(uri);
+        }
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putFloatArray("values", values.clone()); state.putFloatArray("effects",effects.clone()); state.putFloatArray("filters",filters.clone()); state.putFloatArray("ditherControls",ditherControls.clone());
@@ -575,5 +588,5 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume() { super.onResume(); if (preview != null) preview.onResume(); }
     @Override protected void onPause() { comparing = false; publish(); if (preview != null) preview.onPause(); super.onPause(); }
-    @Override protected void onDestroy() { destroyed = true; loads.incrementAndGet(); worker.shutdown(); if(galleryScreen!=null)galleryScreen.dispose(); super.onDestroy(); }
+    @Override protected void onDestroy() { closeCropEditor(); destroyed = true; loads.incrementAndGet(); worker.shutdown(); if(galleryScreen!=null)galleryScreen.dispose(); super.onDestroy(); }
 }
