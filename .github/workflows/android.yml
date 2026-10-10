@@ -75,15 +75,22 @@ jobs:
         with:
           name: Noise-smoke-tests
           path: smoke/
-      - run: cp app/build/outputs/apk/debug/app-debug.apk Noise.apk
+      - name: Rename APK with version
+        run: |
+          VERSION=$(sed -n "s/.*versionName '\\([^']*\\)'.*/\\1/p" app/build.gradle)
+          test -n "$VERSION"
+          FILE="Noise! V${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FILE"
+          echo "APK_FILE=$FILE" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
-          name: Noise-APK
-          path: Noise.apk
+          name: Noise-V${{ env.APP_VERSION }}
+          path: ${{ env.APK_FILE }}
       - name: Publish installable APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Noise.apk --title "Noise! 1.11 ($TAG)" --notes "Noise! 1.11: Editor redesenhado com barra superior minimalista, atalhos Abrir/Recortar/Salvar reunidos sob a prévia, abas de efeitos roláveis, controles mais amplos e aparência grafite/vidro mais clean. Mantém Dither, ASCII em branco/cores da foto/azul-laranja-vermelho, recorte por gestos, galeria completa e exportação PNG na pasta Pictures/Noise!. Android 8+."
+          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes "Noise! V${APP_VERSION}: interface mais compacta e confortável, controles de intensidade até 200%, Glow nítido sem rastros, Névoa sem blur e Realce de bordas no lugar do desfoque rotativo. Mantém a edição GPU em tempo real, ASCII, Dither, galeria, recorte e salvamento em Pictures/Noise!. Android 8+."
