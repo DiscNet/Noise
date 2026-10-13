@@ -11,7 +11,7 @@ uniform vec4 uTone;   // highlights, whites, blacks, noise
 uniform vec2 uHue;
 uniform vec3 uStyle;  // neon dither, independently adjustable glow, RGB shift
 uniform vec4 uFxA;    // Fade, skin tone, dust, vignette
-uniform vec4 uFxB;    // aberration, mist, sharpen, rotational blur
+uniform vec4 uFxB;    // aberration, mist, sharpen, edge detail
 uniform vec4 uDitherA; // depth, pattern offset X and Y, pattern scale
 uniform vec2 uDitherB; // dot density, wave distortion
 uniform vec4 uRingsA; // blend, spacing, line thickness, center X
@@ -31,6 +31,12 @@ uniform float uPatternScale; // source-pixels per display pixel, 1.0 for export
 uniform bool uInvert;
 uniform bool uOriginal;
 uniform bool uExport;
+uniform vec4 uGrain; // strength, size in reference pixels, roughness, colored
+uniform vec2 uGlow; // threshold and isotropic radius
+uniform vec2 uDetail;
+uniform int uDitherMethod; // 0 original Neon, 1 Bayer, 2 Threshold
+uniform int uDitherPalette; // 0 blue/orange/red, 1 mono, 2 quantized RGB
+
 
 float hash(vec2 p) {
     // Stable per-cell noise. Unlike the old grain, coordinates never wrap modulo 256.
@@ -86,35 +92,12 @@ void main() {
     vec3 c = straight(source);
 
     if (!uOriginal) {
-        if (uTone.w < 0.0) {
-            vec3 sum = vec3(0.0); float weights = 0.0;
-            for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
-                vec4 n4 = texture2D(uImage, vTexCoord + vec2(float(x), float(y)) / uSize);
-                vec3 n = straight(n4);
-                float wt = exp(-dot(n - c, n - c) / 0.025) * n4.a;
-                sum += n * wt; weights += wt;
-            }
-            c = mix(c, sum / max(weights, 0.0001), -uTone.w);
-        }
-        float lum = luminance(c);
-        float chroma = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
-        c = vec3(lum) + (c - lum) * uColor.x * (1.0 + uColor.y * (1.0 - chroma));
-        c = c * uHue.x + (c.brg - c.gbr) * uHue.y
-          + dot(c, vec3((1.0 - uHue.x) / 3.0));
-        c = (c * uColor.z - 0.5) * uColor.w + 0.5;
-        lum = clamp(luminance(c), 0.0, 1.0);
-        c += uTone.x * 0.45 * smoothstep(0.45, 1.0, lum)
-           + uTone.y * 0.35 * smoothstep(0.70, 1.0, lum)
-           + uTone.z * 0.35 * (1.0 - smoothstep(0.0, 0.35, lum));
-
         if (uTone.w > 0.0) {
             vec2 px = floor(vTexCoord * uSize);
             float fine = hash(px);
             float coarse = hash(floor(px * 0.53) + vec2(127.1, 311.7));
             c += (fine * 0.77 + coarse * 0.23 - 0.5) * uTone.w * 0.37;
         }
-        c = clamp(c, 0.0, 1.0);
-
         // Tom de pele: selective warm/orange hue and luminosity adjustment.
         // This is an RGB color-range selection, not a face detector.
         if (uFxA.y > 0.001) {
@@ -146,7 +129,7 @@ void main() {
                 straight(texture2D(uImage, vTexCoord + vec2(0.0, onePixel.y))) +
                 straight(texture2D(uImage, vTexCoord - vec2(0.0, onePixel.y)));
             localAverage *= 0.25;
-            c = clamp(c + (c - localAverage) * 1.35 * uFxB.z, 0.0, 1.0);
+            c = clamp(c + (straight(source) - localAverage) * 1.35 * uFxB.z, 0.0, 1.0);
         }
 
         // Atmospheric lift: tonal only. No multi-tap blur or displaced samples.
@@ -180,7 +163,7 @@ void main() {
             c.b = mix(c.b, blueChannel, uFxB.x);
         }
 
-        if (uStyle.x > 0.001) {
+        if (uStyle.x > 0.001 && uDitherMethod == 0) {
             // Five traits from the reference:
             // 1) nearly-black unlit background; 2) fine flowing horizontal
             // contour traces; 3) continuous cool/warm false-color bands;
@@ -272,21 +255,52 @@ void main() {
             c = mix(c, dithered, min(amount, 1.0));
         }
 
-        // Sharp, isotropic glow. Never replace the source pixel with blurred
-        // colors or use long-distance shifted samples (no motion trails).
+        // A symmetric 5x5 luminous kernel adds light; source geometry never moves.
         if (uStyle.y > 0.001) {
-            vec2 delta = vec2(max(1.0,uPatternScale)*1.4) / uSize;
-            vec3 neighbors = (
-                straight(texture2D(uImage,clamp(vTexCoord+vec2(delta.x,0.0),vec2(0.0),vec2(1.0)))) +
-                straight(texture2D(uImage,clamp(vTexCoord-vec2(delta.x,0.0),vec2(0.0),vec2(1.0)))) +
-                straight(texture2D(uImage,clamp(vTexCoord+vec2(0.0,delta.y),vec2(0.0),vec2(1.0)))) +
-                straight(texture2D(uImage,clamp(vTexCoord-vec2(0.0,delta.y),vec2(0.0),vec2(1.0))))
-            ) * 0.25;
-            float core = smoothstep(0.34,0.88,luminance(c));
-            float edgeHalo = smoothstep(0.52,0.93,luminance(neighbors));
-            vec3 light = max(c * core, neighbors * (edgeHalo * 0.38));
-            c = clamp(c + light * uStyle.y * (0.45 * core + 0.18 * edgeHalo),
-                      0.0, 1.0);
+            vec3 bloom=vec3(0.0); float weight=0.0;
+            for(int yy=-2;yy<=2;yy++)for(int xx=-2;xx<=2;xx++){
+                vec2 offset=vec2(float(xx),float(yy));
+                float w=exp(-dot(offset,offset)*.55);
+                vec3 n=straight(texture2D(uImage,clamp(vTexCoord+offset*uGlow.y*.5/uSize,0.0,1.0)));
+                float gate=smoothstep(uGlow.x,min(1.0,uGlow.x+.25),luminance(n));
+                bloom+=n*gate*w;weight+=w;
+            }
+            c=clamp(c+bloom/max(weight,.001)*uStyle.y*.55,0.0,1.0);
+        }
+        if(uGrain.x>.001){
+            vec2 p=vTexCoord*uSize/max(1.0,uGrain.y);
+            vec2 cell=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);
+            float soft=mix(mix(hash(cell),hash(cell+vec2(1,0)),f.x),
+                           mix(hash(cell+vec2(0,1)),hash(cell+vec2(1,1)),f.x),f.y);
+            float mono=mix(soft,hash(cell+17.0),uGrain.z)-.5;
+            vec3 rgb=vec3(mono);
+            if(uGrain.w>.5)rgb=vec3(mono,hash(cell+vec2(81.7,27.2))-.5,hash(cell+vec2(51.3,117.8))-.5);
+            float protection=.25+.75*sin(clamp(luminance(c),0.0,1.0)*3.14159);
+            c=clamp(c+rgb*uGrain.x*.28*protection,0.0,1.0);
+        }
+        if(uDetail.x>.001){
+            vec2 d=vec2(4.0)/uSize;
+            vec3 avg=(straight(texture2D(uImage,vTexCoord+vec2(d.x,0)))+
+                straight(texture2D(uImage,vTexCoord-vec2(d.x,0)))+
+                straight(texture2D(uImage,vTexCoord+vec2(0,d.y)))+
+                straight(texture2D(uImage,vTexCoord-vec2(0,d.y))))*.25;
+            c=clamp(c+(straight(source)-avg)*uDetail.x*.8,0.0,1.0);
+        }
+        if(uStyle.x>.001 && uDitherMethod>0){
+            vec2 cell=floor((vTexCoord*uSize+(uDitherA.yz-.5)*uSize*.42)/exp2(uDitherA.w*4.0));
+            float threshold=uDitherMethod==1?bayer4(cell):.5;
+            float levels=floor(mix(3.0,11.0,uDitherA.x)+.5);
+            vec3 q=clamp(c+(threshold-.5)/max(1.0,levels-1.0)+(uDitherB.x-.5)*.3,0.0,1.0);
+            vec3 result=floor(q*(levels-1.0)+.5)/(levels-1.0);
+            if(uDitherPalette==1)result=vec3(step(threshold,clamp(luminance(c)+(uDitherB.x-.5)*.6,0.0,1.0)));
+            if(uDitherPalette==0){
+                vec3 blue=vec3(.09,.23,1.0),orange=vec3(1.0,.45,.015),red=vec3(1.0,.025,.12);
+                result=vec3(0.0);float best=dot(q,q);
+                float dist=dot(q-blue,q-blue);if(dist<best){best=dist;result=blue;}
+                dist=dot(q-orange,q-orange);if(dist<best){best=dist;result=orange;}
+                dist=dot(q-red,q-red);if(dist<best){result=red;}
+            }
+            c=mix(c,result,min(1.0,uStyle.x));
         }
 
         // Analog film dust: multiscale fibers, hairline scratches, flecks,

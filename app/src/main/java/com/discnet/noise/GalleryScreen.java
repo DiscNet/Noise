@@ -26,8 +26,9 @@ final class GalleryScreen extends FrameLayout {
         void onSystemGallery();
         void onGrantPermission();
         void onClose();
+        void onProjects();
     }
-    private static final int RECENT_LIMIT=500; // limit applies only to recents, never folders
+    private final Set<String> pendingThumbnails=Collections.synchronizedSet(new HashSet<>());
     private final Activity activity;
     private final Listener listener;
     private final ExecutorService work=Executors.newFixedThreadPool(3);
@@ -45,7 +46,7 @@ final class GalleryScreen extends FrameLayout {
     private final LinearLayout actions;
     private final PhotoAdapter adapter;
     private int generation=0;
-    private boolean released=false;
+    private volatile boolean released=false;
     private final Handler ui=new Handler(Looper.getMainLooper());
 
     private static final class Photo {
@@ -55,7 +56,7 @@ final class GalleryScreen extends FrameLayout {
     }
     GalleryScreen(Activity activity,Listener listener){
         super(activity);this.activity=activity;this.listener=listener;
-        setBackground(Glass.panel(activity,0xff100d1c,0xff0c0b13,0,0));
+        setBackground(EditorTheme.panel(activity,0xff101216,0xff101216,0,0));
         setPadding(dp(15),dp(8),dp(15),dp(6));
         LinearLayout root=new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -66,19 +67,20 @@ final class GalleryScreen extends FrameLayout {
         ImageView close=IconArt.button(activity,IconArt.BACK,"Voltar para edição");
         heading.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));
         close.setOnClickListener(v->listener.onClose());
-        TextView title=txt("Sua galeria",25,Glass.INK);
+        TextView title=txt("Galeria",20,EditorTheme.INK);
         title.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
         title.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,dp(48),1);
         tp.leftMargin=dp(12);heading.addView(title,tp);
         ImageView system=IconArt.button(activity,IconArt.GALLERY,"Abrir galeria padrão do celular");
         heading.addView(system,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        TextView projects=button("Projetos");heading.addView(projects,new LinearLayout.LayoutParams(dp(80),dp(48)));projects.setOnClickListener(v->listener.onProjects());
         system.setOnClickListener(v->listener.onSystemGallery());
-        TextView label=txt("FOTOS RECENTES  /  ÁLBUNS E PASTAS",11,Glass.MUTED);
+        TextView label=txt("FOTOS / ÁLBUNS E PASTAS",11,EditorTheme.MUTED);
         label.setLetterSpacing(.10f);root.addView(label,new LinearLayout.LayoutParams(-1,dp(28)));
         albums=new Spinner(activity);
         albums.setContentDescription("Escolher álbum ou pasta");
-        albums.setBackground(Glass.frosted(activity,18));
+        albums.setBackground(EditorTheme.surface(activity,18));
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,dp(48));
         ap.bottomMargin=dp(12);root.addView(albums,ap);
         albums.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -87,10 +89,10 @@ final class GalleryScreen extends FrameLayout {
                 selectAlbum(position);
             }
         });
-        notice=txt("Carregando fotos recentes...",14,Glass.MUTED);
-        notice.setGravity(Gravity.CENTER);root.addView(notice,new LinearLayout.LayoutParams(-1,dp(44)));
+        notice=txt("Carregando imagens...",14,EditorTheme.MUTED);
+        notice.setGravity(Gravity.CENTER);notice.setMinHeight(dp(44));root.addView(notice,new LinearLayout.LayoutParams(-1,-2));
         grid=new GridView(activity);
-        grid.setNumColumns(3);grid.setVerticalSpacing(dp(5));grid.setHorizontalSpacing(dp(5));
+        grid.setNumColumns(GridView.AUTO_FIT);grid.setColumnWidth(dp(108));grid.setVerticalSpacing(dp(5));grid.setHorizontalSpacing(dp(5));
         grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         grid.setClipToPadding(false);grid.setPadding(0,dp(5),0,dp(12));
         grid.setVerticalScrollBarEnabled(false);
@@ -111,14 +113,14 @@ final class GalleryScreen extends FrameLayout {
         openPicker.setOnClickListener(v->listener.onSystemGallery());
         refresh(false);
     }
-    private int dp(float size){return Glass.dp(activity,size);}
+    private int dp(float size){return EditorTheme.dp(activity,size);}
     private TextView txt(String s,int size,int color){
         TextView v=new TextView(activity);v.setText(s);v.setTextSize(size);v.setTextColor(color);
         v.setGravity(Gravity.CENTER_VERTICAL);return v;
     }
     private TextView button(String name){
-        TextView v=txt(name,13,Glass.INK);v.setGravity(Gravity.CENTER);
-        Glass.button(v,false);return v;
+        TextView v=txt(name,13,EditorTheme.INK);v.setGravity(Gravity.CENTER);
+        EditorTheme.button(v,false);return v;
     }
     void refresh(boolean hasAccess){
         if(released)return;
@@ -131,9 +133,10 @@ final class GalleryScreen extends FrameLayout {
             updateAlbums();
             notice.setText("Permita o acesso para ver suas fotos e pastas aqui.\nOu use a galeria padrão.");
             notice.setVisibility(VISIBLE);
-            return;
+            actions.setVisibility(VISIBLE);return;
         }
-        notice.setText("Carregando fotos recentes...");
+        actions.setVisibility(GONE);
+        notice.setText("Carregando imagens...");
         notice.setVisibility(VISIBLE);
         work.execute(()->{
             ArrayList<Photo> found=new ArrayList<>();
@@ -157,7 +160,7 @@ final class GalleryScreen extends FrameLayout {
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id));
                             Photo photo=new Photo(uri,key==null?"":key,
                                 label==null||label.isEmpty()?"Sem álbum":label);
-                            if(found.size()<RECENT_LIMIT)found.add(photo);
+                            found.add(photo);
                             discovered.put(photo.bucket,photo.album);
                         }
                     }
@@ -185,7 +188,7 @@ final class GalleryScreen extends FrameLayout {
             android.R.layout.simple_spinner_dropdown_item,albumNames){
             @Override public View getView(int pos,View convert,android.view.ViewGroup parent){
                 TextView v=(TextView)super.getView(pos,convert,parent);
-                v.setTextColor(Glass.INK);v.setPadding(dp(14),0,dp(12),0);
+                v.setTextColor(EditorTheme.INK);v.setPadding(dp(14),0,dp(12),0);
                 return v;
             }
         };
@@ -245,14 +248,14 @@ final class GalleryScreen extends FrameLayout {
             ImageView view=old instanceof ImageView?(ImageView)old:new ImageView(activity);
             view.setLayoutParams(new android.widget.AbsListView.LayoutParams(-1,dp(124)));
             view.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            view.setBackground(Glass.panel(activity,0xff251f35,0xff181523,9,0x28ffffff));
+            view.setBackground(EditorTheme.panel(activity,0xff251f35,0xff181523,9,0x28ffffff));
             if(pos>=filtered.size())return view;
             Uri uri=filtered.get(pos).uri;
             String key=uri.toString();
-            view.setTag(key);
+            view.setTag(key);view.setContentDescription("Abrir imagem de "+filtered.get(pos).album);
             Bitmap cached=thumbnails.get(key);
             view.setImageBitmap(cached);
-            if(cached==null){
+            if(cached==null&&!released&&pendingThumbnails.add(key)){
                 work.execute(()->{
                     Bitmap bmp=null;
                     try{
@@ -273,6 +276,7 @@ final class GalleryScreen extends FrameLayout {
                             }
                         }
                     }catch(Exception | OutOfMemoryError ignored){}
+                    pendingThumbnails.remove(key);
                     final Bitmap thumbnail=bmp;
                     if(thumbnail!=null)ui.post(()->{
                         if(released){thumbnail.recycle();return;}

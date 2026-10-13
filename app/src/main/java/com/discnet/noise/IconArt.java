@@ -9,7 +9,7 @@ import android.widget.ImageView;
 /** Device-independent drawn vector pictograms, not Unicode/emoji font glyphs. */
 final class IconArt extends Drawable {
     static final int SETTINGS=30, GALLERY=31, RESIZE=32, SAVE=33, BACK=34,
-        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41;
+        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41, UNDO=42, REDO=43, MORE=44, FULL=45;
     private final int symbol;
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path=new Path();
@@ -17,13 +17,13 @@ final class IconArt extends Drawable {
     IconArt(int symbol,int color){this.symbol=symbol;this.color=color;p.setStrokeWidth(1.8f);}
     static ImageView button(Context context,int symbol,String description){
         ImageView view=new ImageView(context);
-        view.setImageDrawable(new IconArt(symbol,0xfff1e8fa));
+        view.setImageDrawable(new IconArt(symbol,EditorTheme.INK));
         view.setContentDescription(description);
         view.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        Glass.button(view,false);
+        EditorTheme.button(view,false);
         // 18dp vector inside a comfortable 42dp touch target.
-        view.setPadding(Glass.dp(context,12),Glass.dp(context,12),
-            Glass.dp(context,12),Glass.dp(context,12));
+        view.setPadding(EditorTheme.dp(context,12),EditorTheme.dp(context,12),
+            EditorTheme.dp(context,12),EditorTheme.dp(context,12));
         view.setClickable(true);view.setFocusable(true);
         return view;
     }
@@ -54,6 +54,10 @@ final class IconArt extends Drawable {
         p.setColor(color);p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);
         p.setStrokeJoin(Paint.Join.ROUND);p.setStrokeWidth(1.8f);
         switch(symbol){
+            case UNDO:poly(canvas,8,5,3,10,8,15);poly(canvas,3,10,14,10);arc(canvas,9,10,21,22,270,150);break;
+            case REDO:poly(canvas,16,5,21,10,16,15);poly(canvas,21,10,10,10);arc(canvas,3,10,15,22,270,-150);break;
+            case MORE:p.setStyle(Paint.Style.FILL);circle(canvas,12,5,1.4f);circle(canvas,12,12,1.4f);circle(canvas,12,19,1.4f);break;
+            case FULL:poly(canvas,3,9,3,3,9,3);poly(canvas,15,3,21,3,21,9);poly(canvas,21,15,21,21,15,21);poly(canvas,9,21,3,21,3,15);break;
             case SETTINGS:
                 circle(canvas,12,12,3.2f);circle(canvas,12,12,8.5f);
                 for(int n=0;n<8;n++){double a=n*Math.PI/4d;
