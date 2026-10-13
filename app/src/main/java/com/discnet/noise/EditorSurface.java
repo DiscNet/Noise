@@ -51,7 +51,8 @@ public final class EditorSurface extends GLSurfaceView implements GLSurfaceView.
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){uploaded=null;
         try{pipeline=new GlPipeline(getContext());int max=GlPipeline.maximumTextureSize();post(()->listener.ready(max));}
         catch(Exception e){android.util.Log.e("NoiseGL","Initialize",e);pipeline=null;post(()->listener.failed("A GPU não conseguiu iniciar o editor."));}}
-    @Override public void onSurfaceChanged(GL10 gl,int w,int h){width=w;height=h;}
+    @Override public void onSurfaceChanged(GL10 gl,int w,int h){width=w;height=h;requestRender();}
+    @Override public void onResume(){super.onResume();requestRender();}
     @Override public void onDrawFrame(GL10 gl){if(pipeline==null)return;long start=System.nanoTime();
         try{Bitmap next=source;if(next!=null&&next!=uploaded){pipeline.upload(next);uploaded=next;}
             pipeline.sourceDimensions(sourceWidth,sourceHeight);pipeline.draw(width,height,state,false,zoom,panX,panY);frameCount++;renderNanos=System.nanoTime()-start;}
