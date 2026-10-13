@@ -329,7 +329,9 @@ public class NoiseSmokeTest extends Instrumentation {
                 if(id>=44&&id<50)lo.asciiEnabled=true;
                 if(id==55||id==56)lo.values[54]=1;
                 if(id==57||id==58)lo.values[10]=1;
-                EditorDocument hi=lo.copy();lo.values[id]=AdjustmentSpec.min(id);hi.values[id]=AdjustmentSpec.max(id);
+                EditorDocument hi=lo.copy();// Hue is periodic: -180° and +180° are visually identical.
+                lo.values[id]=id==8?-.5f:AdjustmentSpec.min(id);
+                hi.values[id]=id==8?.5f:AdjustmentSpec.max(id);
                 Bitmap a=GpuExporter.render(getTargetContext(),controlsFixture,lo.gpu(false));Bitmap b=GpuExporter.render(getTargetContext(),controlsFixture,hi.gpu(false));int changed=0;
                 for(int y=0;y<96;y++)for(int x=0;x<128;x++)if(a.getPixel(x,y)!=b.getPixel(x,y))changed++;
                 require(changed>0,"Control "+id+" "+AdjustmentSpec.NAMES[id]+" changes pixels");a.recycle();b.recycle();
