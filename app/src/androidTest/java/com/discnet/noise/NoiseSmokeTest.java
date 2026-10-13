@@ -319,7 +319,9 @@ public class NoiseSmokeTest extends Instrumentation {
             ProjectStore.Preset preset=new ProjectStore.Preset(ProjectStore.newId(),"Teste de preset",doc.copy());storage.savePreset(preset);preset.name="Renomeado";preset.favorite=true;storage.savePreset(preset);boolean found=false;for(ProjectStore.Preset pp:storage.presets())if(pp.id.equals(preset.id)){found=true;require(pp.favorite&&pp.name.equals("Renomeado")&&pp.document.same(doc),"Preset rename/favorite/parameters persist");}require(found,"Custom preset exists");storage.deletePreset(preset);
             EditorDocument paste=new EditorDocument();paste.left=.3f;paste.copyLook(doc);require(paste.left==.3f&&paste.values[10]==1.8f,"Copy/preset preserves target image geometry");
             stage("every control changes real pixels");
-            Bitmap controlsFixture=Bitmap.createScaledBitmap(effectsImage,128,96,true);
+            Bitmap controlsSource=scene();
+            Bitmap controlsFixture=Bitmap.createScaledBitmap(controlsSource,128,96,true);
+            controlsSource.recycle();
             for(int id=0;id<AdjustmentSpec.COUNT;id++){
                 EditorDocument lo=new EditorDocument();
                 if(id>=20&&id<26)lo.values[9]=1;
