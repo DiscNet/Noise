@@ -57,5 +57,12 @@ public final class EditorSurface extends GLSurfaceView implements GLSurfaceView.
         try{Bitmap next=source;if(next!=null&&next!=uploaded){pipeline.upload(next);uploaded=next;}
             pipeline.sourceDimensions(sourceWidth,sourceHeight);pipeline.draw(width,height,state,false,zoom,panX,panY);frameCount++;renderNanos=System.nanoTime()-start;}
         catch(Exception|OutOfMemoryError e){android.util.Log.e("NoiseGL","Draw",e);pipeline.release();pipeline=null;post(()->listener.failed("Falha na prévia. Tente reabrir uma imagem menor."));}}
-    void dispose(){source=null;queueEvent(()->{if(pipeline!=null){pipeline.release();pipeline=null;}uploaded=null;});}
+    void dispose(){
+        // Activity teardown happens after onPause(): no EGL context is current on
+        // the paused GL thread. GLSurfaceView releases that context on detach.
+        // Do not queue glDelete* after pause; it can corrupt context recovery.
+        source=null;
+        uploaded=null;
+        pipeline=null;
+    }
 }
