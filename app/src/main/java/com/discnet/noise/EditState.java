@@ -16,6 +16,23 @@ public final class EditState {
     final float[] asciiA, asciiB;
     final boolean asciiEnabled, asciiColored, asciiDither, asciiSymbols;
     final boolean invert, original;
+    float[] light={0,0,0,0},grain={0,3.8f,.4f,0},glow={.45f,4.45f},detail={0,0};
+    int ditherMethod=0,ditherPalette=0,rotation=0;
+    boolean flipX,flipY;
+    float left=0,top=0,right=1,bottom=1;
+    EditState(EditorDocument d,boolean before){
+        this(slice(d,0,9),slice(d,9,12),slice(d,12,20),slice(d,20,26),
+            slice(d,26,44),slice(d,44,50),d.asciiEnabled,d.asciiColored,d.asciiDither,
+            d.asciiSymbols,d.invert,before);
+        light=new float[]{d.value(50),d.value(51),d.value(52),d.value(53)};
+        grain=new float[]{d.value(54),1+7*d.value(55),d.value(56),d.grainColored?1:0};
+        glow=new float[]{d.value(57),1+23*d.value(58)};
+        detail=new float[]{d.value(59),0};ditherMethod=d.ditherMethod;ditherPalette=d.ditherPalette;
+        left=d.left;top=d.top;right=d.right;bottom=d.bottom;rotation=d.rotation;flipX=d.flipX;flipY=d.flipY;
+    }
+    private static float[] slice(EditorDocument d,int from,int to){float[] a=new float[to-from];for(int i=from;i<to;i++)a[i-from]=d.value(i);return a;}
+    int toneKey(){int n=java.util.Arrays.hashCode(color);n=31*n+java.util.Arrays.hashCode(tone);n=31*n+java.util.Arrays.hashCode(hue);n=31*n+java.util.Arrays.hashCode(light);return n;}
+
 
     public EditState(float[] values, boolean invert, boolean original) {
         this(values,new float[3],new float[8],DITHER_DEFAULTS,ART_DEFAULTS,invert,original);

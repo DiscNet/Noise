@@ -16,6 +16,9 @@ final class GpuExporter {
     /** Resize at export time on GPU: the source bitmap is never destructively scaled. */
     static Bitmap render(Context context, Bitmap source, EditState state,
                          int targetWidth, int targetHeight) throws Exception {
+        return render(context,source,state,targetWidth,targetHeight,source.getWidth(),source.getHeight());
+    }
+    static Bitmap render(Context context,Bitmap source,EditState state,int targetWidth,int targetHeight,int sourceWidth,int sourceHeight)throws Exception {
         if(targetWidth < 1 || targetHeight < 1
                 || targetWidth > 4096 || targetHeight > 4096
                 || (long)targetWidth*targetHeight > 16777216L)
@@ -36,7 +39,7 @@ final class GpuExporter {
             eglContext = eglCreateContext(display, configs[0], EGL_NO_CONTEXT, new int[]{EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE}, 0);
             surface = eglCreatePbufferSurface(display, configs[0], new int[]{EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE}, 0);
             if (!eglMakeCurrent(display, surface, surface, eglContext)) throw new IllegalStateException("EGL current");
-            pipeline = new GlPipeline(context); pipeline.upload(source);
+            pipeline = new GlPipeline(context); pipeline.upload(source); pipeline.sourceDimensions(sourceWidth,sourceHeight);
             int w = targetWidth, h = targetHeight;
             glGenTextures(1, colorTexture, 0); glBindTexture(GL_TEXTURE_2D, colorTexture[0]);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);

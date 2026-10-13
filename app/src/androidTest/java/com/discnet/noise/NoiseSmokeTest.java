@@ -304,291 +304,87 @@ public class NoiseSmokeTest extends Instrumentation {
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
-            stage("import");
-            Bitmap demo = scene();
-            File input = new File(getTargetContext().getFilesDir(), "fixture.png");
-            try (FileOutputStream stream = new FileOutputStream(input)) { demo.compress(Bitmap.CompressFormat.PNG, 100, stream); }
-            demo.recycle();
-            Method load = MainActivity.class.getDeclaredMethod("load", Uri.class); load.setAccessible(true);
-            runOnMainSync(() -> { try { load.invoke(activity, Uri.fromFile(input)); } catch (Exception e) { throw new RuntimeException(e); } });
-            long deadline = SystemClock.uptimeMillis() + 10000;
-            while ((Boolean)field(activity, "loading") && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(20);
-            require(field(activity, "original") != null, "Image import through ContentResolver/ImageDecoder");
-            EditorSurface surface = (EditorSurface) field(activity, "preview");
-            SeekBar[] sliders = (SeekBar[]) field(activity, "sliders");
-            SystemClock.sleep(400);
-            stage("clean navigation");
-            LinearLayout topBar=(LinearLayout)field(activity,"topBar");
-            LinearLayout adjustmentPanel=(LinearLayout)field(activity,"adjustmentPanel");
-            FrameLayout editorStage=(FrameLayout)field(activity,"editorStage");
-            HorizontalScrollView categoryScroll=(HorizontalScrollView)field(activity,"categoryScroll");
-            TextView[] tabs=(TextView[])field(activity,"tabs");
-            require(topBar.getChildCount()==4,
-                "Compact top bar contains title, gallery, save and menu");
-            require(topBar.getHeight()<=Glass.dp(getTargetContext(),52),
-                "Top bar must leave vertical space for actual editing");
-            require(adjustmentPanel.getHeight()>editorStage.getHeight()*1.2f,
-                "Editor controls must occupy more space than the image viewport");
-            require(adjustmentPanel.getHeight()>=Glass.dp(getTargetContext(),250),
-                "The editor is no longer cramped in a 225dp bottom strip");
-            LinearLayout root=(LinearLayout)((ViewGroup)field(activity,"appBackground")).getChildAt(0);
-            require(root.indexOfChild(categoryScroll)>root.indexOfChild(adjustmentPanel),
-                "Tool categories belong below editing controls, Lightroom-style");
-            require(categoryScroll.getChildCount()==1 &&
-                categoryScroll.getChildAt(0).getWidth()>categoryScroll.getWidth(),
-                "All effect tabs are horizontally scrollable, not squeezed");
-            runOnMainSync(()->tabs[5].performClick());
-            waitForIdleSync();
-            require((Integer)field(activity,"selectedGroup")==5,
-                "ASCII tab is reachable on narrow screens");
-            runOnMainSync(()->tabs[0].performClick());
-            require(((ViewGroup)field(activity,"controls")).getChildCount()>8,
-                "Basic controls including inversion remain reachable");
-            android.graphics.drawable.Drawable workspace=Glass.frosted(getTargetContext(),10);
-            require(workspace instanceof android.graphics.drawable.GradientDrawable &&
-                ((android.graphics.drawable.GradientDrawable)workspace).getColor()!=null &&
-                Color.alpha(((android.graphics.drawable.GradientDrawable)workspace)
-                    .getColor().getDefaultColor())==255,
-                "Controls use solid opaque panels rather than glass");
-            // Direct slider events must immediately reach the matching GPU uniform.
-            require(sliders.length == 50, "All 50 controls must be present");
-            require(sliders[9].getMax()==400 && sliders[10].getMax()==400
-                && sliders[26].getMax()==400 && sliders[32].getMax()==400
-                && sliders[38].getMax()==400,
-                "Effect strength sliders reach 200 percent");
-            require(sliders[11].getMax()==200 && sliders[27].getMax()==200
-                && sliders[44].getMax()==200,
-                "Spatial and character controls keep safe ranges");
-            runOnMainSync(()->sliders[10].setProgress(400));
-            EditState highGlow=(EditState)field(surface,"state");
-            require(highGlow.style[1]>1.99f,"Live slider reaches 200 percent GPU uniform");
-            TextView[] valueLabels=(TextView[])field(activity,"valueLabels");
-            require("200%".contentEquals(valueLabels[10].getText()),
-                "UI correctly labels 200% rather than displaying 100%");
-            runOnMainSync(()->sliders[10].setProgress(0));
-            runOnMainSync(() -> {
-                sliders[12].setProgress(150); // Fade
-                sliders[13].setProgress(110); // Tom de pele
-                sliders[10].setProgress(120); // Glow outside Dither
-                sliders[18].setProgress(160); // Nitidez
-            });
-            EditState activeEffects = (EditState) field(surface, "state");
-            require(activeEffects.fxA[0] > .7f && activeEffects.fxA[1] > .5f,
-                    "Live Fade and skin-tone uniforms");
-            require(activeEffects.fxB[2] > .75f && activeEffects.style[1] > .55f,
-                    "Live Sharpen and independent Glow uniforms");
-            runOnMainSync(() -> {
-                sliders[12].setProgress(0); sliders[13].setProgress(0);
-                sliders[10].setProgress(0); sliders[18].setProgress(0);
-            });
-            runOnMainSync(() -> {
-                sliders[19].setProgress(130);
-                sliders[20].setProgress(160);sliders[21].setProgress(130);
-                sliders[22].setProgress(40);sliders[23].setProgress(170);
-                sliders[24].setProgress(90);sliders[25].setProgress(140);
-            });
-            EditState advanced=(EditState)field(surface,"state");
-            require(advanced.fxB[3]>.60f,"Rotational blur uniform");
-            require(advanced.ditherA[0]>.79f&&advanced.ditherA[3]>.84f,
-                "Dither depth and scale uniforms");
-            require(advanced.ditherB[1]>.69f,"Dither wave uniform");
-            runOnMainSync(()->{
-                sliders[19].setProgress(0);
-                for(int i=20;i<26;i++)sliders[i].setProgress(100);
-            });
-            runOnMainSync(()->{
-                sliders[26].setProgress(175); sliders[27].setProgress(32);
-                sliders[28].setProgress(180);sliders[29].setProgress(90);
-                sliders[30].setProgress(120);sliders[31].setProgress(70);
-                sliders[32].setProgress(160);sliders[33].setProgress(80);
-                sliders[34].setProgress(170);sliders[35].setProgress(142);
-                sliders[36].setProgress(110);sliders[37].setProgress(140);
-                sliders[38].setProgress(184);sliders[39].setProgress(100);
-                sliders[40].setProgress(150);sliders[41].setProgress(130);
-                sliders[42].setProgress(88);sliders[43].setProgress(200);
-            });
-            EditState analog=(EditState)field(surface,"state");
-            require(analog.ringsA[0]>.8f&&analog.ringsA[2]>.85f,
-                "Ring amount and thickness update immediately");
-            require(analog.crtA[0]>.75f&&analog.crtA[3]>.7f,
-                "CRT strength and curvature update immediately");
-            require(analog.glitchA[0]>.9f&&analog.glitchB[1]>.99f,
-                "Glitch bands and grayscale update immediately");
-            runOnMainSync(()->{
-                for(int i=26;i<44;i++)sliders[i].setProgress(
-                    Math.round(EditState.ART_DEFAULTS[i-26]*200));
-            });
-            stage("ASCII UI live state");
-            Switch asciiToggle=(Switch)field(activity,"asciiSwitch");
-            Switch asciiColors=(Switch)field(activity,"asciiColoredSwitch");
-            Switch asciiDither=(Switch)field(activity,"asciiDitherSwitch");
-            Switch asciiSymbols=(Switch)field(activity,"asciiSymbolsSwitch");
-            runOnMainSync(()->{
-                sliders[44].setProgress(182);
-                sliders[46].setProgress(138);
-                asciiToggle.setChecked(true);
-                asciiColors.setChecked(true);
-                asciiSymbols.setChecked(true);
-            });
-            EditState asciiUi=(EditState)field(surface,"state");
-            require(asciiUi.asciiEnabled&&asciiUi.asciiColored&&asciiUi.asciiSymbols,
-                "ASCII options reach the live shader");
-            require(asciiUi.asciiA[0]>.90f&&asciiUi.asciiA[2]>.68f,
-                "ASCII density and brightness sliders update immediately");
-            runOnMainSync(()->{
-                asciiToggle.setChecked(false);
-                asciiDither.setChecked(true);
-            });
-            EditState ditherUi=(EditState)field(surface,"state");
-            require(ditherUi.asciiEnabled&&ditherUi.asciiDither&&!ditherUi.asciiColored,
-                "Dither colors activate ASCII and replace original photo colors immediately");
-            Bundle savedOptions=new Bundle();
-            runOnMainSync(()->callActivityOnSaveInstanceState(activity,savedOptions));
-            require(savedOptions.getBoolean("asciiDither")&&savedOptions.getBoolean("asciiEnabled"),
-                "Dither color choice is saved with the ASCII session");
-            runOnMainSync(()->asciiColors.setChecked(true));
-            require(!((EditState)field(surface,"state")).asciiDither&& !asciiDither.isChecked(),
-                "Original photo colors replace the Dither palette");
-            runOnMainSync(()->{
-                asciiDither.setChecked(true);
-                asciiDither.setChecked(false);
-            });
-            EditState monoUi=(EditState)field(surface,"state");
-            require(monoUi.asciiEnabled&&!monoUi.asciiDither&&!monoUi.asciiColored,
-                "Turning off Dither colors restores monochrome ASCII");
-            runOnMainSync(()->{
-                asciiToggle.setChecked(false);
-                asciiColors.setChecked(false); asciiSymbols.setChecked(false);
-                for(int i=44;i<50;i++)
-                    sliders[i].setProgress(Math.round(EditState.ASCII_DEFAULTS[i-44]*200));
-            });
-            stage("live preview");
-            long startFrames = surface.frameCount;
-            for (int i = 0; i < 45; i++) {
-                final int progress = 60 + i * 3;
-                runOnMainSync(() -> sliders[0].setProgress(progress));
-                SystemClock.sleep(16);
+            stage("document transactions and persistence");
+            EditorDocument doc=new EditorDocument();EditHistory history=new EditHistory();history.begin(doc);
+            for(int i=0;i<50;i++)doc.values[2]=i/100f;history.commit(doc);
+            require(history.undoCount()==1,"A continuous drag creates one undo transaction");
+            doc=history.undo(doc);require(doc.values[2]==0&&history.canRedo(),"Undo restores neutral and supports redo");
+            doc=history.redo(doc);require(Math.abs(doc.values[2]-.49f)<.001,"Redo restores final gesture value");
+            history.begin(doc);doc.values[50]=.2f;history.commit(doc);doc=history.undo(doc);history.begin(doc);doc.values[51]=.3f;history.commit(doc);require(!history.canRedo(),"New edit invalidates redo");
+            doc.left=.12f;doc.top=.2f;doc.right=.9f;doc.rotation=1;doc.flipX=true;doc.disabled[10]=true;doc.values[10]=1.8f;doc.grainColored=true;
+            ProjectStore storage=new ProjectStore(getTargetContext());String project=ProjectStore.newId();
+            Bitmap fixture=scene();File input=new File(getTargetContext().getFilesDir(),"fixture.png");try(FileOutputStream out=new FileOutputStream(input)){fixture.compress(Bitmap.CompressFormat.PNG,100,out);}fixture.recycle();
+            File preserved=storage.importOriginal(Uri.fromFile(input),project);long originalBytes=preserved.length();storage.save(project,"Teste",doc,history.toJson());
+            ProjectStore.Project loaded=storage.read(project);require(doc.same(loaded.document),"Recipe round trip includes disabled controls, crop, rotation and grain");require(preserved.length()==originalBytes,"Original bytes remain intact");
+            ProjectStore.Preset preset=new ProjectStore.Preset(ProjectStore.newId(),"Teste de preset",doc.copy());storage.savePreset(preset);preset.name="Renomeado";preset.favorite=true;storage.savePreset(preset);boolean found=false;for(ProjectStore.Preset pp:storage.presets())if(pp.id.equals(preset.id)){found=true;require(pp.favorite&&pp.name.equals("Renomeado")&&pp.document.same(doc),"Preset rename/favorite/parameters persist");}require(found,"Custom preset exists");storage.deletePreset(preset);
+            EditorDocument paste=new EditorDocument();paste.left=.3f;paste.copyLook(doc);require(paste.left==.3f&&paste.values[10]==1.8f,"Copy/preset preserves target image geometry");
+            stage("every control changes real pixels");
+            Bitmap controlsSource=scene();
+            Bitmap controlsFixture=Bitmap.createScaledBitmap(controlsSource,128,96,true);
+            controlsSource.recycle();
+            for(int id=0;id<AdjustmentSpec.COUNT;id++){
+                EditorDocument lo=new EditorDocument();
+                if(id>=20&&id<26)lo.values[9]=1;
+                if(id>=26&&id<44)lo.values[26+((id-26)/6)*6]=1;
+                if(id>=44&&id<50)lo.asciiEnabled=true;
+                if(id==55||id==56)lo.values[54]=1;
+                if(id==57||id==58)lo.values[10]=1;
+                EditorDocument hi=lo.copy();// Hue is periodic: -180° and +180° are visually identical.
+                lo.values[id]=id==8?-.5f:AdjustmentSpec.min(id);
+                hi.values[id]=id==8?.5f:AdjustmentSpec.max(id);
+                Bitmap a=GpuExporter.render(getTargetContext(),controlsFixture,lo.gpu(false));Bitmap b=GpuExporter.render(getTargetContext(),controlsFixture,hi.gpu(false));int changed=0;
+                for(int y=0;y<96;y++)for(int x=0;x<128;x++)if(a.getPixel(x,y)!=b.getPixel(x,y))changed++;
+                require(changed>0,"Control "+id+" "+AdjustmentSpec.NAMES[id]+" changes pixels");a.recycle();b.recycle();
             }
-            long drawn = surface.frameCount - startFrames;
-            require(drawn >= 3, "Preview must redraw DURING slider movement, frames=" + drawn);
-            runOnMainSync(() -> { sliders[0].setProgress(125); sliders[1].setProgress(118); });
-            Switch invert = (Switch) field(activity, "invertSwitch");
-            runOnMainSync(() -> invert.setChecked(true)); SystemClock.sleep(80);
-            require(((EditState)field(surface, "state")).invert, "Switch enables inversion");
-            runOnMainSync(() -> invert.setChecked(false)); SystemClock.sleep(150);
-            require(!((EditState)field(surface, "state")).invert, "Switch disables inversion");
-            require(surface.frameCount > startFrames + drawn, "Preview survives separate EGL exports");
-            // The UI uses an explicit export size, preserving the source bitmap.
-            Field widthField=MainActivity.class.getDeclaredField("outputWidth");
-            Field heightField=MainActivity.class.getDeclaredField("outputHeight");
-            widthField.setAccessible(true);heightField.setAccessible(true);
-            runOnMainSync(()->{
-                try{widthField.setInt(activity,640);heightField.setInt(activity,480);}
-                catch(Exception e){throw new RuntimeException(e);}
-            });
-            stage("PNG export");
-            File pngFile = new File(getTargetContext().getFilesDir(), "export.png");
-            Method export = MainActivity.class.getDeclaredMethod("export", Uri.class); export.setAccessible(true);
-            runOnMainSync(() -> { try { export.invoke(activity, Uri.fromFile(pngFile)); } catch (Exception e) { throw new RuntimeException(e); } });
-            deadline = SystemClock.uptimeMillis() + 15000;
-            while ((Boolean)field(activity, "exporting") && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(20);
-            require(pngFile.length() > 1000, "Image export file");
-            Bitmap saved = BitmapFactory.decodeFile(pngFile.getPath());
-            require(saved != null && saved.getWidth() == 640 && saved.getHeight() == 480, "PNG dimensions");
-            require(Color.blue(saved.getPixel(100,100)) > Color.blue(saved.getPixel(100,380)), "PNG strips stay upright"); saved.recycle();
-            long framesBeforeExportUpdate = surface.frameCount;
-            runOnMainSync(() -> sliders[0].setProgress(126)); SystemClock.sleep(150);
-            require(surface.frameCount > framesBeforeExportUpdate, "Preview alive after PNG export");
-            stage("automatic public save");
-            runOnMainSync(()->{
-                asciiDither.setChecked(true);
-                asciiSymbols.setChecked(true);
-                sliders[44].setProgress(126);
-                sliders[46].setProgress(122);
-            });
-            EditState savedAsciiState=(EditState)field(surface,"state");
-            Bitmap expectedAsciiPng=GpuExporter.render(getTargetContext(),
-                (Bitmap)field(activity,"original"),savedAsciiState,640,480);
-            // Saving must not open the Android file manager. The resulting image
-            // must be a public MediaStore item under Pictures/Noise!, not cache.
-            Method automatic=MainActivity.class.getDeclaredMethod("chooseOutput");
-            automatic.setAccessible(true);
-            runOnMainSync(()->{
-                try{automatic.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
-            });
-            deadline=SystemClock.uptimeMillis()+18000;
-            while((Boolean)field(activity,"exporting")&&SystemClock.uptimeMillis()<deadline)
-                SystemClock.sleep(30);
-            require(!(Boolean)field(activity,"exporting"),"Public export finishes");
-            boolean inPublicAlbum=false;
-            try(Cursor records=getTargetContext().getContentResolver().query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                new String[]{MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.RELATIVE_PATH},
-                MediaStore.Images.Media.RELATIVE_PATH+"=?",
-                new String[]{"Pictures/Noise!/"},null)){
-                while(records!=null&&records.moveToNext()){
-                    inPublicAlbum=true;
-                    Uri publicUri=android.content.ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,records.getLong(0));
-                    try(java.io.InputStream read=getTargetContext().getContentResolver().openInputStream(publicUri)){
-                        Bitmap exported=BitmapFactory.decodeStream(read);
-                        require(exported!=null&&exported.getWidth()==640
-                            &&exported.getHeight()==480,"Gallery PNG shape");
-                        for(int yy=0;yy<480;yy+=13)for(int xx=0;xx<640;xx+=13)
-                            closeColor(exported.getPixel(xx,yy),expectedAsciiPng.getPixel(xx,yy),
-                                "Saved PNG keeps the live ASCII palette, glyphs and adjustments");
-                        exported.recycle();
-                    }
-                    getTargetContext().getContentResolver().delete(publicUri,null,null);
-                    break;
-                }
-            }
-            require(inPublicAlbum,"Export stored in uninstall-proof public Pictures/Noise! folder");
-            expectedAsciiPng.recycle();
-            stage("touch crop");
-            Method cropMethod=MainActivity.class.getDeclaredMethod("showResizeDialog");
-            cropMethod.setAccessible(true);
-            runOnMainSync(()->{
-                try{cropMethod.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
-            });
-            waitForIdleSync();
-            CropEditor crop=(CropEditor)field(activity,"cropEditor");
-            require(crop!=null,"In-app crop must open (not numeric dialog)");
-            Rect selected=crop.currentRect();
-            require(selected.width()==900&&selected.height()==900,"Initial crop shows full image");
-            // Exercise the actual gesture handler by moving the upper-left handle.
-            ViewGroup container=(ViewGroup)crop.getChildAt(0);
-            View gesture=container.getChildAt(2);
-            float scale=Math.min((gesture.getWidth()-20f)/900f,
-                (gesture.getHeight()-40f)/900f);
-            float left=(gesture.getWidth()-900*scale)*.5f;
-            float top=(gesture.getHeight()-900*scale)*.5f;
-            float down=android.os.SystemClock.uptimeMillis();
-            final float sx=left+1,sy=top+1;
-            runOnMainSync(()->{
-                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
-                    (long)down,(long)down,android.view.MotionEvent.ACTION_DOWN,sx,sy,0));
-                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
-                    (long)down,(long)down+80,android.view.MotionEvent.ACTION_MOVE,sx+90,sy+90,0));
-                gesture.dispatchTouchEvent(android.view.MotionEvent.obtain(
-                    (long)down,(long)down+100,android.view.MotionEvent.ACTION_UP,sx+90,sy+90,0));
-            });
-            Rect moved=crop.currentRect();
-            require(moved.width()<selected.width()&&moved.height()<selected.height(),
-                "Crop corners should change crop area by touch");
-            runOnMainSync(activity::onBackPressed);
-            require(field(activity,"cropEditor")==null,"Back closes crop overlay");
-            stage("screenshot");
-            Bitmap screenshot = getUiAutomation().takeScreenshot();
-            require(screenshot != null, "Screenshot");
-            try (FileOutputStream out = new FileOutputStream(new File(getTargetContext().getFilesDir(), "noise-ui.png"))) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, out); }
-            screenshot.recycle();
-            result.putString("stream", "NOISE_SMOKE_OK: GPU neutral/orientation, import/export files, alpha PNG, all 9 adjustments, compare bypass, denoise, inversion toggle, live slider frames=" + drawn + "\n");
-            finish(Activity.RESULT_OK, result);
+            stage("Bayer, threshold and tonal ASCII");
+            EditorDocument ordered=new EditorDocument();ordered.values[9]=1;ordered.ditherMethod=1;ordered.ditherPalette=1;
+            Bitmap bayer=GpuExporter.render(getTargetContext(),controlsFixture,ordered.gpu(false));ordered.ditherMethod=2;
+            Bitmap threshold=GpuExporter.render(getTargetContext(),controlsFixture,ordered.gpu(false));int delta=0;
+            for(int y=0;y<96;y++)for(int x=0;x<128;x++){int pixel=bayer.getPixel(x,y)&0xffffff;require(pixel==0||pixel==0xffffff,"Bayer monochrome is genuinely binary");if(pixel!=(threshold.getPixel(x,y)&0xffffff))delta++;}
+            require(delta>50,"Bayer differs from threshold");bayer.recycle();threshold.recycle();
+            EditorDocument asc=new EditorDocument();asc.asciiEnabled=true;Bitmap darkAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));asc.values[2]=.8f;Bitmap brightAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));delta=0;
+            for(int y=0;y<96;y++)for(int x=0;x<128;x++)if(darkAscii.getPixel(x,y)!=brightAscii.getPixel(x,y))delta++;
+            require(delta>100,"Exposure must feed ASCII tonal sampling");darkAscii.recycle();brightAscii.recycle();
+            stage("non-destructive transformed export");
+            Bitmap quad=Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888);for(int y=0;y<20;y++)for(int x=0;x<40;x++)quad.setPixel(x,y,x<20?Color.RED:Color.BLUE);
+            EditorDocument geometry=new EditorDocument();geometry.left=.5f;int[] shape=geometry.outputSize(40,20,4096);Bitmap cropped=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);require(shape[0]==20&&shape[1]==20,"Crop changes output geometry");closeColor(cropped.getPixel(10,10),Color.BLUE,"Crop selects original source pixels");require(quad.getWidth()==40,"Crop never degrades original");cropped.recycle();geometry.left=0;geometry.rotation=1;shape=geometry.outputSize(40,20,4096);require(shape[0]==20&&shape[1]==40,"Rotation swaps geometry");Bitmap turned=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);closeColor(turned.getPixel(10,5),Color.RED,"Clockwise rotation top");closeColor(turned.getPixel(10,35),Color.BLUE,"Clockwise rotation bottom");turned.recycle();quad.recycle();
+            stage("UI import, adaptive workspace and live gestures");
+            runOnMainSync(()->activity.load(Uri.fromFile(input)));long deadline=SystemClock.uptimeMillis()+20000;
+            while((Boolean)field(activity,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(30);
+            require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
+            TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
+            for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
+            int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
+            for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}
+            runOnMainSync(()->workspace.requestLayout());waitForIdleSync();
+            EditHistory liveHistory=(EditHistory)field(activity,"history");int oldCount=liveHistory.undoCount();long frames=surface.frameCount;
+            runOnMainSync(activity::begin);for(int i=0;i<45;i++){final float n=i/60f;runOnMainSync(()->activity.change(2,n));SystemClock.sleep(16);}runOnMainSync(activity::end);SystemClock.sleep(200);
+            long drawn=surface.frameCount-frames;require(drawn>=3,"GPU redraws during movement: "+drawn);require(liveHistory.undoCount()==oldCount+1,"One live gesture, one history operation");
+            long start=System.nanoTime();runOnMainSync(()->activity.change(50,.2f));long parameterMs=(System.nanoTime()-start)/1000000;
+            require(((EditState)field(surface,"state")).light[0]==.2f,"State immediately reaches preview");
+            stage("live frames="+drawn+", parameter dispatch ms="+parameterMs+", last GL submission ms="+(surface.renderNanos/1000000));
+            stage("public PNG and JPEG export");
+            EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
+            Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
+            try(Cursor cursor=getTargetContext().getContentResolver().query(savedUri,new String[]{MediaStore.Images.Media.RELATIVE_PATH,MediaStore.Images.Media.IS_PENDING},null,null,null)){require(cursor!=null&&cursor.moveToFirst()&&cursor.getString(0).equals("Pictures/Noise!/")&&cursor.getInt(1)==0,"Public path and completed transaction");}
+            try(InputStream in=getTargetContext().getContentResolver().openInputStream(savedUri)){Bitmap saved=BitmapFactory.decodeStream(in);require(saved.getWidth()==64&&saved.getHeight()==48,"PNG selected resolution/aspect");Bitmap expected=GpuExporter.render(getTargetContext(),controlsFixture,outDoc.gpu(false),64,48);for(int y=0;y<48;y+=5)for(int x=0;x<64;x+=5)closeColor(saved.getPixel(x,y),expected.getPixel(x,y),"Export keeps ASCII settings");saved.recycle();expected.recycle();}getTargetContext().getContentResolver().delete(savedUri,null,null);
+            outDoc.asciiEnabled=false;outDoc.jpeg=true;outDoc.jpegQuality=75;File jpg=new File(getTargetContext().getFilesDir(),"export.jpg");ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,Uri.fromFile(jpg));Bitmap jpeg=BitmapFactory.decodeFile(jpg.getPath());require(jpeg!=null&&jpeg.getWidth()==64&&jpeg.getHeight()==48,"JPEG encoded at selected dimensions");jpeg.recycle();
+            stage("crop touch and cancel");runOnMainSync(()->activity.action("Recortar"));waitForIdleSync();CropEditor crop=(CropEditor)field(activity,"cropEditor");require(crop!=null,"Crop opens");Rect beforeCrop=crop.currentRect();View gesture=(View)field(crop,"canvas");float scale=Math.min((gesture.getWidth()-20f)/900f,(gesture.getHeight()-40f)/900f);float sx=(gesture.getWidth()-900*scale)/2+1,sy=(gesture.getHeight()-900*scale)/2+1;long now=SystemClock.uptimeMillis();runOnMainSync(()->{gesture.dispatchTouchEvent(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,sx,sy,0));gesture.dispatchTouchEvent(MotionEvent.obtain(now,now+80,MotionEvent.ACTION_MOVE,sx+60,sy+60,0));gesture.dispatchTouchEvent(MotionEvent.obtain(now,now+100,MotionEvent.ACTION_UP,sx+60,sy+60,0));});require(crop.currentRect().width()<beforeCrop.width(),"Corner gesture changes selection");runOnMainSync(activity::onBackPressed);require(activity.document().left==0,"Cancel leaves geometry unchanged");
+            stage("invalid file keeps working image");File invalid=new File(getTargetContext().getFilesDir(),"invalid.bin");try(FileOutputStream out=new FileOutputStream(invalid)){out.write(new byte[]{1,2,3});}Bitmap old=(Bitmap)field(activity,"original");runOnMainSync(()->activity.load(Uri.fromFile(invalid)));deadline=SystemClock.uptimeMillis()+10000;while((Boolean)field(activity,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(20);require(field(activity,"original")==old,"Invalid import preserves working image");
+            stage("activity recreation retains recipe and source");EditorDocument retained=activity.document().copy();ActivityMonitor monitor=addMonitor(MainActivity.class.getName(),null,false);runOnMainSync(activity::recreate);MainActivity recreated=(MainActivity)monitor.waitForActivityWithTimeout(15000);removeMonitor(monitor);require(recreated!=null,"Activity recreated");deadline=SystemClock.uptimeMillis()+15000;while((Boolean)field(recreated,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(30);require(retained.same(recreated.document()),"Recipe survives recreation");EditorSurface restoredSurface=(EditorSurface)field(recreated,"preview");long previous=restoredSurface.frameCount;runOnMainSync(()->recreated.change(3,.3f));long renderDeadline=SystemClock.uptimeMillis()+10000;
+            while(restoredSurface.frameCount<=previous && SystemClock.uptimeMillis()<renderDeadline)SystemClock.sleep(100);
+            require(restoredSurface.frameCount>previous,"Renderer alive after EGL recreation");
+            stage("screenshots");saveScreenshot("noise-ui.png");
+            storage.delete(project);controlsFixture.recycle();
+            result.putString("stream","NOISE_SMOKE_OK: legacy pixel regression, 60 real controls, tonal ASCII, Bayer/Threshold, history, projects, presets, geometry, public PNG, JPEG, adaptive layout, invalid import, recreation. Live frames="+drawn+"\n");
+            finish(Activity.RESULT_OK,result);
         } catch (Throwable error) {
             StringWriter stack = new StringWriter(); error.printStackTrace(new PrintWriter(stack)); result.putString("stream", "NOISE_SMOKE_FAILED\n" + stack); finish(Activity.RESULT_CANCELED, result);
         }
+    }
+    private void saveScreenshot(String name)throws Exception{
+        Bitmap shot=getUiAutomation().takeScreenshot();require(shot!=null,"Screenshot");try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getFilesDir(),name))){shot.compress(Bitmap.CompressFormat.PNG,100,out);}shot.recycle();
     }
     private Bitmap scene() {
         Bitmap image = Bitmap.createBitmap(900, 900, Bitmap.Config.ARGB_8888); Canvas c = new Canvas(image); Paint p = new Paint(3);
