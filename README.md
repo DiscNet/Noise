@@ -1,50 +1,49 @@
-# Noise! 1.13
+# Noise!
 
-Um editor de imagem Android offline com interface simples, processamento de filtros via OpenGL ES 2.0 e exportação PNG para **Pictures/Noise!**.
+Editor de imagens Android, offline, com interface nativa em Java e renderização **OpenGL ES 2.0**. Os ajustes são representados por uma receita editável; a imagem original é preservada no projeto.
 
-## Interface 1.13 — painel de edição de verdade
+> **Versão 1.14:** redesign do editor em validação. O APK só é distribuído depois do build e dos testes instrumentados aprovados. [Versão publicada](https://github.com/DiscNet/Noise/releases/latest) · [Trabalho da 1.14](https://github.com/DiscNet/Noise/pull/13).
 
-O editor agora prioriza a **usabilidade para ajustes**, inspirado na organização do Lightroom Mobile sem copiar seus ícones nem sua identidade gráfica:
+## Editor
 
-- **Prévia equilibrada:** aproximadamente 40% da área flexível.
-- **Painel de ajustes amplo:** aproximadamente 60% da área flexível, com rolagem vertical e sliders em tempo real.
-- **Categorias no rodapé:** Básico, Ruído, Dither, Efeitos, Arte, ASCII e ação Recortar. Podem ser percorridas horizontalmente.
-- **Cabeçalho compacto:** Noise!, Abrir, Salvar e Mais. Recorte permanece acessível na faixa de ferramentas inferior e no menu.
-- **Sem glassmorphism:** cores sólidas cinza-escuro, sem transparência de vidro, brilhos, chanfros, orbes, fitas coloridas e fundos luminosos.
-- **Menos ícones:** pequenos vetores no cabeçalho; valores e nomes dos parâmetros ficam claros, sem ícones ao lado de cada slider.
+O cabeçalho compacto concentra voltar, desfazer, refazer, exportar e menu secundário. A prévia mantém proporção, suporta zoom por pinça, arraste após ampliar, comparação com o original ao pressionar e tela cheia. Em retrato, o painel de ajustes pode ser expandido ou recolhido pela alça; em paisagem, fica ao lado da imagem.
 
-Os controles de intensidade até **200%** da versão 1.12, todos os efeitos GPU, a galeria, o recorte por gestos e o salvamento público de PNG foram preservados. O APK continua versionado, como `Noise.V1.13.apk` no GitHub Releases.
+As sete categorias, acessíveis por navegação horizontal, são **Luz, Cor, Detalhes, Efeitos, Dither, ASCII e Ferramentas**. Cada categoria mostra apenas seus controles pertinentes; o estado é preservado ao alternar de ferramenta. Os valores podem ser digitados; toque duplo no nome restaura o valor neutro, e pressão longa alterna o ajuste sem perder seu valor. Sliders atualizam o estado GPU durante o movimento e geram uma operação lógica de histórico por gesto.
 
-## Cores do Dither no ASCII
+## Edição e efeitos
 
-A aba **ASCII** transforma fotografias em **arte formada por caracteres reais**, como `;`, `:`, `%` e `@`, mantendo a saída como uma imagem PNG. O fundo preto com caracteres brancos reproduz a proposta da referência; cores originais e um segundo conjunto de caracteres são opcionais.
+- **Luz:** exposição, brilho, contraste, realces, sombras, brancos e pretos.
+- **Cor:** saturação, vibração, temperatura, tonalidade, matiz e inversão.
+- **Detalhes:** nitidez, textura, redução de ruído, granulação, tamanho e aspereza do grão, realce de bordas.
+- **Efeitos:** vinheta, fade, glow ajustável (intensidade/limiar/raio), aberração cromática, CRT, glitch, anéis e névoa.
+- **Dither:** Neon/Nonqual, Bayer 4×4, threshold, controles por algoritmo e opções de paleta (Nonqual azul, laranja e vermelho; preto e branco; RGB).
+- **ASCII:** caracteres renderizados como imagem exportável; densidade, brilho, contraste, limiar, espaçamento, tamanho, símbolos alternativos e modos monocromático, cores da foto ou Nonqual.
+- **Ferramentas:** recorte não destrutivo com alças, proporções livres e fixas, rotação, espelhamento, presets, projetos, copiar/colar ajustes e exportação.
 
-Ative **ASCII → Cores do Dither** para colorir os caracteres com a mesma paleta neon do Dither: **azul, laranja e vermelho**, conforme os tons da foto. O botão ativa o ASCII automaticamente e atualiza a prévia na hora, sem precisar ligar o efeito Dither. Desligue para voltar ao branco sobre preto ou selecione **Usar cores da foto**; os dois modos de cor são alternativos. A escolha é preservada ao recriar a tela e também no PNG salvo.
+O modelo de edição inclui **desfazer/refazer**, projetos locais e presets salvos com parâmetros reais. Projetos guardam uma cópia privada do arquivo de origem, estado de edição e histórico. Os presets podem ser criados, renomeados, excluídos e favoritados.
 
-O efeito possui botão independente para ligar/desligar e **seis ajustes em tempo real**: densidade, contraste, brilho, limiar, espaçamento e tamanho dos caracteres. O botão **Aplicar estilo da referência** configura rapidamente o visual preto e branco. A prévia e o PNG exportado usam o mesmo shader OpenGL ES 2.0 e o mesmo atlas de caracteres, sem converter a imagem em texto ou aplicar uma imagem fixa.
+Os efeitos compatíveis com o fluxo atual usam shaders GPU; a prévia é limitada a uma textura reduzida para favorecer a fluidez e a exportação decodifica a imagem de origem separadamente. O teto atual de exportação é **4096 px no lado maior** ou o limite físico de textura, prevalecendo o menor.
 
-## Efeitos de ARTE
+## Arquivos
 
-Três efeitos exclusivos, criados proceduralmente a partir das três primeiras imagens de referência. **Não são imagens aplicadas como overlay estático.** Todos os 18 controles podem ser ajustados com barras, em tempo real, em qualquer combinação e no PNG exportado.
+PNG com transparência quando aplicável ou JPEG com qualidade selecionável e fundo branco. O arquivo é publicado em **Pictures/Noise!** por MediaStore (Android 10+) ou na pasta pública correspondente em versões anteriores, preservando-o após desinstalação. Há opção de compartilhar pelo Android.
 
-| Efeito | Proposta visual | Ajustes independentes |
-|---|---|---|
-| **Anéis** | círculos concêntricos brancos sobre preto, com desgaste irregular (primeira referência) | Intensidade, Espaçamento, Espessura, Centro X, Centro Y, Desgaste |
-| **CRT** | tubo analógico em tons cinza-azulados, curvatura, scanlines e bordas escuras (segunda referência) | Intensidade, Frequência, Suavidade, Curvatura, Vinheta CRT, Tom do fósforo |
-| **Glitch** | fotografia distorcida, interferência horizontal, faixas quebradas e alto contraste monocromático (terceira referência) | Intensidade, Faixas, Deslocamento, Falhas, Estática, Monocromia |
+A galeria utiliza MediaStore, permite selecionar pastas/álbuns e consulta todas as imagens acessíveis no álbum. O seletor de fotos do sistema é uma alternativa de importação.
 
-A intensidade inicial dos três modos é **zero**, para que nenhuma foto seja alterada ao abrir. Selecione **Arte → Anéis / CRT / Glitch → Aplicar efeito** para ativar o modo a 100%, e personalize qualquer valor de 0 a 100. Os demais efeitos já existentes (Básico, Ruído, Dither e Efeitos) continuam disponíveis; os estilos também podem ser sobrepostos entre si.
+## Build e verificação
 
-## Interface e referências
+Requisitos: **Java 17, Gradle 8.9, Android SDK 35**. Para compilar:
 
-A interface atual utiliza fundos opacos e neutros, a foto acima, o painel de ajuste amplo abaixo e as ferramentas no rodapé. Os efeitos são processados em tempo real por OpenGL ES 2.0. Não há recursos de vidro ou sobreposições decorativas.
+```sh
+gradle --no-daemon assembleDebug assembleDebugAndroidTest
+```
 
-## Demais ferramentas
+O fluxo em `.github/workflows/android.yml` compila, inicia um emulador Android API 30 e executa verificações instrumentadas dos shaders, estados, efeitos, galeria, importação, recorte, histórico, presets e exportação. Um resultado verde exige também `NOISE_SMOKE_OK` nos logs. Apenas o fluxo de `push` em `main`, após a verificação, cria uma release versionada.
 
-Galeria com fotos recentes e álbuns completos, recorte de imagem por arraste dos cantos, original/comparação, neon dither ajustável, ruído orgânico, pó e vinheta, brilho difuso sem arrasto direcional, realce de bordas sem deslocamento e salvamento automático em PNG na pasta pública **Imagens/Noise!**, que persiste após desinstalar o aplicativo.
+Cobertura, evidências e limitações: [Auditoria](docs/AUDIT-1.14.md) · [Validação](docs/VALIDATION.md).
 
-## Build
+## Limitações conhecidas
 
-JDK 17, Gradle 8.9 e Android SDK 35. Execute `gradle --no-daemon assembleDebug assembleDebugAndroidTest`. O CI testa os shaders no emulador e só publica a release quando os testes instrumentados passam.
+Edição por máscaras, curvas RGB, dithering por difusão de erro (Floyd–Steinberg e Atkinson) e exportação sem limite de tamanho **não estão implementados**. O preview e a exportação podem diferir em detalhes dependentes da resolução, apesar de compartilharem os mesmos parâmetros. Projetos ficam no armazenamento privado do app; ao desinstalá-lo, **projetos e presets locais são removidos**, mas os arquivos exportados em Pictures/Noise! permanecem.
 
-[Instalar a versão mais recente](https://github.com/DiscNet/Noise/releases/latest)
+Referências conceituais: [Lightroom Mobile](https://helpx.adobe.com/lightroom/mobile/get-started/gesture-controls-in-lightroom-for-mobile.html) · [Photopea](https://www.photopea.com/learn/workspace).
