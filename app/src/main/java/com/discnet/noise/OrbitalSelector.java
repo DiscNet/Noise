@@ -1,11 +1,8 @@
 package com.discnet.noise;
 
 import android.animation.ValueAnimator;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.graphics.*;
-import android.graphics.drawable.Drawable;
 import android.view.*;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.PathInterpolator;
@@ -22,6 +19,7 @@ final class OrbitalSelector extends FrameLayout {
     private Navigation navigate;
     private float swipeStartX,swipeStartY;
     private boolean horizontal;
+    private boolean dismissed;
     private final OrbitStage orbit;
     private final TextView continueButton;
     private final Selection callback;
@@ -51,24 +49,23 @@ final class OrbitalSelector extends FrameLayout {
         TextView description=label(c,subtitle,13,EditorTheme.MUTED);
         description.setPadding(0,dp(8),dp(12),0);
         description.setMaxLines(3);heading.addView(description);
-        ImageView close=IconArt.button(c,IconArt.BACK,"Voltar ao editor");
-        header.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        close.setOnClickListener(v->dismiss());
+        // A roda nao tem botao de abertura/fechamento: deslize horizontal,
+        // toque para escolher, ou o gesto Voltar do Android.
 
         orbit=new OrbitStage(c,initial);
         column.addView(orbit,new LinearLayout.LayoutParams(-1,0,1));
-        TextView current=label(c,"DESLIZE PARA GIRAR  ·  TOQUE PARA SELECIONAR",10,EditorTheme.MUTED);
+        TextView current=label(c,"↕  GIRE A RODA       ←  AVANÇAR       →  VOLTAR",10,EditorTheme.MUTED);
         current.setGravity(Gravity.CENTER);
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
-        continueButton=label(c,"Abrir "+names[orbit.selected()],16,0xff17121d);
+        continueButton=label(c,"Selecionar "+names[orbit.selected()],16,0xff17121d);
         continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
         continueButton.setBackground(EditorTheme.buttonSurface(c,32,true));
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
         continueButton.setOnClickListener(v->commit());
-        orbit.onSelection=()->continueButton.setText("Abrir "+this.names[orbit.selected()]);
+        orbit.onSelection=()->continueButton.setText("Selecionar "+this.names[orbit.selected()]);
     }
     private int dp(float value){return EditorTheme.dp(getContext(),value);}
     private static TextView label(Context c,String value,int size,int color){
@@ -76,31 +73,67 @@ final class OrbitalSelector extends FrameLayout {
     }
     int selected(){return orbit.selected();}
     void setNavigate(Navigation callback){navigate=callback;}
-    void enter(){
-        setAlpha(0f);setTranslationX(dp(64));
-        animate().alpha(1f).translationX(0f).setDuration(360)
-            .setInterpolator(new PathInterpolator(.18f,.82f,.20f,1f)).start();
+
+    private float travelDistance(){
+        return Math.max(dp(210),Math.min(getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,dp(530))*.86f);
     }
-    void dismiss(){
-        if(getParent()==null)return;
+    private PathInterpolator glide(){
+        return new PathInterpolator(.18f,.82f,.22f,1f);
+    }
+    private void removeFromParent(){
+        if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);
+    }
+    /** Fraction is driven directly by the user's finger; no animation delay. */
+    void setReveal(float fraction){
+        float p=Math.max(0f,Math.min(1f,fraction));
         animate().cancel();
-        animate().alpha(0f).translationX(dp(54)).setDuration(260)
-            .setInterpolator(new PathInterpolator(.35f,0f,.72f,1f))
-            .withEndAction(()->{if(getParent() instanceof ViewGroup)
-                ((ViewGroup)getParent()).removeView(this);}).start();
+        setTranslationX(travelDistance()*(1f-p));
+        setAlpha(p);
     }
-    // Horizontal swipes are caught by this overlay; vertical swipes pass
-    // through to OrbitStage's independent rotation physics.
+    void finishReveal(boolean open){
+        if(open){
+            animate().translationX(0f).alpha(1f).setDuration(360).setInterpolator(glide()).start();
+        }else{
+            animate().translationX(travelDistance()).alpha(0f).setDuration(270)
+                .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
+        }
+    }
+    /** Normal programmatic entrance (e.g. TalkBack or tests). */
+    void enter(){enterFrom(-1);}
+    /** direction -1: user dragged left, next page arrives from right. */
+    void enterFrom(int direction){
+        animate().cancel();setTranslationX(direction<0?travelDistance():-travelDistance());
+        setAlpha(0f);
+        animate().translationX(0f).alpha(1f).setDuration(410)
+            .setInterpolator(glide()).start();
+    }
+    void exitTo(int direction){
+        if(dismissed)return;
+        dismissed=true;
+        animate().cancel();
+        animate().translationX(direction<0?-travelDistance():travelDistance())
+            .alpha(0f).setDuration(310).setInterpolator(glide())
+            .withEndAction(this::removeFromParent).start();
+    }
+    void dismiss(){exitTo(1);}
+    private void restorePosition(){
+        animate().cancel();
+        animate().translationX(0f).alpha(1f).setDuration(300)
+            .setInterpolator(glide()).start();
+    }
     @Override public boolean onInterceptTouchEvent(MotionEvent e){
         switch(e.getActionMasked()){
             case MotionEvent.ACTION_DOWN:
                 swipeStartX=e.getX();swipeStartY=e.getY();horizontal=false;
                 return false;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                horizontal=false;return false;
             case MotionEvent.ACTION_MOVE:
                 if(e.getPointerCount()!=1)return false;
                 float dx=e.getX()-swipeStartX,dy=e.getY()-swipeStartY;
-                if(Math.abs(dx)>dp(30)&&Math.abs(dx)>Math.abs(dy)*1.45f){
-                    horizontal=true;return true;
+                if(Math.abs(dx)>dp(11)&&Math.abs(dx)>Math.abs(dy)*1.16f){
+                    horizontal=true;
+                    return true;
                 }
                 return false;
             default:return false;
@@ -108,12 +141,26 @@ final class OrbitalSelector extends FrameLayout {
     }
     @Override public boolean onTouchEvent(MotionEvent e){
         if(!horizontal)return super.onTouchEvent(e);
+        if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
+            float dx=e.getX()-swipeStartX;
+            float travel=Math.max(-travelDistance()*.8f,Math.min(travelDistance()*.8f,dx*.88f));
+            animate().cancel();
+            setTranslationX(travel);
+            setAlpha(Math.max(.38f,1f-Math.abs(travel)/(travelDistance()*1.28f)));
+            return true;
+        }
         if(e.getActionMasked()==MotionEvent.ACTION_UP){
             float dx=e.getX()-swipeStartX;
-            if(Math.abs(dx)>dp(70)&&navigate!=null)navigate.navigate(dx<0?-1:1);
-            horizontal=false;return true;
+            boolean strong=Math.abs(dx)>Math.min(dp(64),getWidth()*.18f)
+                && Math.abs(dx)>Math.abs(e.getY()-swipeStartY)*1.10f;
+            horizontal=false;
+            if(strong&&navigate!=null)navigate.navigate(dx<0?-1:1);
+            else restorePosition();
+            return true;
         }
-        if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){horizontal=false;return true;}
+        if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){
+            horizontal=false;restorePosition();return true;
+        }
         return true;
     }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
