@@ -42,6 +42,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         // the orbit contrast without creating a sharply bounded rectangle.
         // Both overlays have independent, time-based fade animations.
         setBackgroundColor(Color.TRANSPARENT);
+        // Allow the orbit to bend beyond its dock into the dimmed photo.
+        // The root still clips naturally at the physical screen boundary.
+        setClipChildren(false);setClipToPadding(false);
         setClickable(true);setFocusableInTouchMode(true);
         scrim=new View(c);
         scrim.setBackgroundColor(0xff09080e);
