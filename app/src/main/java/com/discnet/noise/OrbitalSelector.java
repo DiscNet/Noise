@@ -21,7 +21,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private boolean effectsMode;
     private boolean motionScheduled;
     private long lastMotionFrame;
-    private float targetX,targetAlpha;
+    private float targetX,targetAlpha,targetScale=1f;
     private final View scrim;
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
@@ -46,6 +46,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
         content.setBackgroundColor(0x3417161d);
         content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
+        content.setScaleX(.985f);content.setScaleY(.985f);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout column=content;
 
@@ -158,6 +159,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private void setMotionTarget(float x,float alpha){
         targetX=x;
         targetAlpha=Math.max(0f,Math.min(1f,alpha));
+        targetScale=.985f+.015f*targetAlpha;
         if(!motionScheduled){
             motionScheduled=true;
             Choreographer.getInstance().postFrameCallback(this);
@@ -172,12 +174,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         float blend=1f-(float)Math.exp(-dt/.108f);
         float x=content.getTranslationX()+(targetX-content.getTranslationX())*blend;
         float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*blend;
-        if(Math.abs(x-targetX)<.65f&&Math.abs(alpha-targetAlpha)<.005f){
+        float scale=content.getScaleX()+(targetScale-content.getScaleX())*blend;
+        if(Math.abs(x-targetX)<.65f&&Math.abs(alpha-targetAlpha)<.005f
+                &&Math.abs(scale-targetScale)<.0003f){
             content.setTranslationX(targetX);
             content.setAlpha(targetAlpha);
+            content.setScaleX(targetScale);content.setScaleY(targetScale);
             lastMotionFrame=0;
         }else{
             content.setTranslationX(x);content.setAlpha(alpha);
+            content.setScaleX(scale);content.setScaleY(scale);
             motionScheduled=true;
             Choreographer.getInstance().postFrameCallback(this);
         }
@@ -191,6 +197,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         if(fraction<=0f){
             stopTracking();content.animate().cancel();
             content.setTranslationX(entrance());content.setAlpha(0f);
+            content.setScaleX(.985f);content.setScaleY(.985f);
             scrimShown=false;scrim.animate().cancel();scrim.setAlpha(0f);
             return;
         }
@@ -201,22 +208,22 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         stopTracking();content.animate().cancel();
         if(open){
             fadeScrimIn();
-            content.animate().translationX(0f).alpha(1f).setDuration(440)
-                .setInterpolator(glide()).start();
+            content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(510).setInterpolator(glide()).start();
         }else{
             fadeScrimOut();
-            content.animate().translationX(entrance()).alpha(0f).setDuration(370)
-                .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
+            content.animate().translationX(entrance()).alpha(0f).scaleX(.985f).scaleY(.985f)
+                .setDuration(400).setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
     void enter(){enterFrom(effectsMode?1:-1);}
     void enterFrom(int direction){
         stopTracking();content.animate().cancel();
         content.setTranslationX(direction<0?travelDistance():-travelDistance());
-        content.setAlpha(0f);
+        content.setAlpha(0f);content.setScaleX(.985f);content.setScaleY(.985f);
         scrimShown=false;scrim.setAlpha(0f);fadeScrimIn();
-        content.animate().translationX(0f).alpha(1f).setDuration(480)
-            .setInterpolator(glide()).start();
+        content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(550).setInterpolator(glide()).start();
     }
     void exitTo(int direction){
         if(dismissed)return;
@@ -225,15 +232,15 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         fadeScrimOut();
         content.animate().cancel();
         content.animate().translationX(direction<0?-travelDistance():travelDistance())
-            .alpha(0f).setDuration(390).setInterpolator(glide())
+            .alpha(0f).scaleX(.985f).scaleY(.985f).setDuration(400).setInterpolator(glide())
             .withEndAction(this::removeFromParent).start();
     }
     void dismiss(){exitTo(effectsMode?-1:1);}
     private void restorePosition(){
         stopTracking();
         content.animate().cancel();
-        content.animate().translationX(0f).alpha(1f).setDuration(390)
-            .setInterpolator(glide()).start();
+        content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(420).setInterpolator(glide()).start();
     }
     @Override public boolean onInterceptTouchEvent(MotionEvent e){
         switch(e.getActionMasked()){
