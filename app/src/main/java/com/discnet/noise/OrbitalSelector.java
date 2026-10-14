@@ -215,7 +215,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
     @Override protected void onDetachedFromWindow(){stopTracking();animate().cancel();orbit.cancelMotion();super.onDetachedFromWindow();}
 
-    private final class OrbitStage extends FrameLayout {
+    private final class OrbitStage extends FrameLayout implements Choreographer.FrameCallback {
         private static final float STEP=.29f;
         private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint light=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -224,7 +224,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final ImageView[] icons=new ImageView[names.length];
         private VelocityTracker velocity;
         private ValueAnimator snap;
-        private float offset,downY,lastY,downX,radius;
+        private float offset,targetOffset,downY,lastY,downX,radius;
+        private boolean rotationalFrameScheduled;
+        private long lastRotationalFrame;
         private boolean dragged;
         private int highlighted=-1;
         private Runnable onSelection;
@@ -233,7 +235,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         OrbitStage(Context context,int start){
             super(context);
             setWillNotDraw(false);setClipChildren(false);setClipToPadding(false);
-            offset=Math.max(0,Math.min(names.length-1,start));
+            offset=Math.max(0,Math.min(names.length-1,start));targetOffset=offset;
             for(int i=0;i<names.length;i++){
                 final int index=i;
                 LinearLayout row=new LinearLayout(context);
@@ -315,10 +317,36 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             invalidate();
         }
         private void cancelMotion(){
+            if(rotationalFrameScheduled){
+                Choreographer.getInstance().removeFrameCallback(this);
+                rotationalFrameScheduled=false;
+            }
+            lastRotationalFrame=0;
+            targetOffset=offset;
             if(snap!=null){snap.cancel();snap=null;}
         }
+        private void followOffset(){
+            if(!rotationalFrameScheduled){
+                rotationalFrameScheduled=true;
+                Choreographer.getInstance().postFrameCallback(this);
+            }
+        }
+        @Override public void doFrame(long nanos){
+            rotationalFrameScheduled=false;
+            float dt=lastRotationalFrame==0?.016f:
+                Math.min(.050f,Math.max(.001f,(nanos-lastRotationalFrame)*1e-9f));
+            lastRotationalFrame=nanos;
+            // Angular list glides ~90ms behind touch, not rigidly attached.
+            float factor=1f-(float)Math.exp(-dt/.090f);
+            offset+=(targetOffset-offset)*factor;
+            if(Math.abs(targetOffset-offset)<.004f){
+                offset=targetOffset;lastRotationalFrame=0;
+            }else followOffset();
+            render();
+        }
         private void glideTo(int index,long duration){
-            if(snap!=null)snap.cancel();
+            cancelMotion();
+            targetOffset=index;
             snap=ValueAnimator.ofFloat(offset,index);
             snap.setDuration(duration);
             // Critically damped visual response without rubber-band oscillations.
@@ -329,7 +357,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private void settle(float velocityY){
             float pixelsPerItem=Math.max(dp(60),radius*STEP);
             float momentum=Math.max(-2.9f,Math.min(2.9f,-velocityY*.16f/pixelsPerItem));
-            int destination=Math.max(0,Math.min(names.length-1,Math.round(offset+momentum)));
+            int destination=Math.max(0,Math.min(names.length-1,Math.round(targetOffset+momentum)));
             long duration=(long)Math.min(520,280+Math.abs(destination-offset)*65);
             glideTo(destination,duration);
         }
@@ -352,7 +380,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                     if(velocity!=null)velocity.addMovement(ev);
                     float dy=ev.getY()-lastY;
                     if(Math.abs(ev.getY()-downY)>slop||Math.abs(ev.getX()-downX)>slop)dragged=true;
-                    if(dragged){offset=Math.max(0,Math.min(names.length-1,offset-dy/Math.max(dp(60),radius*STEP)));render();}
+                    if(dragged){
+                        targetOffset=Math.max(0,Math.min(names.length-1,
+                            targetOffset-dy/Math.max(dp(60),radius*STEP)));
+                        followOffset();
+                    }
                     lastY=ev.getY();return true;
                 case MotionEvent.ACTION_UP:
                     if(velocity!=null)velocity.addMovement(ev);
