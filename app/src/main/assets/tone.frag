@@ -74,17 +74,22 @@ void main(){
         c += uTone.x * 0.45 * smoothstep(0.45, 1.0, lum)
            + uTone.z * 0.35 * (1.0 - smoothstep(0.0, 0.35, lum));
 
-        // Brancos: a smooth upper-midtone/white-point curve. The former
-        // smoothstep(.70, 1.0) barely moved typical near-white photo pixels.
-        // Both directions are non-linear and preserve a soft shoulder,
-        // so the slider is effective without hard banding/clipping.
-        float upper = smoothstep(0.43, 0.91, clamp(luminance(c), 0.0, 1.0));
+        // Brancos: adaptive white-point curve. Bright colored areas and
+        // upper-midtone pixels now respond as well as near-white grayscale.
+        // The older double attenuation (mix by upper AND exponent by upper)
+        // made photos without strong highlights look unchanged.
+        float peak = max(c.r, max(c.g, c.b));
+        float whiteSignal = clamp(mix(luminance(c), peak, 0.28), 0.0, 1.0);
+        float upper = pow(smoothstep(0.12, 0.89, whiteSignal), 0.72);
         float amount = uTone.y;
         if (abs(amount) > 0.0001) {
-            vec3 target = amount > 0.0
-                ? vec3(1.0) - (vec3(1.0) - c) * exp2(-1.65 * amount * upper)
-                : c * exp2(1.22 * amount * upper);
-            c = mix(c, target, upper);
+            float strength = 1.65 * abs(amount) * upper;
+            float response = 0.92 * (1.0 - exp(-strength));
+            // Shadows are protected by upper; smooth exponential compression
+            // keeps colors continuous and avoids hard brightness cutoffs.
+            c = amount > 0.0
+                ? c + (vec3(1.0) - c) * response
+                : c * (1.0 - response);
         }
         c += uLight.x*.25 + uLight.y*.4*(1.0-smoothstep(.05,.65,lum));
         c = clamp(c, 0.0, 1.0);
