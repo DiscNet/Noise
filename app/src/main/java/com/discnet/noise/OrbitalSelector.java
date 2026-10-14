@@ -2,6 +2,7 @@ package com.discnet.noise;
 
 import android.content.Context;
 import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.view.animation.PathInterpolator;
 import android.widget.*;
@@ -21,7 +22,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private boolean effectsMode;
     private boolean motionScheduled;
     private long lastMotionFrame;
-    private float targetX,targetAlpha,targetScale=1f;
+    private float targetX,targetAlpha,targetScale=1f,targetScrim;
     private final View scrim;
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
@@ -39,12 +40,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         // the photo dims smoothly, without being dragged horizontally.
         setBackgroundColor(Color.TRANSPARENT);
         setClickable(true);setFocusableInTouchMode(true);
-        scrim=new View(c);scrim.setBackgroundColor(0xff0c0b10);scrim.setAlpha(0f);
+        scrim=new View(c);scrim.setAlpha(0f);
+        // The darkening is a translucent feathered gradient, not a solid
+        // black rectangle that snaps over the picture.
         addView(scrim,new FrameLayout.LayoutParams(-1,-1));
         content=new LinearLayout(c);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
-        content.setBackgroundColor(0x3417161d);
+        // No opaque panel rectangle: the soft scrim behind the wheel provides
+        // contrast without a hard black dividing edge.
+        content.setBackgroundColor(Color.TRANSPARENT);
         content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
         content.setScaleX(.985f);content.setScaleY(.985f);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
@@ -88,6 +93,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     void setNavigate(Navigation callback){navigate=callback;}
     void setMode(boolean effects){
         effectsMode=effects;
+        GradientDrawable gradient=new GradientDrawable(
+            effects?GradientDrawable.Orientation.LEFT_RIGHT:GradientDrawable.Orientation.RIGHT_LEFT,
+            new int[]{0xb90c0b10,0x770c0b10,0x2a0c0b10,0x000c0b10});
+        gradient.setGradientType(GradientDrawable.LINEAR_GRADIENT);
+        scrim.setBackground(gradient);
         headerTitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
         headerSubtitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
         updateDock(getWidth());
@@ -136,13 +146,13 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         if(scrimShown)return;
         scrimShown=true;
         scrim.animate().cancel();
-        scrim.animate().alpha(.84f).setDuration(420)
+        scrim.animate().alpha(.90f).setDuration(540)
             .setInterpolator(glide()).start();
     }
     private void fadeScrimOut(){
         scrimShown=false;
         scrim.animate().cancel();
-        scrim.animate().alpha(0f).setDuration(360)
+        scrim.animate().alpha(0f).setDuration(460)
             .setInterpolator(glide()).start();
     }
     private void removeFromParent(){
@@ -171,18 +181,23 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         float dt=lastMotionFrame==0?.016f:
             Math.min(.05f,Math.max(.001f,(frameTimeNanos-lastMotionFrame)*1e-9f));
         lastMotionFrame=frameTimeNanos;
-        float blend=1f-(float)Math.exp(-dt/.108f);
+        float blend=1f-(float)Math.exp(-dt/.145f);
         float x=content.getTranslationX()+(targetX-content.getTranslationX())*blend;
         float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*blend;
         float scale=content.getScaleX()+(targetScale-content.getScaleX())*blend;
+        // Scrim has its own slower, frame-rate independent opacity easing.
+        float scrimBlend=1f-(float)Math.exp(-dt/.240f);
+        float dim=scrim.getAlpha()+(targetScrim-scrim.getAlpha())*scrimBlend;
         if(Math.abs(x-targetX)<.65f&&Math.abs(alpha-targetAlpha)<.005f
-                &&Math.abs(scale-targetScale)<.0003f){
+                &&Math.abs(scale-targetScale)<.0003f
+                &&Math.abs(dim-targetScrim)<.004f){
             content.setTranslationX(targetX);
-            content.setAlpha(targetAlpha);
+            content.setAlpha(targetAlpha);scrim.setAlpha(targetScrim);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
             lastMotionFrame=0;
         }else{
             content.setTranslationX(x);content.setAlpha(alpha);
+            scrim.setAlpha(dim);
             content.setScaleX(scale);content.setScaleY(scale);
             motionScheduled=true;
             Choreographer.getInstance().postFrameCallback(this);
@@ -199,21 +214,26 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             content.setTranslationX(entrance());content.setAlpha(0f);
             content.setScaleX(.985f);content.setScaleY(.985f);
             scrimShown=false;scrim.animate().cancel();scrim.setAlpha(0f);
+            targetScrim=0f;
             return;
         }
-        fadeScrimIn();
-        setMotionTarget(entrance()*(1f-eased),eased);
+        // A short drag only lightly darkens the scene. Do not trigger the
+        // full fade the moment the first horizontal pixel is detected.
+        targetScrim=.52f*eased;
+        setMotionTarget(entrance()*(1f-.72f*eased),.80f*eased);
     }
     void finishReveal(boolean open){
         stopTracking();content.animate().cancel();
         if(open){
             fadeScrimIn();
+            // The panel still has visible travel to complete after ACTION_UP:
+            // it cannot jump to full opacity/position while under the finger.
             content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(510).setInterpolator(glide()).start();
+                .setDuration(640).setInterpolator(glide()).start();
         }else{
             fadeScrimOut();
             content.animate().translationX(entrance()).alpha(0f).scaleX(.985f).scaleY(.985f)
-                .setDuration(400).setInterpolator(glide()).withEndAction(this::removeFromParent).start();
+                .setDuration(460).setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
     void enter(){enterFrom(effectsMode?1:-1);}
@@ -223,7 +243,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         content.setAlpha(0f);content.setScaleX(.985f);content.setScaleY(.985f);
         scrimShown=false;scrim.setAlpha(0f);fadeScrimIn();
         content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(550).setInterpolator(glide()).start();
+            .setDuration(650).setInterpolator(glide()).start();
     }
     void exitTo(int direction){
         if(dismissed)return;
