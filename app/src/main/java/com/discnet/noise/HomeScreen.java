@@ -108,7 +108,7 @@ final class HomeScreen extends FrameLayout {
     }
     private static final class Sphere extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        Sphere(Context c){super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
+        Sphere(Context c){super(c);}
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);
             float cx=getWidth()/2f,cy=getHeight()/2f;
