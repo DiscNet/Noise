@@ -80,7 +80,7 @@ void main(){
         // made photos without strong highlights look unchanged.
         float peak = max(c.r, max(c.g, c.b));
         float whiteSignal = clamp(mix(luminance(c), peak, 0.28), 0.0, 1.0);
-        float upper = pow(smoothstep(0.12, 0.89, whiteSignal), 0.72);
+        float upper = pow(smoothstep(0.16, 0.89, whiteSignal), 0.72);
         float amount = uTone.y;
         if (abs(amount) > 0.0001) {
             float strength = 1.65 * abs(amount) * upper;
