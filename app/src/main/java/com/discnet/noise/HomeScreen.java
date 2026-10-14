@@ -26,7 +26,7 @@ final class HomeScreen extends FrameLayout {
         LinearLayout titles=new LinearLayout(c);titles.setOrientation(LinearLayout.VERTICAL);
         header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
         TextView logo=text("Noise!",32,EditorTheme.INK);
-        logo.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));logo.setLetterSpacing(-.045f);
+        logo.setTypeface(NoiseTypography.bold(c));logo.setLetterSpacing(-.045f);
         titles.addView(logo);
         TextView subtitle=text("Create without limits.",13,EditorTheme.MUTED);
         titles.addView(subtitle);
@@ -44,7 +44,7 @@ final class HomeScreen extends FrameLayout {
         TextView small=text("NOISE! STUDIO",11,EditorTheme.MUTED);small.setLetterSpacing(.17f);small.setGravity(Gravity.CENTER);
         sphLabels.addView(small);
         TextView start=text("Nova\ncriação",32,EditorTheme.INK);start.setGravity(Gravity.CENTER);
-        start.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));start.setLetterSpacing(-.04f);
+        start.setTypeface(NoiseTypography.bold(c));start.setLetterSpacing(-.04f);
         sphLabels.addView(start);
         TextView hint=text("Toque para importar",12,EditorTheme.MUTED);hint.setGravity(Gravity.CENTER);
         hint.setPadding(0,dp(8),0,0);sphLabels.addView(hint);
@@ -60,7 +60,7 @@ final class HomeScreen extends FrameLayout {
         lower.setBackground(EditorTheme.surface(c,30));
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
         TextView recentTitle=text("Continue criando",19,EditorTheme.INK);
-        recentTitle.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        recentTitle.setTypeface(NoiseTypography.bold(c));
         lower.addView(recentTitle);
         recent=text("Seu projeto recente aparecerá aqui.",13,EditorTheme.MUTED);
         recent.setMaxLines(1);recent.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -75,7 +75,7 @@ final class HomeScreen extends FrameLayout {
         resume.setEnabled(false);
         resume.setOnClickListener(v->onResume.run());
         TextView add=text("Importar imagem",16,0xff17121d);
-        add.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        add.setTypeface(NoiseTypography.bold(c));
         add.setGravity(Gravity.CENTER);add.setBackground(EditorTheme.buttonSurface(c,26,true));
         add.setClickable(true);add.setFocusable(true);
         lower.addView(add,new LinearLayout.LayoutParams(-1,dp(54)));
@@ -88,7 +88,7 @@ final class HomeScreen extends FrameLayout {
         navButton(nav,"Editar",IconArt.RESIZE,onImport,false);
     }
     private int dp(float d){return EditorTheme.dp(getContext(),d);}
-    private TextView text(String s,int size,int color){TextView t=new TextView(getContext());t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
+    private TextView text(String s,int size,int color){TextView t=new TextView(getContext());t.setTypeface(NoiseTypography.regular(getContext()));t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
     private void navButton(LinearLayout nav,String name,int icon,Runnable r,boolean selected){
         LinearLayout b=new LinearLayout(getContext());b.setGravity(Gravity.CENTER);b.setOrientation(LinearLayout.VERTICAL);
         ImageView image=new ImageView(getContext());
