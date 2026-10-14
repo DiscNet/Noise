@@ -15,7 +15,6 @@ final class SwipeNavigationHost extends FrameLayout {
     interface Handler {
         boolean allow(float x,float y);
         void start(boolean effects);
-        void progress(float completion);
         void finish(boolean open);
     }
 
@@ -71,7 +70,8 @@ final class SwipeNavigationHost extends FrameLayout {
                 callback.start(openingEffects);
             }
             if(tracking) {
-                callback.progress(gestureFraction(Math.abs(dx)));
+                // The gesture only decides which wheel to open. The opening
+                // animation runs independently and never tracks the pointer.
                 return true;
             }
         }
@@ -102,11 +102,6 @@ final class SwipeNavigationHost extends FrameLayout {
         return super.dispatchTouchEvent(event);
     }
 
-    private float gestureFraction(float delta){
-        // Progress target only. OrbitalSelector renders it with frame-paced damping.
-        return Math.max(0f,Math.min(1f,(delta-activationDistance)
-            /Math.max(EditorTheme.dp(getContext(),155),getWidth()*.60f)));
-    }
     private void reset(){
         eligible=false;tracking=false;openingEffects=false;
         if(velocity!=null){velocity.recycle();velocity=null;}
