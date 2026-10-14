@@ -394,7 +394,7 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("edge-only gestures and independent critically-damped fade-in and fade-out of wheels");
+            stage("full-screen fade dimmer, feathered edges and non-clipped orbital labels");
             SystemClock.sleep(520); // allow prior selection overlay to disappear
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
@@ -442,8 +442,12 @@ public class NoiseSmokeTest extends Instrumentation {
             require(alpha>.01f && alpha<.96f,
                 "Wheel gradually fades in on display frames: "+alpha);
             require(eased.getAlpha()==1f,"Overlay container stays fully opaque while scrim fades");
-            require(eased.scrimOpacity()<.84f,
-                "Dark overlay is separately animated, not an instant black scrim");
+            require(eased.wholeScreenDim(),
+                "Dark layer must cover entire screen, not only the menu side");
+            require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
+                "Full-screen dimmer fades in gradually from fully transparent");
+            require(eased.featherOpacity()>0f && eased.featherOpacity()<.60f,
+                "Side-specific feather gradient fades in smoothly");
             require(eased.motionX()>0,
                 "Right-side Tools wheel eases in from the right");
             require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
@@ -481,10 +485,14 @@ public class NoiseSmokeTest extends Instrumentation {
             float menuBeforeClose=swipeTools.motionAlpha();
             require(dimBeforeClose>.55f && menuBeforeClose>.65f,
                 "Menu and overlay became visible smoothly before close");
+            require(swipeTools.wholeScreenDim() && swipeTools.featherOpacity()>.70f,
+                "Entire editor is substantially darkened with separate edge gradient");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(90);
             require(swipeTools.scrimOpacity()<dimBeforeClose
                 &&swipeTools.scrimOpacity()>0f
+                &&swipeTools.featherOpacity()>0f
+                &&swipeTools.featherOpacity()<.88f
                 &&swipeTools.motionAlpha()<menuBeforeClose
                 &&swipeTools.motionAlpha()>0f,
                 "Close applies gradual fade-out to menu AND background");
