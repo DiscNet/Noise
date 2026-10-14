@@ -136,7 +136,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showOrbital(boolean effects,boolean interactive){
         if(original==null){showGallery();return;}
         OrbitalSelector previous=orbital;
-        if(previous!=null)previous.exitTo(effects?-1:1);
+        if(previous!=null)previous.dismiss();
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
         OrbitalSelector wheel=new OrbitalSelector(this,
@@ -153,7 +153,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
         wheel.bringToFront();
         if(interactive)wheel.setReveal(0f);
-        else wheel.enterFrom(effects?1:-1);
+        else wheel.enterFrom(effects?-1:1);
     }
     private void showHome(){
         closeOrbital();
