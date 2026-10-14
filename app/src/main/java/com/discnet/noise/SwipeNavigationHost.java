@@ -24,6 +24,7 @@ final class SwipeNavigationHost extends FrameLayout {
     private final float activationDistance;
     private float downX,downY;
     private boolean eligible,tracking,openingEffects;
+    private int edgeWidth;
     private VelocityTracker velocity;
 
     SwipeNavigationHost(Context context,Handler callback) {
@@ -31,7 +32,7 @@ final class SwipeNavigationHost extends FrameLayout {
         this.callback=callback;
         setClickable(true); // Keep DOWN sequences even over empty editor margins.
         this.touchSlop=ViewConfiguration.get(context).getScaledTouchSlop();
-        this.activationDistance=Math.max(touchSlop*1.25f,EditorTheme.dp(context,11));
+        this.activationDistance=Math.max(touchSlop*1.25f,EditorTheme.dp(context,13));
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
@@ -39,9 +40,14 @@ final class SwipeNavigationHost extends FrameLayout {
         if(action==MotionEvent.ACTION_DOWN) {
             reset();
             downX=event.getX();downY=event.getY();
-            eligible=callback.allow(downX,downY);
-            // Opposite swipe directions, independent of starting position:
-            // right-to-left -> tools; left-to-right -> effects.
+            // Only touches initiated within a real side-edge activation band
+            // can open either wheel. Gestures from the middle must never open.
+            edgeWidth=Math.round(Math.min(EditorTheme.dp(getContext(),72),
+                Math.max(EditorTheme.dp(getContext(),48),getWidth()*.16f)));
+            boolean fromLeft=downX<=getPaddingLeft()+edgeWidth;
+            boolean fromRight=downX>=getWidth()-getPaddingRight()-edgeWidth;
+            eligible=(fromLeft||fromRight)&&callback.allow(downX,downY);
+            openingEffects=fromLeft;
             if(eligible){velocity=VelocityTracker.obtain();velocity.addMovement(event);}
             return super.dispatchTouchEvent(event);
         }
@@ -54,10 +60,9 @@ final class SwipeNavigationHost extends FrameLayout {
 
         if(action==MotionEvent.ACTION_MOVE && eligible && event.getPointerCount()==1) {
             float dx=event.getX()-downX,dy=event.getY()-downY;
-            if(!tracking && Math.abs(dx)>activationDistance
-                    && Math.abs(dx)>Math.abs(dy)*1.18f){
+            boolean movingInward=openingEffects?dx>activationDistance:dx< -activationDistance;
+            if(!tracking && movingInward && Math.abs(dx)>Math.abs(dy)*1.20f){
                 tracking=true;
-                openingEffects=dx>0;
                 // The original child must not receive ACTION_UP: cancel its touch.
                 MotionEvent cancel=MotionEvent.obtain(event);
                 cancel.setAction(MotionEvent.ACTION_CANCEL);
@@ -79,7 +84,7 @@ final class SwipeNavigationHost extends FrameLayout {
                     velocity.computeCurrentVelocity(1000);
                     signedSpeed=velocity.getXVelocity()*(openingEffects?1f:-1f);
                 }
-                boolean correctDirection=(openingEffects?dx>0:dx<0);
+                boolean correctDirection=openingEffects?dx>0:dx<0;
                 boolean open=action==MotionEvent.ACTION_UP && correctDirection
                     && distance>Math.min(EditorTheme.dp(getContext(),75),getWidth()*.22f)
                     && Math.abs(event.getY()-downY)<distance*1.3f;
