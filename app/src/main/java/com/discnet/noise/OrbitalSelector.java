@@ -23,10 +23,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private boolean motionScheduled;
     private long lastMotionFrame;
     private float targetX,targetAlpha,targetScale=1f,targetScrim;
+    private float horizontalVelocity;
+    private boolean closing;
     private final View scrim;
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
-    private boolean scrimShown;
     private final OrbitStage orbit;
     private final TextView continueButton;
     private final Selection callback;
@@ -134,31 +135,15 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             +active.getX()+active.getWidth()/2f;
     }
     private float travelDistance(){
-        return Math.max(dp(210),Math.min(
-            getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,
-            dp(530))*.86f);
+        // A restrained slide brings the wheel into view; a full-width
+        // translation made the animation appear to jump into the screen.
+        return Math.min(dp(164),Math.max(dp(116),getWidth()*.38f));
     }
     private float entrance(){return effectsMode?-travelDistance():travelDistance();}
-    private PathInterpolator glide(){
-        return new PathInterpolator(.18f,.82f,.22f,1f);
-    }
-    private void fadeScrimIn(){
-        if(scrimShown)return;
-        scrimShown=true;
-        scrim.animate().cancel();
-        scrim.animate().alpha(.90f).setDuration(540)
-            .setInterpolator(glide()).start();
-    }
-    private void fadeScrimOut(){
-        scrimShown=false;
-        scrim.animate().cancel();
-        scrim.animate().alpha(0f).setDuration(460)
-            .setInterpolator(glide()).start();
-    }
+    private float exitDirection(){return entrance();}
     private void removeFromParent(){
         if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);
     }
-    /** An exponential 108 ms low-pass filter smooths the gesture at frame rate. */
     private void stopTracking(){
         if(motionScheduled){
             Choreographer.getInstance().removeFrameCallback(this);
@@ -166,102 +151,103 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
         lastMotionFrame=0;
     }
-    private void setMotionTarget(float x,float alpha){
-        targetX=x;
-        targetAlpha=Math.max(0f,Math.min(1f,alpha));
-        targetScale=.985f+.015f*targetAlpha;
+    private void requestMotion(){
         if(!motionScheduled){
             motionScheduled=true;
             Choreographer.getInstance().postFrameCallback(this);
         }
     }
+    private void targetOpen(){
+        closing=false;
+        targetX=0f;
+        targetAlpha=1f;
+        targetScrim=.90f;
+        targetScale=1f;
+        requestMotion();
+    }
+    private void targetClosed(){
+        closing=true;
+        targetX=exitDirection();
+        targetAlpha=0f;
+        targetScrim=0f;
+        targetScale=.985f;
+        requestMotion();
+    }
+    /**
+     * The gesture starts a self-running animation. Neither its distance nor
+     * finger velocity drives menu position, fade, scale, or overlay opacity.
+     *
+     * Position uses the same critically-damped, velocity-continuous spring as
+     * orbital scroll. Fade is integrated independently, every display frame.
+     */
+    void beginReveal(){
+        stopTracking();
+        closing=false;dismissed=false;
+        content.animate().cancel();scrim.animate().cancel();
+        horizontalVelocity=0f;
+        content.setTranslationX(entrance());
+        content.setAlpha(0f);
+        content.setScaleX(.985f);content.setScaleY(.985f);
+        scrim.setAlpha(0f);
+        targetOpen();
+    }
     @Override public void doFrame(long frameTimeNanos){
         motionScheduled=false;
         if(getParent()==null){lastMotionFrame=0;return;}
         float dt=lastMotionFrame==0?.016f:
-            Math.min(.05f,Math.max(.001f,(frameTimeNanos-lastMotionFrame)*1e-9f));
+            Math.min(.045f,Math.max(.001f,(frameTimeNanos-lastMotionFrame)*1e-9f));
         lastMotionFrame=frameTimeNanos;
-        float blend=1f-(float)Math.exp(-dt/.145f);
-        float x=content.getTranslationX()+(targetX-content.getTranslationX())*blend;
-        float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*blend;
-        float scale=content.getScaleX()+(targetScale-content.getScaleX())*blend;
-        // Scrim has its own slower, frame-rate independent opacity easing.
-        float scrimBlend=1f-(float)Math.exp(-dt/.240f);
+
+        // Analytic critically damped spring. Unlike a view animation tied
+        // to the pointer, this never jumps when a touch MOVE or UP arrives.
+        final float omega=12f;
+        float displacement=content.getTranslationX()-targetX;
+        float carry=horizontalVelocity+omega*displacement;
+        float decay=(float)Math.exp(-omega*dt);
+        float x=targetX+(displacement+carry*dt)*decay;
+        horizontalVelocity=(horizontalVelocity-omega*carry*dt)*decay;
+        float fadeBlend=1f-(float)Math.exp(-dt/.160f);
+        float scrimBlend=1f-(float)Math.exp(-dt/.200f);
+        float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*fadeBlend;
         float dim=scrim.getAlpha()+(targetScrim-scrim.getAlpha())*scrimBlend;
-        if(Math.abs(x-targetX)<.65f&&Math.abs(alpha-targetAlpha)<.005f
-                &&Math.abs(scale-targetScale)<.0003f
-                &&Math.abs(dim-targetScrim)<.004f){
-            content.setTranslationX(targetX);
-            content.setAlpha(targetAlpha);scrim.setAlpha(targetScrim);
+        float scale=content.getScaleX()+(targetScale-content.getScaleX())*fadeBlend;
+        content.setTranslationX(x);
+        content.setAlpha(alpha);
+        content.setScaleX(scale);content.setScaleY(scale);
+        scrim.setAlpha(dim);
+
+        boolean settled=Math.abs(x-targetX)<.6f&&Math.abs(horizontalVelocity)<4f
+            &&Math.abs(alpha-targetAlpha)<.005f&&Math.abs(dim-targetScrim)<.005f
+            &&Math.abs(scale-targetScale)<.0003f;
+        if(settled){
+            content.setTranslationX(targetX);content.setAlpha(targetAlpha);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
-            lastMotionFrame=0;
-        }else{
-            content.setTranslationX(x);content.setAlpha(alpha);
-            scrim.setAlpha(dim);
-            content.setScaleX(scale);content.setScaleY(scale);
-            motionScheduled=true;
-            Choreographer.getInstance().postFrameCallback(this);
-        }
+            scrim.setAlpha(targetScrim);
+            lastMotionFrame=0;horizontalVelocity=0f;
+            if(closing)removeFromParent();
+        }else requestMotion();
     }
-    private float smoothstep(float p){
-        p=Math.max(0f,Math.min(1f,p));return p*p*(3f-2f*p);
-    }
-    /** Finger sets target; the panel follows softly and scrim fades independently. */
-    void setReveal(float fraction){
-        float eased=smoothstep(fraction);
-        if(fraction<=0f){
-            stopTracking();content.animate().cancel();
-            content.setTranslationX(entrance());content.setAlpha(0f);
-            content.setScaleX(.985f);content.setScaleY(.985f);
-            scrimShown=false;scrim.animate().cancel();scrim.setAlpha(0f);
-            targetScrim=0f;
-            return;
-        }
-        // A short drag only lightly darkens the scene. Do not trigger the
-        // full fade the moment the first horizontal pixel is detected.
-        targetScrim=.52f*eased;
-        setMotionTarget(entrance()*(1f-.72f*eased),.80f*eased);
+    /** The opening is never mapped to the position of the finger. */
+    void setReveal(float ignoredProgress){
+        // Retained for source compatibility; gesture progress does not
+        // control the visual reveal. Opening starts with beginReveal().
     }
     void finishReveal(boolean open){
-        stopTracking();content.animate().cancel();
-        if(open){
-            fadeScrimIn();
-            // The panel still has visible travel to complete after ACTION_UP:
-            // it cannot jump to full opacity/position while under the finger.
-            content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(640).setInterpolator(glide()).start();
-        }else{
-            fadeScrimOut();
-            content.animate().translationX(entrance()).alpha(0f).scaleX(.985f).scaleY(.985f)
-                .setDuration(460).setInterpolator(glide()).withEndAction(this::removeFromParent).start();
+        if(open)targetOpen();
+        else{
+            dismissed=true;
+            targetClosed();
         }
     }
-    void enter(){enterFrom(effectsMode?1:-1);}
-    void enterFrom(int direction){
-        stopTracking();content.animate().cancel();
-        content.setTranslationX(direction<0?travelDistance():-travelDistance());
-        content.setAlpha(0f);content.setScaleX(.985f);content.setScaleY(.985f);
-        scrimShown=false;scrim.setAlpha(0f);fadeScrimIn();
-        content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(650).setInterpolator(glide()).start();
-    }
+    /** Programmatic launch uses exactly the same continuous fade/slide. */
+    void enter(){beginReveal();}
+    void enterFrom(int direction){beginReveal();}
     void exitTo(int direction){
         if(dismissed)return;
-        dismissed=true;
-        stopTracking();
-        fadeScrimOut();
-        content.animate().cancel();
-        content.animate().translationX(direction<0?-travelDistance():travelDistance())
-            .alpha(0f).scaleX(.985f).scaleY(.985f).setDuration(400).setInterpolator(glide())
-            .withEndAction(this::removeFromParent).start();
+        dismissed=true;targetClosed();
     }
     void dismiss(){exitTo(effectsMode?-1:1);}
-    private void restorePosition(){
-        stopTracking();
-        content.animate().cancel();
-        content.animate().translationX(0f).alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(420).setInterpolator(glide()).start();
-    }
+    private void restorePosition(){targetOpen();}
     @Override public boolean onInterceptTouchEvent(MotionEvent e){
         switch(e.getActionMasked()){
             case MotionEvent.ACTION_DOWN:
@@ -283,10 +269,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     @Override public boolean onTouchEvent(MotionEvent e){
         if(!horizontal)return super.onTouchEvent(e);
         if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
-            float dx=e.getX()-swipeStartX;
-            float travel=Math.max(-travelDistance()*.8f,Math.min(travelDistance()*.8f,dx*.88f));
-            content.animate().cancel();
-            setMotionTarget(travel,Math.max(.43f,1f-Math.abs(travel)/(travelDistance()*1.28f)));
+            // A drag on an already-open wheel is only a navigation intent;
+            // the menu never translates rigidly with the finger.
             return true;
         }
         if(e.getActionMasked()==MotionEvent.ACTION_UP){
