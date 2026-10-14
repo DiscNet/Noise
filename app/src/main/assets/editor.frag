@@ -283,7 +283,11 @@ void main() {
             float strength=uStyle.y*(.54+.21*(1.0-clamp(uGlow.x,0.0,1.0)));
             vec3 glowLight=energy*strength
                 +sqrt(max(energy,vec3(0.0)))*(.16*uStyle.y);
-            c=clamp(c+glowLight,0.0,1.0);
+            // Compress toward white rather than hard-clipping at 100%.
+            // Preserves visible progression from 100% to 200% Glow on
+            // moderately bright pixels, without introducing image blur.
+            c=vec3(1.0)-(vec3(1.0)-clamp(c,0.0,1.0))
+                *exp(-1.35*glowLight);
         }
         if(uGrain.x>.001){
             vec2 p=vTexCoord*uSize/max(1.0,uGrain.y);
