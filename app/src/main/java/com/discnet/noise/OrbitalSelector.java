@@ -1,10 +1,8 @@
 package com.discnet.noise;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.*;
 import android.view.*;
-import android.view.animation.DecelerateInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.*;
 
@@ -24,6 +22,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private boolean motionScheduled;
     private long lastMotionFrame;
     private float targetX,targetAlpha;
+    private final View scrim;
+    private final LinearLayout content;
+    private boolean scrimShown;
     private final OrbitStage orbit;
     private final TextView continueButton;
     private final Selection callback;
@@ -33,13 +34,17 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     OrbitalSelector(Context c,String title,String subtitle,String[] names,int[] symbols,int initial,Selection callback){
         super(c);
         this.names=names.clone();this.symbols=symbols.clone();this.callback=callback;
-        // Transparent dark scrim: the editable image remains visible beneath.
-        setBackgroundColor(0xd40c0b10);
+        // A dedicated overlay fades independently from the orbit's sliding panel:
+        // the photo dims smoothly, without being dragged horizontally.
+        setBackgroundColor(Color.TRANSPARENT);
         setClickable(true);setFocusableInTouchMode(true);
-        LinearLayout column=new LinearLayout(c);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setPadding(dp(24),dp(12),dp(24),dp(16));
-        addView(column,new FrameLayout.LayoutParams(-1,-1));
+        scrim=new View(c);scrim.setBackgroundColor(0xff0c0b10);scrim.setAlpha(0f);
+        addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        content=new LinearLayout(c);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24),dp(12),dp(24),dp(16));
+        addView(content,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout column=content;
 
         LinearLayout header=new LinearLayout(c);
         header.setGravity(Gravity.TOP|Gravity.CENTER_VERTICAL);
@@ -58,7 +63,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         orbit=new OrbitStage(c,initial);
         column.addView(orbit,new LinearLayout.LayoutParams(-1,0,1));
-        TextView current=label(c,"↕  GIRE A RODA            →  FECHAR",10,EditorTheme.MUTED);
+        TextView current=label(c,"↕  DESLIZE SUAVEMENTE   ·   TOQUE PARA SELECIONAR",10,EditorTheme.MUTED);
         current.setGravity(Gravity.CENTER);
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
@@ -80,29 +85,49 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     void setMode(boolean effects){effectsMode=effects;}
     boolean isEffects(){return effectsMode;}
 
+    float motionX(){return content.getTranslationX();}
+    float motionAlpha(){return content.getAlpha();}
+    float scrimOpacity(){return scrim.getAlpha();}
     private float travelDistance(){
-        return Math.max(dp(210),Math.min(getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,dp(530))*.86f);
+        return Math.max(dp(210),Math.min(
+            getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,
+            dp(530))*.86f);
     }
+    private float entrance(){return effectsMode?-travelDistance():travelDistance();}
     private PathInterpolator glide(){
         return new PathInterpolator(.18f,.82f,.22f,1f);
+    }
+    private void fadeScrimIn(){
+        if(scrimShown)return;
+        scrimShown=true;
+        scrim.animate().cancel();
+        scrim.animate().alpha(.84f).setDuration(420)
+            .setInterpolator(glide()).start();
+    }
+    private void fadeScrimOut(){
+        scrimShown=false;
+        scrim.animate().cancel();
+        scrim.animate().alpha(0f).setDuration(360)
+            .setInterpolator(glide()).start();
     }
     private void removeFromParent(){
         if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);
     }
-    /**
-     * Target-driven motion: never copy the finger position directly to the UI.
-     * A 108ms exponential response is updated at display-frame cadence. This
-     * gives perceptible softness while remaining responsive and frame-rate
-     * independent (including devices with 90/120Hz displays).
-     */
+    /** An exponential 108 ms low-pass filter smooths the gesture at frame rate. */
     private void stopTracking(){
-        if(motionScheduled){Choreographer.getInstance().removeFrameCallback(this);motionScheduled=false;}
+        if(motionScheduled){
+            Choreographer.getInstance().removeFrameCallback(this);
+            motionScheduled=false;
+        }
         lastMotionFrame=0;
     }
     private void setMotionTarget(float x,float alpha){
         targetX=x;
         targetAlpha=Math.max(0f,Math.min(1f,alpha));
-        if(!motionScheduled){motionScheduled=true;Choreographer.getInstance().postFrameCallback(this);}
+        if(!motionScheduled){
+            motionScheduled=true;
+            Choreographer.getInstance().postFrameCallback(this);
+        }
     }
     @Override public void doFrame(long frameTimeNanos){
         motionScheduled=false;
@@ -111,61 +136,69 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             Math.min(.05f,Math.max(.001f,(frameTimeNanos-lastMotionFrame)*1e-9f));
         lastMotionFrame=frameTimeNanos;
         float blend=1f-(float)Math.exp(-dt/.108f);
-        float x=getTranslationX()+(targetX-getTranslationX())*blend;
-        float alpha=getAlpha()+(targetAlpha-getAlpha())*blend;
-        if(Math.abs(x-targetX)<.65f && Math.abs(alpha-targetAlpha)<.005f){
-            setTranslationX(targetX);setAlpha(targetAlpha);
+        float x=content.getTranslationX()+(targetX-content.getTranslationX())*blend;
+        float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*blend;
+        if(Math.abs(x-targetX)<.65f&&Math.abs(alpha-targetAlpha)<.005f){
+            content.setTranslationX(targetX);
+            content.setAlpha(targetAlpha);
             lastMotionFrame=0;
         }else{
-            setTranslationX(x);setAlpha(alpha);
-            motionScheduled=true;Choreographer.getInstance().postFrameCallback(this);
+            content.setTranslationX(x);content.setAlpha(alpha);
+            motionScheduled=true;
+            Choreographer.getInstance().postFrameCallback(this);
         }
     }
     private float smoothstep(float p){
-        p=Math.max(0f,Math.min(1f,p));
-        return p*p*(3f-2f*p);
+        p=Math.max(0f,Math.min(1f,p));return p*p*(3f-2f*p);
     }
-    /** Responsive delayed reveal with eased position and fade. */
+    /** Finger sets target; the panel follows softly and scrim fades independently. */
     void setReveal(float fraction){
         float eased=smoothstep(fraction);
         if(fraction<=0f){
-            stopTracking();animate().cancel();
-            setTranslationX(travelDistance());setAlpha(0f);
+            stopTracking();content.animate().cancel();
+            content.setTranslationX(entrance());content.setAlpha(0f);
+            scrimShown=false;scrim.animate().cancel();scrim.setAlpha(0f);
             return;
         }
-        setMotionTarget(travelDistance()*(1f-eased),eased);
+        fadeScrimIn();
+        setMotionTarget(entrance()*(1f-eased),eased);
     }
     void finishReveal(boolean open){
-        stopTracking();
-        animate().cancel();
+        stopTracking();content.animate().cancel();
         if(open){
-            animate().translationX(0f).alpha(1f).setDuration(440)
+            fadeScrimIn();
+            content.animate().translationX(0f).alpha(1f).setDuration(440)
                 .setInterpolator(glide()).start();
         }else{
-            animate().translationX(travelDistance()).alpha(0f).setDuration(310)
+            fadeScrimOut();
+            content.animate().translationX(entrance()).alpha(0f).setDuration(370)
                 .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
-    /** Normal programmatic entrance (e.g. accessibility or tests). */
-    void enter(){enterFrom(-1);}
+    void enter(){enterFrom(effectsMode?1:-1);}
     void enterFrom(int direction){
-        stopTracking();animate().cancel();
-        setTranslationX(direction<0?travelDistance():-travelDistance());setAlpha(0f);
-        animate().translationX(0f).alpha(1f).setDuration(480)
+        stopTracking();content.animate().cancel();
+        content.setTranslationX(direction<0?travelDistance():-travelDistance());
+        content.setAlpha(0f);
+        scrimShown=false;scrim.setAlpha(0f);fadeScrimIn();
+        content.animate().translationX(0f).alpha(1f).setDuration(480)
             .setInterpolator(glide()).start();
     }
     void exitTo(int direction){
         if(dismissed)return;
         dismissed=true;
-        stopTracking();animate().cancel();
-        animate().translationX(direction<0?-travelDistance():travelDistance())
+        stopTracking();
+        fadeScrimOut();
+        content.animate().cancel();
+        content.animate().translationX(direction<0?-travelDistance():travelDistance())
             .alpha(0f).setDuration(390).setInterpolator(glide())
             .withEndAction(this::removeFromParent).start();
     }
-    void dismiss(){exitTo(1);}
+    void dismiss(){exitTo(effectsMode?-1:1);}
     private void restorePosition(){
-        stopTracking();animate().cancel();
-        animate().translationX(0f).alpha(1f).setDuration(390)
+        stopTracking();
+        content.animate().cancel();
+        content.animate().translationX(0f).alpha(1f).setDuration(390)
             .setInterpolator(glide()).start();
     }
     @Override public boolean onInterceptTouchEvent(MotionEvent e){
@@ -191,7 +224,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
             float dx=e.getX()-swipeStartX;
             float travel=Math.max(-travelDistance()*.8f,Math.min(travelDistance()*.8f,dx*.88f));
-            animate().cancel();
+            content.animate().cancel();
             setMotionTarget(travel,Math.max(.43f,1f-Math.abs(travel)/(travelDistance()*1.28f)));
             return true;
         }
@@ -200,9 +233,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             boolean strong=Math.abs(dx)>Math.min(dp(64),getWidth()*.18f)
                 && Math.abs(dx)>Math.abs(e.getY()-swipeStartY)*1.10f;
             horizontal=false;
-            // Never chain tools -> effects. Effects are reached only by a
-            // new right-edge swipe on the editor itself, not by another
-            // leftward gesture while a wheel is already visible.
+            // Closing is separate: overlay gestures do not open another wheel.
             if(strong&&dx>0&&navigate!=null)navigate.navigate(1);
             else restorePosition();
             return true;
@@ -213,7 +244,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         return true;
     }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
-    @Override protected void onDetachedFromWindow(){stopTracking();animate().cancel();orbit.cancelMotion();super.onDetachedFromWindow();}
+    @Override protected void onDetachedFromWindow(){
+        stopTracking();content.animate().cancel();scrim.animate().cancel();
+        orbit.cancelMotion();super.onDetachedFromWindow();
+    }
 
     private final class OrbitStage extends FrameLayout implements Choreographer.FrameCallback {
         private static final float STEP=.29f;
