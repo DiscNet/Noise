@@ -37,7 +37,6 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private GalleryScreen galleryScreen;
     private HomeScreen homeScreen;
     private OrbitalSelector orbital;
-    private TextView orbitLaunch;
     private CropEditor cropEditor;
     private LinearLayout topBar;
     private HorizontalScrollView categoryScroll;
@@ -56,7 +55,16 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
             @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
-            @Override public void openTools(){showOrbital(false);}
+            @Override public void start(){showOrbital(false,true);}
+            @Override public void progress(float amount){
+                if(orbital!=null)orbital.setReveal(amount);
+            }
+            @Override public void finish(boolean open){
+                if(orbital==null)return;
+                OrbitalSelector active=orbital;
+                if(!open)orbital=null;
+                active.finishReveal(open);
+            }
         });
         appBackground.setBackgroundColor(0xff0c0b10);setContentView(appBackground);
         appBackground.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});
@@ -79,11 +87,12 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         ImageView full=IconArt.button(this,IconArt.FULL,"Alternar tela cheia");FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.BOTTOM|Gravity.RIGHT);editorStage.addView(full,fp);full.setOnClickListener(v->toggleFullscreen());
         panel=new EditorPanel(this,this);installSheetGesture();
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
-        LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);strip.setPadding(dp(12),dp(2),dp(12),dp(2));categoryScroll.addView(strip);
-              orbitLaunch=button("← Deslize para as ferramentas",false);
-        orbitLaunch.setContentDescription("Abrir navegação orbital de ferramentas");
-        strip.addView(orbitLaunch,new LinearLayout.LayoutParams(dp(264),dp(46)));
-        orbitLaunch.setOnClickListener(v->showOrbital(false));
+        LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setPadding(dp(18),0,dp(18),0);categoryScroll.addView(strip);
+        TextView gestureHint=text("←  ARRASTE NA IMAGEM PARA AS FERRAMENTAS",11,EditorTheme.MUTED);
+        gestureHint.setLetterSpacing(.045f);gestureHint.setGravity(Gravity.CENTER_VERTICAL);
+        gestureHint.setFocusable(false);gestureHint.setClickable(false);
+        strip.addView(gestureHint,new LinearLayout.LayoutParams(-1,-1));
         // Keep the original category actions addressable to instrumentation and accessibility.
         // The user-facing category chooser is now the genuinely circular OrbitalSelector.
         for(int i=0;i<7;i++){final int n=i;TextView tab=text(AdjustmentSpec.CATEGORIES[i],13,EditorTheme.MUTED);
@@ -102,43 +111,51 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             case MotionEvent.ACTION_UP:if(!moved)v.performClick();return true;case MotionEvent.ACTION_CANCEL:return true;}return false;}});}
     private void selectCategory(int n){n=Math.max(0,Math.min(6,n));panel.select(n);
         for(int i=0;i<tabs.length;i++)tabs[i].setSelected(i==n);
-        if(orbitLaunch!=null)orbitLaunch.setText("← Ferramentas  ·  "+AdjustmentSpec.CATEGORIES[n]);
+        // A roda se abre exclusivamente por arrasto, sem botao de menu.
     }
     @Override public void openEffects(){showOrbital(true);}
     private boolean canSwipeForTools(float x,float y){
-        if(original==null||loading||exporting||orbital!=null||cropEditor!=null||preview==null
+        if(original==null||loading||orbital!=null||cropEditor!=null||preview==null
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
-        // Only gestures that begin over the image preview open the navigation;
-        // sliders, tool controls, gallery and zoomed-photo panning keep ownership.
-        float top=appBackground.getPaddingTop()+workspace.getTop()+editorStage.getTop();
-        float bottom=top+editorStage.getHeight()-dp(50);
-        return x>dp(20)&&x<appBackground.getWidth()-dp(20)
-            &&y>top+dp(12)&&y<bottom;
+        // All of the image width is active, including its edges and the toolbar.
+        // The gesture also works over the small grip above the tool sheet,
+        // not just inside the previous narrow central preview rectangle.
+        float y0=appBackground.getPaddingTop()+workspace.getTop();
+        float y1=y0+editorStage.getBottom()+dp(74);
+        boolean nearSide=x<dp(46)||x>appBackground.getWidth()-dp(46);
+        float maxY=y0+workspace.getHeight()-dp(24);
+        return x>=0&&x<=appBackground.getWidth()
+            &&y>=y0&&((y<=y1)||(nearSide&&y<=maxY));
     }
     private void closeOrbital(){
-        if(orbital!=null){OrbitalSelector closing=orbital;orbital=null;closing.dismiss();}
+        if(orbital!=null){OrbitalSelector old=orbital;orbital=null;old.exitTo(1);}
     }
-    private void showOrbital(boolean effects){
+    private void showOrbital(boolean effects){showOrbital(effects,false);}
+    private void showOrbital(boolean effects,boolean interactive){
         if(original==null){showGallery();return;}
-        if(orbital!=null){OrbitalSelector prior=orbital;orbital=null;prior.dismiss();}
+        OrbitalSelector previous=orbital;
+        if(previous!=null)previous.exitTo(effects?-1:1);
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
-        orbital=new OrbitalSelector(this,effects?"Escolha um\nefeito":"Explore suas\nferramentas",
-            effects?"Deslize para encontrar o efeito ideal.":"Selecione uma área para editar a imagem.",
+        OrbitalSelector wheel=new OrbitalSelector(this,
+            effects?"Escolha um\nefeito":"Explore suas\nferramentas",
+            effects?"Arraste para percorrer a roda.":"Deslize para explorar todas as categorias.",
             labels,symbols,effects?panel.effect:panel.category,n->{
                 if(effects){panel.effect=n;selectCategory(3);}else selectCategory(n);
                 orbital=null;
             });
-        orbital.setNavigate(direction->{
-            if(direction<0){if(!effects)showOrbital(true);}
+        orbital=wheel;
+        wheel.setNavigate(direction->{
+            if(direction<0){if(!effects)showOrbital(true);else wheel.finishReveal(true);}
             else if(effects)showOrbital(false);
             else closeOrbital();
         });
-        appBackground.addView(orbital,new FrameLayout.LayoutParams(-1,-1));
-        orbital.bringToFront();
-        orbital.enter();
+        appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
+        wheel.bringToFront();
+        if(interactive)wheel.setReveal(0f);
+        else wheel.enterFrom(effects?-1:1);
     }
     private void showHome(){
         closeOrbital();
