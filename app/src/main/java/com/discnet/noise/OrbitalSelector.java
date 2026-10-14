@@ -383,14 +383,24 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             super.onDraw(canvas);
             if(radius<=0)return;
             stroke.setShader(null);stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(dp(1));
-            stroke.setColor(0x66514b5d);
-            Path path=new Path();
-            for(int j=0;j<=80;j++){
-                float theta=-1.37f+(2.74f*j/80f);
-                if(j==0)path.moveTo(arcX(theta),arcY(theta));
-                else path.lineTo(arcX(theta),arcY(theta));
+            // Do not let the circle line terminate at the clip boundary:
+            // the previous single Path created a conspicuous hard vertical
+            // seam on the external edge of either menu.
+            for(int j=1;j<=112;j++){
+                float t0=-1.40f+2.80f*(j-1)/112f;
+                float t1=-1.40f+2.80f*j/112f;
+                float theta=(t0+t1)*.5f;
+                float xm=arcX(theta),ym=arcY(theta);
+                float edgeDistance=Math.min(xm,getWidth()-xm);
+                float verticalDistance=Math.min(ym,getHeight()-ym);
+                float xFade=Math.max(0f,Math.min(1f,edgeDistance/Math.max(1,dp(65))));
+                float yFade=Math.max(0f,Math.min(1f,verticalDistance/Math.max(1,dp(70))));
+                float endFade=Math.max(0f,Math.min(1f,(1.40f-Math.abs(theta))/.27f));
+                float opacity=xFade*yFade*endFade;
+                if(opacity<.01f)continue;
+                stroke.setColor(Color.argb(Math.round(84f*opacity),81,75,93));
+                canvas.drawLine(arcX(t0),arcY(t0),arcX(t1),arcY(t1),stroke);
             }
-            canvas.drawPath(path,stroke);
             float x=arcX(0),y=arcY(0);
             light.setStyle(Paint.Style.FILL);
             light.setShader(new RadialGradient(x,y,dp(96),
@@ -427,11 +437,17 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 float rawX=arcX(theta)-(effectsMode?dp(32):dp(176));
                 // Keep text wholly inside the orbit viewport: previously
                 // items were abruptly cropped at the left/right screen edge.
-                float x=Math.max(dp(12),Math.min(getWidth()-dp(232),rawX));
+                float maxX=Math.max(dp(4),getWidth()-dp(224));
+                float x=Math.max(dp(4),Math.min(maxX,rawX));
                 float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
                 float emphasis=Math.max(0,1-Math.min(1,distance));
-                row.setAlpha(Math.max(.04f,1-distance*.235f));
+                // Feather items out near both the top/bottom ends of the arc,
+                // rather than cutting icons and labels off at the viewport.
+                float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.34f));
+                float topBottom=Math.min(y,getHeight()-y-dp(64));
+                float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(70)));
+                row.setAlpha(Math.max(0f,1-distance*.205f)*terminalFade*viewportFade);
                 float scale=.83f+.17f*emphasis;
                 row.setScaleX(scale);row.setScaleY(scale);
             }
