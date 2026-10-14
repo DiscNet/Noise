@@ -99,6 +99,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(saved!=null){try{document=EditorDocument.fromJson(new JSONObject(saved.getString("document","{}")));history.restore(new JSONObject(saved.getString("history","{}")));}catch(Exception ignored){}
             String id=saved.getString("project");if(id!=null)loadProject(id,true);selectCategory(saved.getInt("category",0));}
         if(saved==null||saved.getString("project")==null)showHome();
+        // Ask once on the first real app launch, not only after opening Gallery.
+        // A denial is respected; the user may still use the system photo picker
+        // and can explicitly grant later from the Gallery screen.
+        if(saved==null)appBackground.post(this::requestFirstLaunchGalleryPermission);
     }
     private ImageView addIcon(LinearLayout parent,int icon,String label,Runnable action){ImageView v=IconArt.button(this,icon,label);parent.addView(v,new LinearLayout.LayoutParams(dp(48),dp(48)));v.setOnClickListener(w->action.run());return v;}
     private void installSheetGesture(){panel.handle.setOnClickListener(v->workspace.cycleSheet());panel.handle.setOnTouchListener(new View.OnTouchListener(){float start;int height;boolean moved;public boolean onTouch(View v,MotionEvent e){
@@ -203,8 +207,24 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showCrop(){if(original==null||loading)return;if(cropEditor!=null)return;
         cropEditor=new CropEditor(this,original,document,new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
     private void closeCrop(){if(cropEditor!=null){appBackground.removeView(cropEditor);cropEditor=null;}}
+    private void requestFirstLaunchGalleryPermission(){
+        if(destroyed||isFinishing())return;
+        android.content.SharedPreferences prefs=getPreferences(0);
+        if(prefs.getBoolean("gallery_permission_first_launch_asked",false))return;
+        prefs.edit().putBoolean("gallery_permission_first_launch_asked",true).apply();
+        if(!hasGalleryPermission())grantGalleryPermission();
+    }
     private boolean hasGalleryPermission(){if(Build.VERSION.SDK_INT>=34)return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)==PackageManager.PERMISSION_GRANTED||checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)==PackageManager.PERMISSION_GRANTED;if(Build.VERSION.SDK_INT>=33)return checkSelfPermission(Manifest.permission.READ_MEDIA_IMAGES)==PackageManager.PERMISSION_GRANTED;return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)==PackageManager.PERMISSION_GRANTED;}
-    private void grantGalleryPermission(){if(Build.VERSION.SDK_INT>=34)requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES,Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED},GALLERY_PERMISSION);else requestPermissions(new String[]{Build.VERSION.SDK_INT>=33?Manifest.permission.READ_MEDIA_IMAGES:Manifest.permission.READ_EXTERNAL_STORAGE},GALLERY_PERMISSION);}
+    private void grantGalleryPermission(){
+        if(hasGalleryPermission())return;
+        if(Build.VERSION.SDK_INT>=34)
+            requestPermissions(new String[]{Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED},GALLERY_PERMISSION);
+        else
+            requestPermissions(new String[]{Build.VERSION.SDK_INT>=33
+                ?Manifest.permission.READ_MEDIA_IMAGES:Manifest.permission.READ_EXTERNAL_STORAGE},
+                GALLERY_PERMISSION);
+    }
     private void showGallery(){if(galleryScreen==null){galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){public void onPhoto(Uri uri){load(uri);}public void onSystemGallery(){systemPicker();}public void onGrantPermission(){grantGalleryPermission();}public void onClose(){closeGallery();if(original==null)showHome();}public void onProjects(){closeGallery();showProjects();}});appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));}closeHome();galleryScreen.setVisibility(View.VISIBLE);galleryScreen.bringToFront();galleryScreen.refresh(hasGalleryPermission());}
     private void closeGallery(){if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);}
     private void systemPicker(){Intent intent=Build.VERSION.SDK_INT>=33?new Intent(MediaStore.ACTION_PICK_IMAGES):new Intent(Intent.ACTION_PICK,MediaStore.Images.Media.EXTERNAL_CONTENT_URI);intent.setType("image/*");intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivityForResult(intent,1);}catch(ActivityNotFoundException e){toast("Galeria do sistema indisponível");}}
