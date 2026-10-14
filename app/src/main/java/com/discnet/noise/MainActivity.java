@@ -153,7 +153,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
         wheel.bringToFront();
         if(interactive)wheel.setReveal(0f);
-        else wheel.enterFrom(effects?-1:1);
+        else wheel.enterFrom(effects?1:-1);
     }
     private void showHome(){
         closeOrbital();
