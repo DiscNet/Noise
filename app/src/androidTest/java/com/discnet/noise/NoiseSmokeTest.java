@@ -394,19 +394,43 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("opposite horizontal swipes, independent scrim fade, critically damped orbital rotation");
+            stage("edge-only orbit gestures, soft-gradient overlay and delayed menu opening");
             SystemClock.sleep(520); // allow prior selection overlay to disappear
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
                 +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
             float width=gestureHost.getWidth();
-            float fromTools=width*.63f,toTools=width*.13f;
+            // Center swipes must be ignored, even with a long horizontal travel.
+            long centerTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime,
+                    MotionEvent.ACTION_DOWN,width*.5f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+100,
+                    MotionEvent.ACTION_MOVE,width*.27f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+175,
+                    MotionEvent.ACTION_UP,width*.19f,gestureY,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Middle-screen horizontal swipe MUST NOT open a wheel");
+
+            // Wrong-way swipes from edges are also ignored.
+            long wrongTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime,
+                    MotionEvent.ACTION_DOWN,width*.04f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+90,
+                    MotionEvent.ACTION_MOVE,width*.005f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+160,
+                    MotionEvent.ACTION_UP,width*.005f,gestureY,0));
+            });
+            require(field(activity,"orbital")==null,"Outward swipe must not open a wheel");
+            float fromTools=width*.96f,toTools=width*.18f;
             long gt=SystemClock.uptimeMillis();
             runOnMainSync(()->{
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt,
                     MotionEvent.ACTION_DOWN,fromTools,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+95,
-                    MotionEvent.ACTION_MOVE,width*.34f,gestureY,0));
+                    MotionEvent.ACTION_MOVE,width*.68f,gestureY,0));
             });
             // Frame pacing must be observable: not frozen, and not instantly
             // attached to the finger position without any damping.
@@ -422,10 +446,16 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Dark overlay is separately animated, not an instant black scrim");
             require(eased.motionX()>0,
                 "Right-side Tools wheel eases in from the right");
-            require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.84f,
-                "Dark overlay fades in separately from wheel movement");
+            require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
+                "Dark gradient builds slowly instead of immediately covering image");
+            require(eased.motionAlpha()<.85f,
+                "Wheel content remains translucent during the swipe");
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
                 MotionEvent.ACTION_UP,toTools,gestureY,0)));
+            // Immediately after release, final animation must still be running.
+            OrbitalSelector animated=(OrbitalSelector)field(activity,"orbital");
+            require(animated!=null&&animated.motionAlpha()<.99f,
+                "Menu must EASE IN after finger release instead of appearing instantly");
             OrbitalSelector swipeTools=(OrbitalSelector)field(activity,"orbital");
             require(swipeTools!=null && !swipeTools.isEffects(),
                 "Non-edge swipe opens tools");
@@ -436,13 +466,13 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(480);
 
-            float fromEffects=width*.11f,toEffects=width*.79f;
+            float fromEffects=width*.04f,toEffects=width*.82f;
             long ge=SystemClock.uptimeMillis();
             runOnMainSync(()->{
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge,
                     MotionEvent.ACTION_DOWN,fromEffects,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+85,
-                    MotionEvent.ACTION_MOVE,width*.42f,gestureY,0));
+                    MotionEvent.ACTION_MOVE,width*.32f,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+150,
                     MotionEvent.ACTION_MOVE,toEffects,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+190,
