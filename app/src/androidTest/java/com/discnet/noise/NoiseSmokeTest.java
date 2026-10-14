@@ -406,7 +406,7 @@ public class NoiseSmokeTest extends Instrumentation {
                     MotionEvent.ACTION_DOWN,fromX,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+95,
                     MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,gestureY,0));
-                OrbitalSelector whileDragging=(OrbitalSelector)field(activity,"orbital");
+                OrbitalSelector whileDragging=(OrbitalSelector)gestureHost.getChildAt(gestureHost.getChildCount()-1);
                 require(whileDragging!=null,"Wheel appears DURING swipe, not after release");
                 require(whileDragging.getTranslationX()>0f && whileDragging.getAlpha()>0f
                     && whileDragging.getAlpha()<1f,"Wheel follows finger with partial opacity");
