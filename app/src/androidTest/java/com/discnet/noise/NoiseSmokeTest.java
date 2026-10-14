@@ -42,6 +42,27 @@ public class NoiseSmokeTest extends Instrumentation {
                 int c = source.getPixel(x, y); closeColor(neutral.getPixel(x,y), c, "Neutral/orientation");
                 if (Color.alpha(c) > 0) closeColor(inverted.getPixel(x,y), (c & 0xff000000) | ((~c) & 0xffffff), "Invert");
             }
+            stage("Whites slider GPU response");
+            Bitmap whitesSource=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
+            whitesSource.eraseColor(0xffb8b8b8);
+            for(int y=4;y<8;y++)for(int x=0;x<8;x++)whitesSource.setPixel(x,y,0xff282828);
+            EditorDocument whitesDefault=new EditorDocument();
+            Bitmap whitesNeutral=GpuExporter.render(getTargetContext(),whitesSource,whitesDefault.gpu(false));
+            EditorDocument whitesPlus=whitesDefault.copy();whitesPlus.values[5]=1f;
+            EditorDocument whitesMinus=whitesDefault.copy();whitesMinus.values[5]=-1f;
+            Bitmap whitesBright=GpuExporter.render(getTargetContext(),whitesSource,whitesPlus.gpu(false));
+            Bitmap whitesDark=GpuExporter.render(getTargetContext(),whitesSource,whitesMinus.gpu(false));
+            int neutralUpper=Color.red(whitesNeutral.getPixel(2,2));
+            require(Color.red(whitesBright.getPixel(2,2))>neutralUpper+10,
+                "Whites +100% visibly increases near-white luminosity");
+            require(Color.red(whitesDark.getPixel(2,2))<neutralUpper-10,
+                "Whites -100% visibly reduces near-white luminosity");
+            require(Math.abs(Color.red(whitesBright.getPixel(2,6))-Color.red(whitesNeutral.getPixel(2,6)))<=3,
+                "Whites do not wash out dark shadows");
+            Bitmap whitesOriginal=GpuExporter.render(getTargetContext(),whitesSource,whitesPlus.gpu(true));
+            closeColor(whitesOriginal.getPixel(2,2),whitesSource.getPixel(2,2),
+                "Original comparison bypasses Whites");
+            whitesOriginal.recycle();whitesNeutral.recycle();whitesBright.recycle();whitesDark.recycle();whitesSource.recycle();
             ByteArrayOutputStream bytes = new ByteArrayOutputStream(); inverted.compress(Bitmap.CompressFormat.PNG, 100, bytes);
             byte[] png = bytes.toByteArray(); Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
             closeColor(decoded.getPixel(1, 2), inverted.getPixel(1, 2), "PNG alpha"); decoded.recycle();
@@ -373,6 +394,50 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
+            stage("horizontal orbit navigation over image and in overlay");
+            SystemClock.sleep(380); // allow the selection overlay to finish closing
+            FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
+            float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
+                +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
+            float fromX=gestureHost.getWidth()*.80f,toX=gestureHost.getWidth()*.20f;
+            long gestureTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime,
+                    MotionEvent.ACTION_DOWN,fromX,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+95,
+                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+160,
+                    MotionEvent.ACTION_UP,toX,gestureY,0));
+            });
+            OrbitalSelector swipeTools=(OrbitalSelector)field(activity,"orbital");
+            require(swipeTools!=null,"Swipe left on preview opens tool wheel");
+            long leftTime=SystemClock.uptimeMillis();
+            float cy=swipeTools.getHeight()*.55f;
+            runOnMainSync(()->{
+                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime,
+                    MotionEvent.ACTION_DOWN,fromX,cy,0));
+                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime+120,
+                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,cy,0));
+                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime+160,
+                    MotionEvent.ACTION_UP,toX,cy,0));
+            });
+            OrbitalSelector swipeEffects=(OrbitalSelector)field(activity,"orbital");
+            require(swipeEffects!=null&&swipeEffects!=swipeTools,
+                "Another swipe left switches from tools to effects");
+            long rightTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime,
+                    MotionEvent.ACTION_DOWN,toX,cy,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime+110,
+                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,cy,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime+150,
+                    MotionEvent.ACTION_UP,fromX,cy,0));
+            });
+            OrbitalSelector swipeReturn=(OrbitalSelector)field(activity,"orbital");
+            require(swipeReturn!=null&&swipeReturn!=swipeEffects,
+                "Swipe right returns to tools");
+            runOnMainSync(activity::onBackPressed);
+            waitForIdleSync();
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
             for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}
