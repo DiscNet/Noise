@@ -394,54 +394,69 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("gesture-only navigation, interactive finger-following orbital reveal");
-            SystemClock.sleep(380); // allow the selection overlay to finish closing
+            stage("independent swipe origins and damped wheel reveal");
+            SystemClock.sleep(520); // allow prior selection overlay to disappear
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
                 +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
-            float fromX=gestureHost.getWidth()*.80f,toX=gestureHost.getWidth()*.20f;
-            long gestureTime=SystemClock.uptimeMillis();
+            float width=gestureHost.getWidth();
+            float fromTools=width*.63f,toTools=width*.13f;
+            long gt=SystemClock.uptimeMillis();
             runOnMainSync(()->{
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime,
-                    MotionEvent.ACTION_DOWN,fromX,gestureY,0));
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+95,
-                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,gestureY,0));
-                OrbitalSelector whileDragging=(OrbitalSelector)gestureHost.getChildAt(gestureHost.getChildCount()-1);
-                require(whileDragging!=null,"Wheel appears DURING swipe, not after release");
-                require(whileDragging.getTranslationX()>0f && whileDragging.getAlpha()>0f
-                    && whileDragging.getAlpha()<1f,"Wheel follows finger with partial opacity");
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+160,
-                    MotionEvent.ACTION_UP,toX,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt,
+                    MotionEvent.ACTION_DOWN,fromTools,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+95,
+                    MotionEvent.ACTION_MOVE,width*.34f,gestureY,0));
             });
+            // Frame pacing must be observable: not frozen, and not instantly
+            // attached to the finger position without any damping.
+            SystemClock.sleep(85);
+            OrbitalSelector eased=(OrbitalSelector)field(activity,"orbital");
+            require(eased!=null && !eased.isEffects(),
+                "Regular swipe opens tools directly");
+            float alpha=eased.getAlpha();
+            require(alpha>.01f && alpha<.96f,
+                "Wheel gradually fades in on display frames: "+alpha);
+            require(eased.getTranslationX()>0,
+                "Wheel displacement still easing toward gesture target");
+            runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
+                MotionEvent.ACTION_UP,toTools,gestureY,0)));
             OrbitalSelector swipeTools=(OrbitalSelector)field(activity,"orbital");
-            require(swipeTools!=null,"Swipe left on preview opens tool wheel");
-            long leftTime=SystemClock.uptimeMillis();
-            float cy=swipeTools.getHeight()*.55f;
+            require(swipeTools!=null && !swipeTools.isEffects(),
+                "Non-edge swipe opens tools");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(480);
+
+            float fromEdge=width*.96f,toEdge=width*.28f;
+            long ge=SystemClock.uptimeMillis();
             runOnMainSync(()->{
-                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime,
-                    MotionEvent.ACTION_DOWN,fromX,cy,0));
-                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime+120,
-                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,cy,0));
-                swipeTools.dispatchTouchEvent(MotionEvent.obtain(leftTime,leftTime+160,
-                    MotionEvent.ACTION_UP,toX,cy,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge,
+                    MotionEvent.ACTION_DOWN,fromEdge,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+85,
+                    MotionEvent.ACTION_MOVE,width*.66f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+150,
+                    MotionEvent.ACTION_MOVE,toEdge,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+190,
+                    MotionEvent.ACTION_UP,toEdge,gestureY,0));
             });
             OrbitalSelector swipeEffects=(OrbitalSelector)field(activity,"orbital");
-            require(swipeEffects!=null&&swipeEffects!=swipeTools,
-                "Another swipe left switches from tools to effects");
-            long rightTime=SystemClock.uptimeMillis();
+            require(swipeEffects!=null&&swipeEffects.isEffects(),
+                "Right-edge to left opens effects DIRECTLY, skipping tools");
+            // Another left swipe while a wheel is open must NOT switch modes.
+            long repeat=SystemClock.uptimeMillis();
+            float midY=swipeEffects.getHeight()*.55f;
             runOnMainSync(()->{
-                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime,
-                    MotionEvent.ACTION_DOWN,toX,cy,0));
-                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime+110,
-                    MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,cy,0));
-                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(rightTime,rightTime+150,
-                    MotionEvent.ACTION_UP,fromX,cy,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat,
+                    MotionEvent.ACTION_DOWN,fromTools,midY,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat+120,
+                    MotionEvent.ACTION_MOVE,width*.34f,midY,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat+180,
+                    MotionEvent.ACTION_UP,toTools,midY,0));
             });
-            OrbitalSelector swipeReturn=(OrbitalSelector)field(activity,"orbital");
-            require(swipeReturn!=null&&swipeReturn!=swipeEffects,
-                "Swipe right returns to tools");
+            require(field(activity,"orbital")==swipeEffects && swipeEffects.isEffects(),
+                "Repeating the left swipe does not chain menus");
             runOnMainSync(activity::onBackPressed);
-            waitForIdleSync();
+            SystemClock.sleep(450);
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
             for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}
