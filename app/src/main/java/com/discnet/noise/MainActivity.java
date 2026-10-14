@@ -48,7 +48,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private int maxTexture=4096;
     private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74;
     private int dp(float n){return EditorTheme.dp(this,n);}
-    private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
+    private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setTypeface(NoiseTypography.regular(this));v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView button(String t,boolean primary){TextView v=text(t,14,primary?0xff19121f:EditorTheme.INK);v.setGravity(Gravity.CENTER);EditorTheme.button(v,primary);v.setMinHeight(dp(48));v.setFocusable(true);return v;}
     private LinearLayout vertical(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
     @Override public void onCreate(Bundle saved){
@@ -59,7 +59,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         workspace=new EditorWorkspace(this);appBackground.addView(workspace,new FrameLayout.LayoutParams(-1,-1));
         topBar=new LinearLayout(this);topBar.setGravity(Gravity.CENTER_VERTICAL);topBar.setPadding(dp(4),0,dp(4),0);
         addIcon(topBar,IconArt.BACK,"Início",this::showHome);
-        TextView brand=text("Noise!",18,EditorTheme.INK);brand.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));topBar.addView(brand,new LinearLayout.LayoutParams(0,-1,1));
+        TextView brand=text("Noise!",18,EditorTheme.INK);brand.setTypeface(NoiseTypography.bold(this));topBar.addView(brand,new LinearLayout.LayoutParams(0,-1,1));
         undo=addIcon(topBar,IconArt.UNDO,"Desfazer",()->{document=history.undo(document);restored();});
         redo=addIcon(topBar,IconArt.REDO,"Refazer",()->{document=history.redo(document);restored();});
         save=addIcon(topBar,IconArt.SAVE,"Exportar imagem",this::showExport);
