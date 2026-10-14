@@ -89,7 +89,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(18),0,dp(18),0);categoryScroll.addView(strip);
-        TextView gestureHint=text("←  Ferramentas   ·   ← da borda direita: Efeitos",11,EditorTheme.MUTED);
+        TextView gestureHint=text("←  Ferramentas           Efeitos  →",11,EditorTheme.MUTED);
         gestureHint.setLetterSpacing(.045f);gestureHint.setGravity(Gravity.CENTER_VERTICAL);
         gestureHint.setFocusable(false);gestureHint.setClickable(false);
         strip.addView(gestureHint,new LinearLayout.LayoutParams(-1,-1));
@@ -130,7 +130,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             &&y>=y0&&((y<=y1)||(nearSide&&y<=maxY));
     }
     private void closeOrbital(){
-        if(orbital!=null){OrbitalSelector old=orbital;orbital=null;old.exitTo(1);}
+        if(orbital!=null){OrbitalSelector old=orbital;orbital=null;old.dismiss();}
     }
     private void showOrbital(boolean effects){showOrbital(effects,false);}
     private void showOrbital(boolean effects,boolean interactive){
@@ -153,7 +153,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
         wheel.bringToFront();
         if(interactive)wheel.setReveal(0f);
-        else wheel.enterFrom(effects?-1:1);
+        else wheel.enterFrom(effects?1:-1);
     }
     private void showHome(){
         closeOrbital();
