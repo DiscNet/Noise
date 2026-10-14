@@ -417,8 +417,8 @@ public class NoiseSmokeTest extends Instrumentation {
             float alpha=eased.motionAlpha();
             require(alpha>.01f && alpha<.96f,
                 "Wheel gradually fades in on display frames: "+alpha);
-            require(eased.motionX()>0,
-                "Wheel displacement still easing toward gesture target");
+            require(eased.motionX()<0,
+                "Left-side Tools wheel eases in from the left");
             require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.84f,
                 "Dark overlay fades in separately from wheel movement");
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
