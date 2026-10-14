@@ -30,7 +30,13 @@ final class EditorPanel extends LinearLayout {
             if(category==1)toggle("Inverter cores",d.invert,checked->change(()->d.invert=checked));
             if(category==2)toggle("Grão colorido",d.grainColored,checked->change(()->d.grainColored=checked));
         }else if(category==3){
-            button("Explorar efeitos na órbita  ↻",()->host.openEffects());
+            TextView gestureHint=new TextView(getContext());
+            gestureHint.setText("←  Arraste para a esquerda para abrir a roda de efeitos");
+            gestureHint.setTextSize(12);
+            gestureHint.setTextColor(EditorTheme.MUTED);
+            gestureHint.setTypeface(NoiseTypography.medium(getContext()));
+            gestureHint.setPadding(dp(8),dp(8),dp(8),dp(16));
+            controls.addView(gestureHint,new LayoutParams(-1,-2));
             int[] ids=AdjustmentSpec.EFFECT_PARAMS[effect];effectSwitch(d,ids[0],AdjustmentSpec.EFFECTS[effect]);for(int i:ids)add(i);
         }else if(category==4){
             choices(new String[]{"Neon","Bayer 4×4","Threshold"},d.ditherMethod,n->change(()->{d.ditherMethod=n;if(n>0)d.values[9]=Math.min(1,d.values[9]);rebuild();}));
