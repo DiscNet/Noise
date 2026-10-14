@@ -45,6 +45,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
         content.setBackgroundColor(0x3417161d);
+        content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
         addView(content,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout column=content;
 
@@ -86,8 +87,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     void setNavigate(Navigation callback){navigate=callback;}
     void setMode(boolean effects){
         effectsMode=effects;
-        headerTitle.setGravity(effects?Gravity.RIGHT:Gravity.LEFT);
-        headerSubtitle.setGravity(effects?Gravity.RIGHT:Gravity.LEFT);
+        headerTitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
+        headerSubtitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
         updateDock(getWidth());
         orbit.updateItemOrientation();
         orbit.render();
@@ -96,7 +97,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         int screenWidth=availableWidth>0?availableWidth:getResources().getDisplayMetrics().widthPixels;
         int dock=Math.min(screenWidth,Math.min(dp(440),Math.max(dp(248),Math.round(screenWidth*.84f))));
         FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)content.getLayoutParams();
-        int gravity=Gravity.TOP|(effectsMode?Gravity.RIGHT:Gravity.LEFT);
+        int gravity=Gravity.TOP|(effectsMode?Gravity.LEFT:Gravity.RIGHT);
         if(params.width!=dock||params.gravity!=gravity){
             params.width=dock;params.height=LayoutParams.MATCH_PARENT;
             params.gravity=gravity;content.setLayoutParams(params);
@@ -126,7 +127,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,
             dp(530))*.86f);
     }
-    private float entrance(){return effectsMode?travelDistance():-travelDistance();}
+    private float entrance(){return effectsMode?-travelDistance():travelDistance();}
     private PathInterpolator glide(){
         return new PathInterpolator(.18f,.82f,.22f,1f);
     }
@@ -208,7 +209,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
-    void enter(){enterFrom(effectsMode?-1:1);}
+    void enter(){enterFrom(effectsMode?1:-1);}
     void enterFrom(int direction){
         stopTracking();content.animate().cancel();
         content.setTranslationX(direction<0?travelDistance():-travelDistance());
@@ -227,7 +228,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             .alpha(0f).setDuration(390).setInterpolator(glide())
             .withEndAction(this::removeFromParent).start();
     }
-    void dismiss(){exitTo(effectsMode?1:-1);}
+    void dismiss(){exitTo(effectsMode?-1:1);}
     private void restorePosition(){
         stopTracking();
         content.animate().cancel();
@@ -333,16 +334,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 TextView caption=captions[i];
                 ImageView icon=icons[i];
                 row.removeAllViews();
-                caption.setGravity((effectsMode?Gravity.RIGHT:Gravity.LEFT)|Gravity.CENTER_VERTICAL);
-                caption.setPadding(effectsMode?0:dp(9),0,effectsMode?dp(9):0,0);
+                caption.setGravity((effectsMode?Gravity.LEFT:Gravity.RIGHT)|Gravity.CENTER_VERTICAL);
+                caption.setPadding(effectsMode?dp(9):0,0,effectsMode?0:dp(9),0);
                 LinearLayout.LayoutParams textParams=new LinearLayout.LayoutParams(dp(136),dp(64));
                 LinearLayout.LayoutParams iconParams=new LinearLayout.LayoutParams(dp(64),dp(64));
                 if(effectsMode){
-                    row.addView(caption,textParams);
-                    iconParams.leftMargin=dp(8);row.addView(icon,iconParams);
-                }else{
                     row.addView(icon,iconParams);
                     textParams.leftMargin=dp(8);row.addView(caption,textParams);
+                }else{
+                    row.addView(caption,textParams);
+                    iconParams.leftMargin=dp(8);row.addView(icon,iconParams);
                 }
             }
         }
@@ -350,7 +351,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);radius=Math.max(w*.94f,dp(250));render();}
         private float arcX(float theta){
             float bend=radius*(1f-(float)Math.cos(theta));
-            return effectsMode?getWidth()-dp(44)+bend:dp(36)-bend;
+            return effectsMode?dp(36)-bend:getWidth()-dp(44)+bend;
         }
         private float arcY(float theta){return getHeight()*.50f+radius*(float)Math.sin(theta);}
         @Override protected void onDraw(Canvas canvas){
@@ -371,7 +372,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 new int[]{0x3bd8b4f8,0x14b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP));
             canvas.drawCircle(x,y,dp(96),light);
             light.setShader(null);light.setColor(EditorTheme.LIME);
-            float markerX=x+(effectsMode?-dp(40):dp(40));
+            float markerX=x+(effectsMode?dp(40):-dp(40));
             canvas.drawRoundRect(markerX-dp(8),y-dp(2),markerX+dp(8),y+dp(2),dp(3),dp(3),light);
         }
         private void render(){
@@ -398,7 +399,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 if(!visible)continue;
                 // The selected icon remains adjacent to the actual arc on
                 // its side; the complete row mirrors around the viewport.
-                float x=arcX(theta)-(effectsMode?dp(176):dp(32));
+                float x=arcX(theta)-(effectsMode?dp(32):dp(176));
                 float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
                 float emphasis=Math.max(0,1-Math.min(1,distance));
