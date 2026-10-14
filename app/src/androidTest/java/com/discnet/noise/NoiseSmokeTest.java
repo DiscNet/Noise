@@ -354,6 +354,25 @@ public class NoiseSmokeTest extends Instrumentation {
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
             for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            stage("orbital tool gesture and functional effect routing");
+            runOnMainSync(activity::openEffects);waitForIdleSync();
+            OrbitalSelector orbital=(OrbitalSelector)field(activity,"orbital");
+            View orbitStage=(View)field(orbital,"orbit");
+            require(orbitStage.getHeight()>0&&orbitStage.getWidth()>0,"Orbital selector measured");
+            float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
+            long time=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time,MotionEvent.ACTION_DOWN,gestureX,from,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+110,MotionEvent.ACTION_MOVE,gestureX,(from+to)/2,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+180,MotionEvent.ACTION_MOVE,gestureX,to,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+210,MotionEvent.ACTION_UP,gestureX,to,0));
+            });
+            SystemClock.sleep(800);
+            int orbitResult=orbital.selected();
+            require(orbitResult>0,"Orbital drag scrolls to a different effect");
+            TextView openEffect=(TextView)field(orbital,"continueButton");
+            runOnMainSync(openEffect::performClick);
+            require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
             for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}
