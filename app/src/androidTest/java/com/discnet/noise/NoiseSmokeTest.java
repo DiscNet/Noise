@@ -426,6 +426,10 @@ public class NoiseSmokeTest extends Instrumentation {
             OrbitalSelector swipeTools=(OrbitalSelector)field(activity,"orbital");
             require(swipeTools!=null && !swipeTools.isEffects(),
                 "Non-edge swipe opens tools");
+            waitForIdleSync();
+            require(swipeTools.dockLeft()==0,"Tools panel docks on LEFT");
+            require(swipeTools.dockRight()<width*.95f,"Tools stays clear of right edge");
+            require(swipeTools.orbitalScreenX()<width*.35f,"Tools orbit and active icon are on LEFT");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(480);
 
@@ -444,6 +448,11 @@ public class NoiseSmokeTest extends Instrumentation {
             OrbitalSelector swipeEffects=(OrbitalSelector)field(activity,"orbital");
             require(swipeEffects!=null&&swipeEffects.isEffects(),
                 "Left-to-right opens effects DIRECTLY, skipping tools");
+            waitForIdleSync();
+            require(swipeEffects.dockLeft()>width*.09f,"Effects panel physically docks on RIGHT");
+            require(swipeEffects.dockRight()==gestureHost.getWidth(),"Effects aligned to RIGHT edge");
+            require(swipeEffects.orbitalScreenX()>width*.65f,
+                "Effects orbit, active icon and labels occupy RIGHT side");
             // Another left swipe while a wheel is open must NOT switch modes.
             long repeat=SystemClock.uptimeMillis();
             float midY=swipeEffects.getHeight()*.55f;
