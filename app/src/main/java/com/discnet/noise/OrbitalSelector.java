@@ -114,7 +114,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     int dockLeft(){return content.getLeft();}
     int dockRight(){return content.getRight();}
     float orbitalScreenX(){
-        return content.getLeft()+content.getPaddingLeft()+orbit.arcX(0f);
+        int index=orbit.selected();
+        LinearLayout row=orbit.rows[index];
+        ImageView active=orbit.icons[index];
+        if(active.getWidth()==0)return content.getLeft()+content.getPaddingLeft()+orbit.arcX(0f);
+        return content.getLeft()+content.getPaddingLeft()+row.getX()
+            +active.getX()+active.getWidth()/2f;
     }
     private float travelDistance(){
         return Math.max(dp(210),Math.min(
