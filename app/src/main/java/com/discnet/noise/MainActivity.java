@@ -56,10 +56,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
             @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
             @Override public void start(boolean effects){showOrbital(effects,true);}
-            @Override public void progress(float amount){
-                if(orbital!=null)orbital.setReveal(amount);
-            }
-            @Override public void finish(boolean open){
+             @Override public void finish(boolean open){
                 if(orbital==null)return;
                 OrbitalSelector active=orbital;
                 if(!open)orbital=null;
@@ -152,7 +149,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         wheel.setNavigate(direction->closeOrbital());
         appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
         wheel.bringToFront();
-        if(interactive)wheel.setReveal(0f);
+        if(interactive)wheel.beginReveal();
         else wheel.enterFrom(effects?1:-1);
     }
     private void showHome(){
