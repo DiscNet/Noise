@@ -394,7 +394,7 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("horizontal orbit navigation over image and in overlay");
+            stage("gesture-only navigation, interactive finger-following orbital reveal");
             SystemClock.sleep(380); // allow the selection overlay to finish closing
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
@@ -406,6 +406,10 @@ public class NoiseSmokeTest extends Instrumentation {
                     MotionEvent.ACTION_DOWN,fromX,gestureY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+95,
                     MotionEvent.ACTION_MOVE,(fromX+toX)*.5f,gestureY,0));
+                OrbitalSelector whileDragging=(OrbitalSelector)field(activity,"orbital");
+                require(whileDragging!=null,"Wheel appears DURING swipe, not after release");
+                require(whileDragging.getTranslationX()>0f && whileDragging.getAlpha()>0f
+                    && whileDragging.getAlpha()<1f,"Wheel follows finger with partial opacity");
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gestureTime,gestureTime+160,
                     MotionEvent.ACTION_UP,toX,gestureY,0));
             });
