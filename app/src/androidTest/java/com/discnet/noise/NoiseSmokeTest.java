@@ -32,6 +32,8 @@ public class NoiseSmokeTest extends Instrumentation {
             Intent launch = new Intent(getTargetContext(), MainActivity.class); launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             MainActivity activity = (MainActivity) startActivitySync(launch); waitForIdleSync();
             SystemClock.sleep(800);
+            require(activity.getPreferences(0).getBoolean("gallery_permission_first_launch_asked",false),
+                "First app launch records the initial permission request");
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
@@ -63,6 +65,50 @@ public class NoiseSmokeTest extends Instrumentation {
             closeColor(whitesOriginal.getPixel(2,2),whitesSource.getPixel(2,2),
                 "Original comparison bypasses Whites");
             whitesOriginal.recycle();whitesNeutral.recycle();whitesBright.recycle();whitesDark.recycle();whitesSource.recycle();
+
+            // Low-contrast and colored photography must respond to Whites,
+            // rather than only very bright, near-white image pixels.
+            stage("Whites and Glow on dim and colored images");
+            Bitmap lowKey=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
+            lowKey.eraseColor(0xff35323e);
+            for(int y=10;y<54;y++)for(int x=12;x<52;x++)
+                lowKey.setPixel(x,y,0xff69584e);
+            EditorDocument lowNeutral=new EditorDocument();
+            EditorDocument midWhites=lowNeutral.copy();
+            midWhites.values[5]=1f;
+            Bitmap baseline=GpuExporter.render(getTargetContext(),lowKey,lowNeutral.gpu(false));
+            Bitmap midBright=GpuExporter.render(getTargetContext(),lowKey,midWhites.gpu(false));
+            int sumBright=0, sumNeutral=0;
+            for(int y=16;y<48;y+=4)for(int x=16;x<48;x+=4){
+                sumBright+=Color.red(midBright.getPixel(x,y))
+                    +Color.green(midBright.getPixel(x,y))+Color.blue(midBright.getPixel(x,y));
+                sumNeutral+=Color.red(baseline.getPixel(x,y))
+                    +Color.green(baseline.getPixel(x,y))+Color.blue(baseline.getPixel(x,y));
+            }
+            require(sumBright>sumNeutral+320,
+                "Whites +100% must affect medium-toned colored images");
+            EditorDocument lowGlow=lowNeutral.copy();
+            lowGlow.values[10]=1.5f;
+            lowGlow.values[57]=.95f; // old hard gate hid Glow at this threshold
+            lowGlow.values[58]=.65f;
+            Bitmap glowing=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(false));
+            int lumGlow=Color.red(glowing.getPixel(32,32))
+                +Color.green(glowing.getPixel(32,32))+Color.blue(glowing.getPixel(32,32));
+            int lumBase=Color.red(baseline.getPixel(32,32))
+                +Color.green(baseline.getPixel(32,32))+Color.blue(baseline.getPixel(32,32));
+            require(lumGlow>lumBase+15,
+                "Glow needs visible energy on a dark low-contrast colored image");
+            // Threshold 100% must remain numerically well-defined.
+            lowGlow.values[57]=1f;
+            Bitmap maxThreshold=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(false));
+            require(Color.red(maxThreshold.getPixel(32,32))>Color.red(baseline.getPixel(32,32)),
+                "Glow threshold 100% must not disappear or become undefined");
+            Bitmap bypassGlow=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(true));
+            closeColor(bypassGlow.getPixel(32,32),lowKey.getPixel(32,32),
+                "Original compare bypasses Glow");
+            baseline.recycle();midBright.recycle();glowing.recycle();
+            maxThreshold.recycle();bypassGlow.recycle();lowKey.recycle();
+
             ByteArrayOutputStream bytes = new ByteArrayOutputStream(); inverted.compress(Bitmap.CompressFormat.PNG, 100, bytes);
             byte[] png = bytes.toByteArray(); Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
             closeColor(decoded.getPixel(1, 2), inverted.getPixel(1, 2), "PNG alpha"); decoded.recycle();
