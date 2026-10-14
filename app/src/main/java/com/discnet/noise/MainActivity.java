@@ -54,7 +54,11 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);store=new ProjectStore(this);getWindow().setStatusBarColor(0xff0c0b10);getWindow().setNavigationBarColor(0xff0c0b10);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-        appBackground=new FrameLayout(this);appBackground.setBackgroundColor(0xff0c0b10);setContentView(appBackground);
+        appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
+            @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
+            @Override public void openTools(){showOrbital(false);}
+        });
+        appBackground.setBackgroundColor(0xff0c0b10);setContentView(appBackground);
         appBackground.setOnApplyWindowInsetsListener((v,insets)->{v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());return insets;});
         workspace=new EditorWorkspace(this);appBackground.addView(workspace,new FrameLayout.LayoutParams(-1,-1));
         topBar=new LinearLayout(this);topBar.setGravity(Gravity.CENTER_VERTICAL);topBar.setPadding(dp(4),0,dp(4),0);
@@ -76,7 +80,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         panel=new EditorPanel(this,this);installSheetGesture();
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);strip.setPadding(dp(12),dp(2),dp(12),dp(2));categoryScroll.addView(strip);
-        orbitLaunch=button("Ferramentas  ·  Luz  ↻",false);
+              orbitLaunch=button("← Deslize para as ferramentas",false);
         orbitLaunch.setContentDescription("Abrir navegação orbital de ferramentas");
         strip.addView(orbitLaunch,new LinearLayout.LayoutParams(dp(264),dp(46)));
         orbitLaunch.setOnClickListener(v->showOrbital(false));
@@ -98,12 +102,27 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             case MotionEvent.ACTION_UP:if(!moved)v.performClick();return true;case MotionEvent.ACTION_CANCEL:return true;}return false;}});}
     private void selectCategory(int n){n=Math.max(0,Math.min(6,n));panel.select(n);
         for(int i=0;i<tabs.length;i++)tabs[i].setSelected(i==n);
-        if(orbitLaunch!=null)orbitLaunch.setText("Ferramentas  ·  "+AdjustmentSpec.CATEGORIES[n]+"  ↻");
+        if(orbitLaunch!=null)orbitLaunch.setText("← Ferramentas  ·  "+AdjustmentSpec.CATEGORIES[n]);
     }
     @Override public void openEffects(){showOrbital(true);}
+    private boolean canSwipeForTools(float x,float y){
+        if(original==null||loading||exporting||orbital!=null||cropEditor!=null||preview==null
+            ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
+        if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
+        if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
+        // Only gestures that begin over the image preview open the navigation;
+        // sliders, tool controls, gallery and zoomed-photo panning keep ownership.
+        float top=appBackground.getPaddingTop()+workspace.getTop()+editorStage.getTop();
+        float bottom=top+editorStage.getHeight()-dp(50);
+        return x>dp(20)&&x<appBackground.getWidth()-dp(20)
+            &&y>top+dp(12)&&y<bottom;
+    }
+    private void closeOrbital(){
+        if(orbital!=null){OrbitalSelector closing=orbital;orbital=null;closing.dismiss();}
+    }
     private void showOrbital(boolean effects){
         if(original==null){showGallery();return;}
-        if(orbital!=null){orbital.dismiss();orbital=null;}
+        if(orbital!=null){OrbitalSelector prior=orbital;orbital=null;prior.dismiss();}
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
         orbital=new OrbitalSelector(this,effects?"Escolha um\nefeito":"Explore suas\nferramentas",
@@ -112,11 +131,17 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                 if(effects){panel.effect=n;selectCategory(3);}else selectCategory(n);
                 orbital=null;
             });
+        orbital.setNavigate(direction->{
+            if(direction<0){if(!effects)showOrbital(true);}
+            else if(effects)showOrbital(false);
+            else closeOrbital();
+        });
         appBackground.addView(orbital,new FrameLayout.LayoutParams(-1,-1));
         orbital.bringToFront();
+        orbital.enter();
     }
     private void showHome(){
-        if(orbital!=null){orbital.dismiss();orbital=null;}
+        closeOrbital();
         if(homeScreen==null){
             homeScreen=new HomeScreen(this,this::showGallery,this::showProjects,()->{
                 String id=getPreferences(0).getString("lastProject",null);
@@ -209,7 +234,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
         if(cropEditor!=null){closeCrop();return;}
-        if(orbital!=null&&orbital.getParent()!=null){orbital.dismiss();orbital=null;return;}
+        if(orbital!=null&&orbital.getParent()!=null){closeOrbital();return;}
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE){super.onBackPressed();return;}
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE){
             closeGallery();if(original==null)showHome();return;

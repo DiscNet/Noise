@@ -70,10 +70,22 @@ void main(){
           + dot(c, vec3((1.0 - uHue.x) / 3.0));
         c = (c * uColor.z - 0.5) * uColor.w + 0.5;
         lum = clamp(luminance(c), 0.0, 1.0);
+        // Realces and pretos retain their own curves.
         c += uTone.x * 0.45 * smoothstep(0.45, 1.0, lum)
-           + uTone.y * 0.35 * smoothstep(0.70, 1.0, lum)
            + uTone.z * 0.35 * (1.0 - smoothstep(0.0, 0.35, lum));
 
+        // Brancos: a smooth upper-midtone/white-point curve. The former
+        // smoothstep(.70, 1.0) barely moved typical near-white photo pixels.
+        // Both directions are non-linear and preserve a soft shoulder,
+        // so the slider is effective without hard banding/clipping.
+        float upper = smoothstep(0.43, 0.91, clamp(luminance(c), 0.0, 1.0));
+        float amount = uTone.y;
+        if (abs(amount) > 0.0001) {
+            vec3 target = amount > 0.0
+                ? vec3(1.0) - (vec3(1.0) - c) * exp2(-1.65 * amount * upper)
+                : c * exp2(1.22 * amount * upper);
+            c = mix(c, target, upper);
+        }
         c += uLight.x*.25 + uLight.y*.4*(1.0-smoothstep(.05,.65,lum));
         c = clamp(c, 0.0, 1.0);
 

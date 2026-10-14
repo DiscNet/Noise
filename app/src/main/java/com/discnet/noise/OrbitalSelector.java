@@ -1,12 +1,14 @@
 package com.discnet.noise;
 
 import android.animation.ValueAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.view.*;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.*;
 
 /**
@@ -16,6 +18,10 @@ import android.widget.*;
  */
 final class OrbitalSelector extends FrameLayout {
     interface Selection { void chosen(int index); }
+    interface Navigation { void navigate(int direction); }
+    private Navigation navigate;
+    private float swipeStartX,swipeStartY;
+    private boolean horizontal;
     private final OrbitStage orbit;
     private final TextView continueButton;
     private final Selection callback;
@@ -25,7 +31,8 @@ final class OrbitalSelector extends FrameLayout {
     OrbitalSelector(Context c,String title,String subtitle,String[] names,int[] symbols,int initial,Selection callback){
         super(c);
         this.names=names.clone();this.symbols=symbols.clone();this.callback=callback;
-        setBackgroundColor(0xff0c0b10);
+        // Transparent dark scrim: the editable image remains visible beneath.
+        setBackgroundColor(0xd40c0b10);
         setClickable(true);setFocusableInTouchMode(true);
         LinearLayout column=new LinearLayout(c);
         column.setOrientation(LinearLayout.VERTICAL);
@@ -68,7 +75,47 @@ final class OrbitalSelector extends FrameLayout {
         TextView t=new TextView(c);t.setTypeface(NoiseTypography.regular(c));t.setText(value);t.setTextSize(size);t.setTextColor(color);return t;
     }
     int selected(){return orbit.selected();}
-    void dismiss(){if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);}
+    void setNavigate(Navigation callback){navigate=callback;}
+    void enter(){
+        setAlpha(0f);setTranslationX(dp(64));
+        animate().alpha(1f).translationX(0f).setDuration(360)
+            .setInterpolator(new PathInterpolator(.18f,.82f,.20f,1f)).start();
+    }
+    void dismiss(){
+        if(getParent()==null)return;
+        animate().cancel();
+        animate().alpha(0f).translationX(dp(54)).setDuration(260)
+            .setInterpolator(new PathInterpolator(.35f,0f,.72f,1f))
+            .withEndAction(()->{if(getParent() instanceof ViewGroup)
+                ((ViewGroup)getParent()).removeView(this);}).start();
+    }
+    // Horizontal swipes are caught by this overlay; vertical swipes pass
+    // through to OrbitStage's independent rotation physics.
+    @Override public boolean onInterceptTouchEvent(MotionEvent e){
+        switch(e.getActionMasked()){
+            case MotionEvent.ACTION_DOWN:
+                swipeStartX=e.getX();swipeStartY=e.getY();horizontal=false;
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if(e.getPointerCount()!=1)return false;
+                float dx=e.getX()-swipeStartX,dy=e.getY()-swipeStartY;
+                if(Math.abs(dx)>dp(30)&&Math.abs(dx)>Math.abs(dy)*1.45f){
+                    horizontal=true;return true;
+                }
+                return false;
+            default:return false;
+        }
+    }
+    @Override public boolean onTouchEvent(MotionEvent e){
+        if(!horizontal)return super.onTouchEvent(e);
+        if(e.getActionMasked()==MotionEvent.ACTION_UP){
+            float dx=e.getX()-swipeStartX;
+            if(Math.abs(dx)>dp(70)&&navigate!=null)navigate.navigate(dx<0?-1:1);
+            horizontal=false;return true;
+        }
+        if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){horizontal=false;return true;}
+        return true;
+    }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
     @Override protected void onDetachedFromWindow(){orbit.cancelMotion();super.onDetachedFromWindow();}
 
@@ -79,7 +126,6 @@ final class OrbitalSelector extends FrameLayout {
         private final LinearLayout[] rows=new LinearLayout[names.length];
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
-        private final OverScroller fling;
         private VelocityTracker velocity;
         private ValueAnimator snap;
         private float offset,downY,lastY,downX,radius;
@@ -91,9 +137,7 @@ final class OrbitalSelector extends FrameLayout {
         OrbitStage(Context context,int start){
             super(context);
             setWillNotDraw(false);setClipChildren(false);setClipToPadding(false);
-            fling=new OverScroller(context,new DecelerateInterpolator(1.8f));
             offset=Math.max(0,Math.min(names.length-1,start));
-            setLayerType(View.LAYER_TYPE_HARDWARE,null);
             for(int i=0;i<names.length;i++){
                 final int index=i;
                 LinearLayout row=new LinearLayout(context);
@@ -158,7 +202,6 @@ final class OrbitalSelector extends FrameLayout {
                 }
                 if(onSelection!=null)onSelection.run();
             }
-            float cx=arcX(0);
             for(int i=0;i<rows.length;i++){
                 float theta=(i-offset)*STEP;
                 float distance=Math.abs(i-offset);
@@ -176,31 +219,28 @@ final class OrbitalSelector extends FrameLayout {
             invalidate();
         }
         private void cancelMotion(){
-            fling.forceFinished(true);
             if(snap!=null){snap.cancel();snap=null;}
         }
-        private void settle(){
-            final float destination=selected();
+        private void glideTo(int index,long duration){
             if(snap!=null)snap.cancel();
-            snap=ValueAnimator.ofFloat(offset,destination);
-            snap.setDuration(260);
-            snap.setInterpolator(new OvershootInterpolator(.38f));
+            snap=ValueAnimator.ofFloat(offset,index);
+            snap.setDuration(duration);
+            // Critically damped visual response without rubber-band oscillations.
+            snap.setInterpolator(new PathInterpolator(.19f,.82f,.22f,1f));
             snap.addUpdateListener(a->{offset=(Float)a.getAnimatedValue();render();});
             snap.start();
+        }
+        private void settle(float velocityY){
+            float pixelsPerItem=Math.max(dp(60),radius*STEP);
+            float momentum=Math.max(-2.9f,Math.min(2.9f,-velocityY*.16f/pixelsPerItem));
+            int destination=Math.max(0,Math.min(names.length-1,Math.round(offset+momentum)));
+            long duration=(long)Math.min(520,280+Math.abs(destination-offset)*65);
+            glideTo(destination,duration);
         }
         private void goTo(int index){
             cancelMotion();
             if(index!=selected())performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-            snap=ValueAnimator.ofFloat(offset,index);
-            snap.setDuration(300);snap.setInterpolator(new DecelerateInterpolator(1.6f));
-            snap.addUpdateListener(a->{offset=(Float)a.getAnimatedValue();render();});
-            snap.start();
-        }
-        private void tick(){
-            if(fling.computeScrollOffset()){
-                offset=Math.max(0,Math.min(names.length-1,fling.getCurrY()/1000f));
-                render();postOnAnimation(this::tick);
-            }else settle();
+            glideTo(index,320);
         }
         @Override public boolean onInterceptTouchEvent(MotionEvent ev){
             if(ev.getActionMasked()==MotionEvent.ACTION_DOWN)return true;
@@ -229,21 +269,15 @@ final class OrbitalSelector extends FrameLayout {
                             float delta=Math.abs(iy-y)+Math.abs(ix-x)*.3f;
                             if(delta<closest){closest=delta;hit=i;}
                         }
-                        if(hit>=0&&closest<dp(82))goTo(hit);else settle();
+                        if(hit>=0&&closest<dp(82))goTo(hit);else settle(0);
                     }else if(velocity!=null){
                         velocity.computeCurrentVelocity(1000);
-                        float vy=velocity.getYVelocity();
-                        if(Math.abs(vy)>dp(360)){
-                            fling.fling(0,Math.round(offset*1000),0,
-                                Math.round(-vy*1000/Math.max(dp(60),radius*STEP)),
-                                0,0,0,(names.length-1)*1000);
-                            postOnAnimation(this::tick);
-                        }else settle();
-                    }else settle();
+                        settle(velocity.getYVelocity());
+                    }else settle(0);
                     if(velocity!=null){velocity.recycle();velocity=null;}
                     return true;
                 case MotionEvent.ACTION_CANCEL:
-                    if(velocity!=null){velocity.recycle();velocity=null;}settle();return true;
+                    if(velocity!=null){velocity.recycle();velocity=null;}settle(0);return true;
             }
             return true;
         }
