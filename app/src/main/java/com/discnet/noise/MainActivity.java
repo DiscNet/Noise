@@ -55,7 +55,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
             @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
-            @Override public void start(){showOrbital(false,true);}
+            @Override public void start(boolean effects){showOrbital(effects,true);}
             @Override public void progress(float amount){
                 if(orbital!=null)orbital.setReveal(amount);
             }
@@ -89,7 +89,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(18),0,dp(18),0);categoryScroll.addView(strip);
-        TextView gestureHint=text("←  ARRASTE NA IMAGEM PARA AS FERRAMENTAS",11,EditorTheme.MUTED);
+        TextView gestureHint=text("←  Ferramentas   ·   ← da borda direita: Efeitos",11,EditorTheme.MUTED);
         gestureHint.setLetterSpacing(.045f);gestureHint.setGravity(Gravity.CENTER_VERTICAL);
         gestureHint.setFocusable(false);gestureHint.setClickable(false);
         strip.addView(gestureHint,new LinearLayout.LayoutParams(-1,-1));
@@ -147,11 +147,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                 orbital=null;
             });
         orbital=wheel;
-        wheel.setNavigate(direction->{
-            if(direction<0){if(!effects)showOrbital(true);else wheel.finishReveal(true);}
-            else if(effects)showOrbital(false);
-            else closeOrbital();
-        });
+        wheel.setMode(effects);
+        // A visible wheel never opens another wheel. Rightward drag closes.
+        wheel.setNavigate(direction->closeOrbital());
         appBackground.addView(wheel,new FrameLayout.LayoutParams(-1,-1));
         wheel.bringToFront();
         if(interactive)wheel.setReveal(0f);
