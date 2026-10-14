@@ -28,6 +28,7 @@ final class SwipeNavigationHost extends FrameLayout {
     SwipeNavigationHost(Context context,Handler callback) {
         super(context);
         this.callback=callback;
+        setClickable(true); // Keep DOWN sequences even over empty editor margins.
         this.touchSlop=ViewConfiguration.get(context).getScaledTouchSlop();
         this.activationDistance=Math.max(touchSlop*1.25f,EditorTheme.dp(context,11));
     }
