@@ -257,7 +257,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
         private VelocityTracker velocity;
-        private ValueAnimator snap;
+        private float angularVelocity;
+        private boolean settling;
         private float offset,targetOffset,downY,lastY,downX,radius;
         private boolean rotationalFrameScheduled;
         private long lastRotationalFrame;
@@ -357,7 +358,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
             lastRotationalFrame=0;
             targetOffset=offset;
-            if(snap!=null){snap.cancel();snap=null;}
+            angularVelocity=0f;
+            settling=false;
         }
         private void followOffset(){
             if(!rotationalFrameScheduled){
@@ -367,38 +369,41 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
         @Override public void doFrame(long nanos){
             rotationalFrameScheduled=false;
+            if(getParent()==null){lastRotationalFrame=0;return;}
             float dt=lastRotationalFrame==0?.016f:
-                Math.min(.050f,Math.max(.001f,(nanos-lastRotationalFrame)*1e-9f));
+                Math.min(.05f,Math.max(.001f,(nanos-lastRotationalFrame)*1e-9f));
             lastRotationalFrame=nanos;
-            // Angular list glides ~90ms behind touch, not rigidly attached.
-            float factor=1f-(float)Math.exp(-dt/.090f);
-            offset+=(targetOffset-offset)*factor;
-            if(Math.abs(targetOffset-offset)<.004f){
-                offset=targetOffset;lastRotationalFrame=0;
-            }else followOffset();
+            // Analytic critically-damped spring, smooth in both drag and
+            // coast-to-item phases. Unlike an interpolator reset at ACTION_UP,
+            // it preserves angular velocity across the transition.
+            float omega=settling?13.5f:19f;
+            float displacement=offset-targetOffset;
+            float carry=angularVelocity+omega*displacement;
+            float decay=(float)Math.exp(-omega*dt);
+            float newOffset=targetOffset+(displacement+carry*dt)*decay;
+            float newVelocity=(angularVelocity-omega*carry*dt)*decay;
+            offset=Math.max(0f,Math.min(names.length-1,newOffset));
+            angularVelocity=newVelocity;
             render();
-        }
-        private void glideTo(int index,long duration){
-            cancelMotion();
-            targetOffset=index;
-            snap=ValueAnimator.ofFloat(offset,index);
-            snap.setDuration(duration);
-            // Critically damped visual response without rubber-band oscillations.
-            snap.setInterpolator(new PathInterpolator(.19f,.82f,.22f,1f));
-            snap.addUpdateListener(a->{offset=(Float)a.getAnimatedValue();render();});
-            snap.start();
+            if(Math.abs(offset-targetOffset)<.0025f&&Math.abs(angularVelocity)<.02f){
+                offset=targetOffset;angularVelocity=0f;lastRotationalFrame=0;
+                render();
+            }else followOffset();
         }
         private void settle(float velocityY){
             float pixelsPerItem=Math.max(dp(60),radius*STEP);
-            float momentum=Math.max(-2.9f,Math.min(2.9f,-velocityY*.16f/pixelsPerItem));
-            int destination=Math.max(0,Math.min(names.length-1,Math.round(targetOffset+momentum)));
-            long duration=(long)Math.min(520,280+Math.abs(destination-offset)*65);
-            glideTo(destination,duration);
+            float momentum=Math.max(-2.3f,Math.min(2.3f,
+                -velocityY*.14f/pixelsPerItem));
+            targetOffset=Math.max(0,Math.min(names.length-1,
+                Math.round(targetOffset+momentum)));
+            settling=true;
+            followOffset();
         }
         private void goTo(int index){
-            cancelMotion();
             if(index!=selected())performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-            glideTo(index,320);
+            targetOffset=Math.max(0,Math.min(names.length-1,index));
+            settling=true;
+            followOffset();
         }
         @Override public boolean onInterceptTouchEvent(MotionEvent ev){
             if(ev.getActionMasked()==MotionEvent.ACTION_DOWN)return true;
