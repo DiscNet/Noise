@@ -440,7 +440,7 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("full-screen fade dimmer, feathered edges and non-clipped orbital labels");
+            stage("genuine circular wheels, mirrored side arcs, smooth scroll and fades");
             SystemClock.sleep(520); // allow prior selection overlay to disappear
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
@@ -526,6 +526,11 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeTools.dockLeft()>width*.09f,"Tools panel docks on RIGHT");
             require(swipeTools.dockRight()==gestureHost.getWidth(),"Tools panel touches right edge");
             require(swipeTools.orbitalScreenX()>width*.65f,"Tools orbit and active icon are on RIGHT");
+            int toolCenter=swipeTools.orbitalSelected();
+            int toolNeighbor=toolCenter+2<swipeTools.orbitalCount()?toolCenter+2:toolCenter-2;
+            require(swipeTools.orbitalScreenX()
+                    -swipeTools.orbitalIconScreenX(toolNeighbor)>EditorTheme.dp(getTargetContext(),16),
+                "Tools neighboring icons follow a curved wheel toward screen CENTER (not a flat list)");
             SystemClock.sleep(520);
             float dimBeforeClose=swipeTools.scrimOpacity();
             float menuBeforeClose=swipeTools.motionAlpha();
@@ -564,6 +569,11 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeEffects.dockRight()<width*.95f,"Effects stays clear of right edge");
             require(swipeEffects.orbitalScreenX()<width*.35f,
                 "Effects orbit, active icon and labels occupy LEFT side");
+            int effectCenter=swipeEffects.orbitalSelected();
+            int effectNeighbor=effectCenter+2<swipeEffects.orbitalCount()?effectCenter+2:effectCenter-2;
+            require(swipeEffects.orbitalIconScreenX(effectNeighbor)
+                    -swipeEffects.orbitalScreenX()>EditorTheme.dp(getTargetContext(),16),
+                "Effects neighboring icons follow the mirrored circular orbit toward screen CENTER");
             // Another left swipe while a wheel is open must NOT switch modes.
             long repeat=SystemClock.uptimeMillis();
             float midY=swipeEffects.getHeight()*.55f;
