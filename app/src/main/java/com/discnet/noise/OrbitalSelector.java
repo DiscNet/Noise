@@ -52,6 +52,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         addView(edgeFeather,new FrameLayout.LayoutParams(-1,-1));
         content=new LinearLayout(c);
         content.setOrientation(LinearLayout.VERTICAL);
+        // The circular orbit legitimately extends past its narrow dock.
+        // Clipping children here made the wheel look like a flat list and
+        // produced straight cutoffs near the outer menu edges.
+        content.setClipChildren(false);content.setClipToPadding(false);
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
         // No opaque panel rectangle: the soft scrim behind the wheel provides
         // contrast without a hard black dividing edge.
@@ -135,13 +139,15 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     boolean wholeScreenDim(){return scrim.getBackground() instanceof android.graphics.drawable.ColorDrawable;}
     int dockLeft(){return content.getLeft();}
     int dockRight(){return content.getRight();}
-    float orbitalScreenX(){
-        int index=orbit.selected();
+    float orbitalScreenX(){return orbitalIconScreenX(orbit.selected());}
+    int orbitalSelected(){return orbit.selected();}
+    int orbitalCount(){return names.length;}
+    float orbitalIconScreenX(int index){
         LinearLayout row=orbit.rows[index];
-        ImageView active=orbit.icons[index];
-        if(active.getWidth()==0)return content.getLeft()+content.getPaddingLeft()+orbit.arcX(0f);
-        return content.getLeft()+content.getPaddingLeft()+row.getX()
-            +active.getX()+active.getWidth()/2f;
+        ImageView icon=orbit.icons[index];
+        if(icon.getWidth()==0)return content.getLeft()+content.getPaddingLeft()+orbit.arcX(0f);
+        return content.getLeft()+content.getPaddingLeft()+orbit.getLeft()
+            +row.getX()+icon.getX()+icon.getWidth()/2f;
     }
     private float travelDistance(){
         // A restrained slide brings the wheel into view; a full-width
@@ -373,10 +379,18 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
         }
         int selected(){return Math.max(0,Math.min(names.length-1,Math.round(offset)));}
-        @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);radius=Math.max(w*.94f,dp(250));render();}
+        @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
+            super.onSizeChanged(w,h,oldW,oldH);
+            radius=Math.max(w*.82f,dp(225));
+            render();
+        }
         private float arcX(float theta){
+            // Actual circle geometry. On BOTH sides the off-center items
+            // bend INTO the photograph (not behind the screen boundary).
+            // Critically, do not clamp the icon coordinates independently:
+            // doing that collapses the orbit into a straight vertical list.
             float bend=radius*(1f-(float)Math.cos(theta));
-            return effectsMode?dp(36)-bend:getWidth()-dp(44)+bend;
+            return effectsMode?dp(36)+bend:getWidth()-dp(44)-bend;
         }
         private float arcY(float theta){return getHeight()*.50f+radius*(float)Math.sin(theta);}
         @Override protected void onDraw(Canvas canvas){
@@ -432,22 +446,21 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 LinearLayout row=rows[i];
                 row.setVisibility(visible?VISIBLE:INVISIBLE);
                 if(!visible)continue;
-                // The selected icon remains adjacent to the actual arc on
-                // its side; the complete row mirrors around the viewport.
-                float rawX=arcX(theta)-(effectsMode?dp(32):dp(176));
-                // Keep text wholly inside the orbit viewport: previously
-                // items were abruptly cropped at the left/right screen edge.
-                float maxX=Math.max(dp(4),getWidth()-dp(224));
-                float x=Math.max(dp(4),Math.min(maxX,rawX));
+                // Anchor each icon to its real circular trajectory. The
+                // caption travels with the icon; neither is clamped to a
+                // constant X. Fade is used at the extremes instead of clipping.
+                float x=arcX(theta)-(effectsMode?dp(32):dp(176));
                 float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
                 float emphasis=Math.max(0,1-Math.min(1,distance));
-                // Feather items out near both the top/bottom ends of the arc,
-                // rather than cutting icons and labels off at the viewport.
-                float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.34f));
+                float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.32f));
                 float topBottom=Math.min(y,getHeight()-y-dp(64));
-                float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(70)));
-                row.setAlpha(Math.max(0f,1-distance*.205f)*terminalFade*viewportFade);
+                float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(72)));
+                float outerEdge=effectsMode
+                    ?getWidth()-x-dp(220):x;
+                float sideFade=Math.max(0f,Math.min(1f,(outerEdge+dp(75))/dp(105)));
+                row.setAlpha(Math.max(0f,1-distance*.18f)
+                    *terminalFade*viewportFade*sideFade);
                 float scale=.83f+.17f*emphasis;
                 row.setScaleX(scale);row.setScaleY(scale);
             }
