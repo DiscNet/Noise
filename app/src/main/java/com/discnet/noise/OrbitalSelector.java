@@ -22,10 +22,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private boolean effectsMode;
     private boolean motionScheduled;
     private long lastMotionFrame;
-    private float targetX,targetAlpha,targetScale=1f,targetScrim;
+    private float targetX,targetAlpha,targetScale=1f,targetScrim,targetFeather;
     private float horizontalVelocity;
     private boolean closing;
     private final View scrim;
+    private final View edgeFeather;
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
     private final OrbitStage orbit;
@@ -37,14 +38,18 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     OrbitalSelector(Context c,String title,String subtitle,String[] names,int[] symbols,int initial,Selection callback){
         super(c);
         this.names=names.clone();this.symbols=symbols.clone();this.callback=callback;
-        // A dedicated overlay fades independently from the orbit's sliding panel:
-        // the photo dims smoothly, without being dragged horizontally.
+        // Dim the ENTIRE editor, then layer a feathered edge tint to give
+        // the orbit contrast without creating a sharply bounded rectangle.
+        // Both overlays have independent, time-based fade animations.
         setBackgroundColor(Color.TRANSPARENT);
         setClickable(true);setFocusableInTouchMode(true);
-        scrim=new View(c);scrim.setAlpha(0f);
-        // The darkening is a translucent feathered gradient, not a solid
-        // black rectangle that snaps over the picture.
+        scrim=new View(c);
+        scrim.setBackgroundColor(0xff09080e);
+        scrim.setAlpha(0f);
         addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        edgeFeather=new View(c);
+        edgeFeather.setAlpha(0f);
+        addView(edgeFeather,new FrameLayout.LayoutParams(-1,-1));
         content=new LinearLayout(c);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
@@ -96,9 +101,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         effectsMode=effects;
         GradientDrawable gradient=new GradientDrawable(
             effects?GradientDrawable.Orientation.LEFT_RIGHT:GradientDrawable.Orientation.RIGHT_LEFT,
-            new int[]{0xb90c0b10,0x770c0b10,0x2a0c0b10,0x000c0b10});
+            // Screen-wide feather. An opaque panel underneath would give this
+            // a hard rectangular seam even if the background itself fades.
+            new int[]{0x990c0b10,0x870c0b10,0x630c0b10,0x2c0c0b10,0x000c0b10});
         gradient.setGradientType(GradientDrawable.LINEAR_GRADIENT);
-        scrim.setBackground(gradient);
+        edgeFeather.setBackground(gradient);
         headerTitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
         headerSubtitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
         updateDock(getWidth());
@@ -124,6 +131,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     float motionX(){return content.getTranslationX();}
     float motionAlpha(){return content.getAlpha();}
     float scrimOpacity(){return scrim.getAlpha();}
+    float featherOpacity(){return edgeFeather.getAlpha();}
+    boolean wholeScreenDim(){return scrim.getBackground() instanceof android.graphics.drawable.ColorDrawable;}
     int dockLeft(){return content.getLeft();}
     int dockRight(){return content.getRight();}
     float orbitalScreenX(){
@@ -161,7 +170,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         closing=false;
         targetX=0f;
         targetAlpha=1f;
-        targetScrim=.90f;
+        targetScrim=.69f;
+        targetFeather=.88f;
         targetScale=1f;
         requestMotion();
     }
@@ -170,6 +180,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetX=exitDirection();
         targetAlpha=0f;
         targetScrim=0f;
+        targetFeather=0f;
         targetScale=.985f;
         requestMotion();
     }
@@ -183,12 +194,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     void beginReveal(){
         stopTracking();
         closing=false;dismissed=false;
-        content.animate().cancel();scrim.animate().cancel();
+        content.animate().cancel();scrim.animate().cancel();edgeFeather.animate().cancel();
         horizontalVelocity=0f;
         content.setTranslationX(entrance());
         content.setAlpha(0f);
         content.setScaleX(.985f);content.setScaleY(.985f);
-        scrim.setAlpha(0f);
+        scrim.setAlpha(0f);edgeFeather.setAlpha(0f);
         targetOpen();
     }
     @Override public void doFrame(long frameTimeNanos){
@@ -210,19 +221,21 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         float scrimBlend=1f-(float)Math.exp(-dt/.200f);
         float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*fadeBlend;
         float dim=scrim.getAlpha()+(targetScrim-scrim.getAlpha())*scrimBlend;
+        float feather=edgeFeather.getAlpha()+(targetFeather-edgeFeather.getAlpha())*scrimBlend;
         float scale=content.getScaleX()+(targetScale-content.getScaleX())*fadeBlend;
         content.setTranslationX(x);
         content.setAlpha(alpha);
         content.setScaleX(scale);content.setScaleY(scale);
-        scrim.setAlpha(dim);
+        scrim.setAlpha(dim);edgeFeather.setAlpha(feather);
 
         boolean settled=Math.abs(x-targetX)<.6f&&Math.abs(horizontalVelocity)<4f
             &&Math.abs(alpha-targetAlpha)<.005f&&Math.abs(dim-targetScrim)<.005f
+            &&Math.abs(feather-targetFeather)<.005f
             &&Math.abs(scale-targetScale)<.0003f;
         if(settled){
             content.setTranslationX(targetX);content.setAlpha(targetAlpha);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
-            scrim.setAlpha(targetScrim);
+            scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
             lastMotionFrame=0;horizontalVelocity=0f;
             if(closing)removeFromParent();
         }else requestMotion();
@@ -291,7 +304,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
     @Override protected void onDetachedFromWindow(){
         stopTracking();content.animate().cancel();scrim.animate().cancel();
-        orbit.cancelMotion();super.onDetachedFromWindow();
+        edgeFeather.animate().cancel();orbit.cancelMotion();
+        super.onDetachedFromWindow();
     }
 
     private final class OrbitStage extends FrameLayout implements Choreographer.FrameCallback {
@@ -369,7 +383,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             super.onDraw(canvas);
             if(radius<=0)return;
             stroke.setShader(null);stroke.setStyle(Paint.Style.STROKE);stroke.setStrokeWidth(dp(1));
-            stroke.setColor(0xff514958);
+            stroke.setColor(0x66514b5d);
             Path path=new Path();
             for(int j=0;j<=80;j++){
                 float theta=-1.37f+(2.74f*j/80f);
@@ -410,11 +424,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 if(!visible)continue;
                 // The selected icon remains adjacent to the actual arc on
                 // its side; the complete row mirrors around the viewport.
-                float x=arcX(theta)-(effectsMode?dp(32):dp(176));
+                float rawX=arcX(theta)-(effectsMode?dp(32):dp(176));
+                // Keep text wholly inside the orbit viewport: previously
+                // items were abruptly cropped at the left/right screen edge.
+                float x=Math.max(dp(12),Math.min(getWidth()-dp(232),rawX));
                 float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
                 float emphasis=Math.max(0,1-Math.min(1,distance));
-                row.setAlpha(Math.max(.12f,1-distance*.19f));
+                row.setAlpha(Math.max(.04f,1-distance*.235f));
                 float scale=.83f+.17f*emphasis;
                 row.setScaleX(scale);row.setScaleY(scale);
             }
