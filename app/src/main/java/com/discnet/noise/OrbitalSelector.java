@@ -13,13 +13,17 @@ import android.widget.*;
  * not a vertically scrolling list. Drag/fling move a fractional selection;
  * the closest item is magnetically snapped into the focal position.
  */
-final class OrbitalSelector extends FrameLayout {
+final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCallback {
     interface Selection { void chosen(int index); }
     interface Navigation { void navigate(int direction); }
     private Navigation navigate;
     private float swipeStartX,swipeStartY;
     private boolean horizontal;
     private boolean dismissed;
+    private boolean effectsMode;
+    private boolean motionScheduled;
+    private long lastMotionFrame;
+    private float targetX,targetAlpha;
     private final OrbitStage orbit;
     private final TextView continueButton;
     private final Selection callback;
@@ -54,7 +58,7 @@ final class OrbitalSelector extends FrameLayout {
 
         orbit=new OrbitStage(c,initial);
         column.addView(orbit,new LinearLayout.LayoutParams(-1,0,1));
-        TextView current=label(c,"↕  GIRE A RODA       ←  AVANÇAR       →  VOLTAR",10,EditorTheme.MUTED);
+        TextView current=label(c,"↕  GIRE A RODA            →  FECHAR",10,EditorTheme.MUTED);
         current.setGravity(Gravity.CENTER);
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
@@ -73,6 +77,8 @@ final class OrbitalSelector extends FrameLayout {
     }
     int selected(){return orbit.selected();}
     void setNavigate(Navigation callback){navigate=callback;}
+    void setMode(boolean effects){effectsMode=effects;}
+    boolean isEffects(){return effectsMode;}
 
     private float travelDistance(){
         return Math.max(dp(210),Math.min(getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,dp(530))*.86f);
@@ -83,42 +89,83 @@ final class OrbitalSelector extends FrameLayout {
     private void removeFromParent(){
         if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);
     }
-    /** Fraction is driven directly by the user's finger; no animation delay. */
+    /**
+     * Target-driven motion: never copy the finger position directly to the UI.
+     * A 108ms exponential response is updated at display-frame cadence. This
+     * gives perceptible softness while remaining responsive and frame-rate
+     * independent (including devices with 90/120Hz displays).
+     */
+    private void stopTracking(){
+        if(motionScheduled){Choreographer.getInstance().removeFrameCallback(this);motionScheduled=false;}
+        lastMotionFrame=0;
+    }
+    private void setMotionTarget(float x,float alpha){
+        targetX=x;
+        targetAlpha=Math.max(0f,Math.min(1f,alpha));
+        if(!motionScheduled){motionScheduled=true;Choreographer.getInstance().postFrameCallback(this);}
+    }
+    @Override public void doFrame(long frameTimeNanos){
+        motionScheduled=false;
+        if(getParent()==null){lastMotionFrame=0;return;}
+        float dt=lastMotionFrame==0?.016f:
+            Math.min(.05f,Math.max(.001f,(frameTimeNanos-lastMotionFrame)*1e-9f));
+        lastMotionFrame=frameTimeNanos;
+        float blend=1f-(float)Math.exp(-dt/.108f);
+        float x=getTranslationX()+(targetX-getTranslationX())*blend;
+        float alpha=getAlpha()+(targetAlpha-getAlpha())*blend;
+        if(Math.abs(x-targetX)<.65f && Math.abs(alpha-targetAlpha)<.005f){
+            setTranslationX(targetX);setAlpha(targetAlpha);
+            lastMotionFrame=0;
+        }else{
+            setTranslationX(x);setAlpha(alpha);
+            motionScheduled=true;Choreographer.getInstance().postFrameCallback(this);
+        }
+    }
+    private float smoothstep(float p){
+        p=Math.max(0f,Math.min(1f,p));
+        return p*p*(3f-2f*p);
+    }
+    /** Responsive delayed reveal with eased position and fade. */
     void setReveal(float fraction){
-        float p=Math.max(0f,Math.min(1f,fraction));
-        animate().cancel();
-        setTranslationX(travelDistance()*(1f-p));
-        setAlpha(p);
+        float eased=smoothstep(fraction);
+        if(fraction<=0f){
+            stopTracking();animate().cancel();
+            setTranslationX(travelDistance());setAlpha(0f);
+            return;
+        }
+        setMotionTarget(travelDistance()*(1f-eased),eased);
     }
     void finishReveal(boolean open){
+        stopTracking();
+        animate().cancel();
         if(open){
-            animate().translationX(0f).alpha(1f).setDuration(360).setInterpolator(glide()).start();
+            animate().translationX(0f).alpha(1f).setDuration(440)
+                .setInterpolator(glide()).start();
         }else{
-            animate().translationX(travelDistance()).alpha(0f).setDuration(270)
+            animate().translationX(travelDistance()).alpha(0f).setDuration(310)
                 .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
-    /** Normal programmatic entrance (e.g. TalkBack or tests). */
+    /** Normal programmatic entrance (e.g. accessibility or tests). */
     void enter(){enterFrom(-1);}
-    /** direction -1: user dragged left, next page arrives from right. */
     void enterFrom(int direction){
-        animate().cancel();setTranslationX(direction<0?travelDistance():-travelDistance());
-        setAlpha(0f);
-        animate().translationX(0f).alpha(1f).setDuration(410)
+        stopTracking();animate().cancel();
+        setTranslationX(direction<0?travelDistance():-travelDistance());setAlpha(0f);
+        animate().translationX(0f).alpha(1f).setDuration(480)
             .setInterpolator(glide()).start();
     }
     void exitTo(int direction){
         if(dismissed)return;
         dismissed=true;
-        animate().cancel();
+        stopTracking();animate().cancel();
         animate().translationX(direction<0?-travelDistance():travelDistance())
-            .alpha(0f).setDuration(310).setInterpolator(glide())
+            .alpha(0f).setDuration(390).setInterpolator(glide())
             .withEndAction(this::removeFromParent).start();
     }
     void dismiss(){exitTo(1);}
     private void restorePosition(){
-        animate().cancel();
-        animate().translationX(0f).alpha(1f).setDuration(300)
+        stopTracking();animate().cancel();
+        animate().translationX(0f).alpha(1f).setDuration(390)
             .setInterpolator(glide()).start();
     }
     @Override public boolean onInterceptTouchEvent(MotionEvent e){
@@ -145,8 +192,7 @@ final class OrbitalSelector extends FrameLayout {
             float dx=e.getX()-swipeStartX;
             float travel=Math.max(-travelDistance()*.8f,Math.min(travelDistance()*.8f,dx*.88f));
             animate().cancel();
-            setTranslationX(travel);
-            setAlpha(Math.max(.38f,1f-Math.abs(travel)/(travelDistance()*1.28f)));
+            setMotionTarget(travel,Math.max(.43f,1f-Math.abs(travel)/(travelDistance()*1.28f)));
             return true;
         }
         if(e.getActionMasked()==MotionEvent.ACTION_UP){
@@ -154,7 +200,10 @@ final class OrbitalSelector extends FrameLayout {
             boolean strong=Math.abs(dx)>Math.min(dp(64),getWidth()*.18f)
                 && Math.abs(dx)>Math.abs(e.getY()-swipeStartY)*1.10f;
             horizontal=false;
-            if(strong&&navigate!=null)navigate.navigate(dx<0?-1:1);
+            // Never chain tools -> effects. Effects are reached only by a
+            // new right-edge swipe on the editor itself, not by another
+            // leftward gesture while a wheel is already visible.
+            if(strong&&dx>0&&navigate!=null)navigate.navigate(1);
             else restorePosition();
             return true;
         }
@@ -164,7 +213,7 @@ final class OrbitalSelector extends FrameLayout {
         return true;
     }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
-    @Override protected void onDetachedFromWindow(){orbit.cancelMotion();super.onDetachedFromWindow();}
+    @Override protected void onDetachedFromWindow(){stopTracking();animate().cancel();orbit.cancelMotion();super.onDetachedFromWindow();}
 
     private final class OrbitStage extends FrameLayout {
         private static final float STEP=.29f;
