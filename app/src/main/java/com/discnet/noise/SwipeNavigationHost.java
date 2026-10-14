@@ -7,13 +7,14 @@ import android.widget.FrameLayout;
 /**
  * Swipe-first navigation surface. Tracks the gesture at the editor root BEFORE
  * passing it to the OpenGL view, then cancels that child gesture only when
- * horizontal intent is established. The new wheel follows the finger directly.
+ * horizontal intent is established. The wheel approaches gesture targets with
+ * damped movement rather than mirroring the finger without delay.
  * Horizontal actions never steal two-finger zoom or ordinary vertical drags.
  */
 final class SwipeNavigationHost extends FrameLayout {
     interface Handler {
         boolean allow(float x,float y);
-        void start();
+        void start(boolean effects);
         void progress(float completion);
         void finish(boolean open);
     }
@@ -22,7 +23,7 @@ final class SwipeNavigationHost extends FrameLayout {
     private final float touchSlop;
     private final float activationDistance;
     private float downX,downY;
-    private boolean eligible,tracking;
+    private boolean eligible,tracking,fromRightEdge;
     private VelocityTracker velocity;
 
     SwipeNavigationHost(Context context,Handler callback) {
@@ -39,6 +40,10 @@ final class SwipeNavigationHost extends FrameLayout {
             reset();
             downX=event.getX();downY=event.getY();
             eligible=callback.allow(downX,downY);
+            // Right-edge inward swipe opens effects DIRECTLY. Swipes starting
+            // elsewhere open tools. They are independent, never sequential.
+            float edge=Math.max(EditorTheme.dp(getContext(),82),getWidth()*.24f);
+            fromRightEdge=downX>=getWidth()-edge;
             if(eligible){velocity=VelocityTracker.obtain();velocity.addMovement(event);}
             return super.dispatchTouchEvent(event);
         }
@@ -58,7 +63,7 @@ final class SwipeNavigationHost extends FrameLayout {
                 cancel.setAction(MotionEvent.ACTION_CANCEL);
                 super.dispatchTouchEvent(cancel);
                 cancel.recycle();
-                callback.start();
+                callback.start(fromRightEdge);
             }
             if(tracking) {
                 callback.progress(gestureFraction(-dx));
@@ -93,7 +98,7 @@ final class SwipeNavigationHost extends FrameLayout {
             /Math.max(EditorTheme.dp(getContext(),155),getWidth()*.60f)));
     }
     private void reset(){
-        eligible=false;tracking=false;
+        eligible=false;tracking=false;fromRightEdge=false;
         if(velocity!=null){velocity.recycle();velocity=null;}
     }
 }
