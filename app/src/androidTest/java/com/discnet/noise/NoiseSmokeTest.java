@@ -417,8 +417,11 @@ public class NoiseSmokeTest extends Instrumentation {
             float alpha=eased.motionAlpha();
             require(alpha>.01f && alpha<.96f,
                 "Wheel gradually fades in on display frames: "+alpha);
-            require(eased.motionX()<0,
-                "Left-side Tools wheel eases in from the left");
+            require(eased.getAlpha()==1f,"Overlay container stays fully opaque while scrim fades");
+            require(eased.scrimOpacity()<.84f,
+                "Dark overlay is separately animated, not an instant black scrim");
+            require(eased.motionX()>0,
+                "Right-side Tools wheel eases in from the right");
             require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.84f,
                 "Dark overlay fades in separately from wheel movement");
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
@@ -427,9 +430,9 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeTools!=null && !swipeTools.isEffects(),
                 "Non-edge swipe opens tools");
             waitForIdleSync();
-            require(swipeTools.dockLeft()==0,"Tools panel docks on LEFT");
-            require(swipeTools.dockRight()<width*.95f,"Tools stays clear of right edge");
-            require(swipeTools.orbitalScreenX()<width*.35f,"Tools orbit and active icon are on LEFT");
+            require(swipeTools.dockLeft()>width*.09f,"Tools panel docks on RIGHT");
+            require(swipeTools.dockRight()==gestureHost.getWidth(),"Tools panel touches right edge");
+            require(swipeTools.orbitalScreenX()>width*.65f,"Tools orbit and active icon are on RIGHT");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(480);
 
@@ -449,10 +452,10 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeEffects!=null&&swipeEffects.isEffects(),
                 "Left-to-right opens effects DIRECTLY, skipping tools");
             waitForIdleSync();
-            require(swipeEffects.dockLeft()>width*.09f,"Effects panel physically docks on RIGHT");
-            require(swipeEffects.dockRight()==gestureHost.getWidth(),"Effects aligned to RIGHT edge");
-            require(swipeEffects.orbitalScreenX()>width*.65f,
-                "Effects orbit, active icon and labels occupy RIGHT side");
+            require(swipeEffects.dockLeft()==0,"Effects panel docks on LEFT");
+            require(swipeEffects.dockRight()<width*.95f,"Effects stays clear of right edge");
+            require(swipeEffects.orbitalScreenX()<width*.35f,
+                "Effects orbit, active icon and labels occupy LEFT side");
             // Another left swipe while a wheel is open must NOT switch modes.
             long repeat=SystemClock.uptimeMillis();
             float midY=swipeEffects.getHeight()*.55f;
