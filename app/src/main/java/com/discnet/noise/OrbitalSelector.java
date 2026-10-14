@@ -24,6 +24,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float targetX,targetAlpha;
     private final View scrim;
     private final LinearLayout content;
+    private final TextView headerTitle,headerSubtitle;
     private boolean scrimShown;
     private final OrbitStage orbit;
     private final TextView continueButton;
@@ -42,7 +43,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         addView(scrim,new FrameLayout.LayoutParams(-1,-1));
         content=new LinearLayout(c);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(24),dp(12),dp(24),dp(16));
+        content.setPadding(dp(20),dp(12),dp(20),dp(16));
+        content.setBackgroundColor(0x3417161d);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout column=content;
 
@@ -51,13 +53,13 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         column.addView(header,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout heading=new LinearLayout(c);heading.setOrientation(LinearLayout.VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
-        TextView label=label(c,title,30,EditorTheme.INK);
-        label.setTypeface(NoiseTypography.bold(c));
-        label.setLetterSpacing(-.035f);label.setMaxLines(2);
-        heading.addView(label);
-        TextView description=label(c,subtitle,13,EditorTheme.MUTED);
-        description.setPadding(0,dp(8),dp(12),0);
-        description.setMaxLines(3);heading.addView(description);
+        headerTitle=label(c,title,30,EditorTheme.INK);
+        headerTitle.setTypeface(NoiseTypography.bold(c));
+        headerTitle.setLetterSpacing(-.035f);headerTitle.setMaxLines(2);
+        heading.addView(headerTitle);
+        headerSubtitle=label(c,subtitle,13,EditorTheme.MUTED);
+        headerSubtitle.setPadding(0,dp(8),0,0);
+        headerSubtitle.setMaxLines(3);heading.addView(headerSubtitle);
         // A roda nao tem botao de abertura/fechamento: deslize horizontal,
         // toque para escolher, ou o gesto Voltar do Android.
 
@@ -82,18 +84,44 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     }
     int selected(){return orbit.selected();}
     void setNavigate(Navigation callback){navigate=callback;}
-    void setMode(boolean effects){effectsMode=effects;}
+    void setMode(boolean effects){
+        effectsMode=effects;
+        headerTitle.setGravity(effects?Gravity.RIGHT:Gravity.LEFT);
+        headerSubtitle.setGravity(effects?Gravity.RIGHT:Gravity.LEFT);
+        updateDock(getWidth());
+        orbit.updateItemOrientation();
+        orbit.render();
+    }
+    private void updateDock(int availableWidth){
+        int screenWidth=availableWidth>0?availableWidth:getResources().getDisplayMetrics().widthPixels;
+        int dock=Math.min(screenWidth,Math.min(dp(440),Math.max(dp(248),Math.round(screenWidth*.84f))));
+        FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)content.getLayoutParams();
+        int gravity=Gravity.TOP|(effectsMode?Gravity.RIGHT:Gravity.LEFT);
+        if(params.width!=dock||params.gravity!=gravity){
+            params.width=dock;params.height=LayoutParams.MATCH_PARENT;
+            params.gravity=gravity;content.setLayoutParams(params);
+        }
+    }
+    @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
+        super.onSizeChanged(w,h,oldW,oldH);
+        updateDock(w);
+    }
     boolean isEffects(){return effectsMode;}
 
     float motionX(){return content.getTranslationX();}
     float motionAlpha(){return content.getAlpha();}
     float scrimOpacity(){return scrim.getAlpha();}
+    int dockLeft(){return content.getLeft();}
+    int dockRight(){return content.getRight();}
+    float orbitalScreenX(){
+        return content.getLeft()+content.getPaddingLeft()+orbit.arcX(0f);
+    }
     private float travelDistance(){
         return Math.max(dp(210),Math.min(
             getWidth()>0?getWidth():getResources().getDisplayMetrics().widthPixels,
             dp(530))*.86f);
     }
-    private float entrance(){return effectsMode?-travelDistance():travelDistance();}
+    private float entrance(){return effectsMode?travelDistance():-travelDistance();}
     private PathInterpolator glide(){
         return new PathInterpolator(.18f,.82f,.22f,1f);
     }
@@ -175,7 +203,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 .setInterpolator(glide()).withEndAction(this::removeFromParent).start();
         }
     }
-    void enter(){enterFrom(effectsMode?1:-1);}
+    void enter(){enterFrom(effectsMode?-1:1);}
     void enterFrom(int direction){
         stopTracking();content.animate().cancel();
         content.setTranslationX(direction<0?travelDistance():-travelDistance());
@@ -194,7 +222,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             .alpha(0f).setDuration(390).setInterpolator(glide())
             .withEndAction(this::removeFromParent).start();
     }
-    void dismiss(){exitTo(effectsMode?-1:1);}
+    void dismiss(){exitTo(effectsMode?1:-1);}
     private void restorePosition(){
         stopTracking();
         content.animate().cancel();
@@ -234,7 +262,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 && Math.abs(dx)>Math.abs(e.getY()-swipeStartY)*1.10f;
             horizontal=false;
             // Closing is separate: overlay gestures do not open another wheel.
-            if(strong&&dx>0&&navigate!=null)navigate.navigate(1);
+            if(strong&&(effectsMode?dx<0:dx>0)&&navigate!=null)navigate.navigate(effectsMode?-1:1);
             else restorePosition();
             return true;
         }
@@ -277,28 +305,48 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 TextView text=label(context,names[i],15,EditorTheme.MUTED);
-                text.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
                 text.setSingleLine(true);text.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                text.setPadding(0,0,dp(9),0);
-                row.addView(text,new LinearLayout.LayoutParams(dp(136),dp(64)));
                 ImageView icon=new ImageView(context);
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 icon.setPadding(dp(20),dp(20),dp(20),dp(20));
-                LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(dp(64),dp(64));
-                ip.leftMargin=dp(8);row.addView(icon,ip);
+                captions[i]=text;icons[i]=icon;
+                // Insert after setMode so tools put the icon first (left),
+                // effects put the icon last (right).
                 row.setContentDescription(names[i]+", ferramenta orbital");
                 row.setFocusable(true);row.setClickable(true);
                 row.setOnClickListener(v->goTo(index));
                 addView(row,new FrameLayout.LayoutParams(dp(220),dp(64)));
-                rows[i]=row;captions[i]=text;icons[i]=icon;
+                rows[i]=row;
             }
             setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             post(this::render);
         }
 
+        void updateItemOrientation(){
+            for(int i=0;i<rows.length;i++){
+                LinearLayout row=rows[i];
+                TextView caption=captions[i];
+                ImageView icon=icons[i];
+                row.removeAllViews();
+                caption.setGravity((effectsMode?Gravity.RIGHT:Gravity.LEFT)|Gravity.CENTER_VERTICAL);
+                caption.setPadding(effectsMode?0:dp(9),0,effectsMode?dp(9):0,0);
+                LinearLayout.LayoutParams textParams=new LinearLayout.LayoutParams(dp(136),dp(64));
+                LinearLayout.LayoutParams iconParams=new LinearLayout.LayoutParams(dp(64),dp(64));
+                if(effectsMode){
+                    row.addView(caption,textParams);
+                    iconParams.leftMargin=dp(8);row.addView(icon,iconParams);
+                }else{
+                    row.addView(icon,iconParams);
+                    textParams.leftMargin=dp(8);row.addView(caption,textParams);
+                }
+            }
+        }
         int selected(){return Math.max(0,Math.min(names.length-1,Math.round(offset)));}
         @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);radius=Math.max(w*.94f,dp(250));render();}
-        private float arcX(float theta){return getWidth()*.82f+radius-radius*(float)Math.cos(theta);}
+        private float arcX(float theta){
+            float bend=radius*(1f-(float)Math.cos(theta));
+            return effectsMode?getWidth()*.84f+bend:getWidth()*.16f-bend;
+        }
         private float arcY(float theta){return getHeight()*.50f+radius*(float)Math.sin(theta);}
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);
@@ -314,11 +362,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             canvas.drawPath(path,stroke);
             float x=arcX(0),y=arcY(0);
             light.setStyle(Paint.Style.FILL);
-            light.setShader(new RadialGradient(x-dp(74),y,dp(96),
+            light.setShader(new RadialGradient(x,y,dp(96),
                 new int[]{0x3bd8b4f8,0x14b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP));
-            canvas.drawCircle(x-dp(74),y,dp(96),light);
+            canvas.drawCircle(x,y,dp(96),light);
             light.setShader(null);light.setColor(EditorTheme.LIME);
-            canvas.drawRoundRect(x-dp(17),y-dp(3),x+dp(17),y+dp(3),dp(4),dp(4),light);
+            float markerX=x+(effectsMode?-dp(40):dp(40));
+            canvas.drawRoundRect(markerX-dp(8),y-dp(2),markerX+dp(8),y+dp(2),dp(3),dp(3),light);
         }
         private void render(){
             if(getWidth()==0||getHeight()==0)return;
@@ -342,7 +391,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 LinearLayout row=rows[i];
                 row.setVisibility(visible?VISIBLE:INVISIBLE);
                 if(!visible)continue;
-                float x=arcX(theta)-dp(254),y=arcY(theta)-dp(32);
+                // The selected icon remains adjacent to the actual arc on
+                // its side; the complete row mirrors around the viewport.
+                float x=arcX(theta)-(effectsMode?dp(176):dp(32));
+                float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
                 float emphasis=Math.max(0,1-Math.min(1,distance));
                 row.setAlpha(Math.max(.12f,1-distance*.19f));
