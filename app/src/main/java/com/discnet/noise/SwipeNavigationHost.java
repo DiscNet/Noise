@@ -23,7 +23,7 @@ final class SwipeNavigationHost extends FrameLayout {
     private final float touchSlop;
     private final float activationDistance;
     private float downX,downY;
-    private boolean eligible,tracking,fromRightEdge;
+    private boolean eligible,tracking,openingEffects;
     private VelocityTracker velocity;
 
     SwipeNavigationHost(Context context,Handler callback) {
@@ -40,10 +40,8 @@ final class SwipeNavigationHost extends FrameLayout {
             reset();
             downX=event.getX();downY=event.getY();
             eligible=callback.allow(downX,downY);
-            // Right-edge inward swipe opens effects DIRECTLY. Swipes starting
-            // elsewhere open tools. They are independent, never sequential.
-            float edge=Math.max(EditorTheme.dp(getContext(),82),getWidth()*.24f);
-            fromRightEdge=downX>=getWidth()-edge;
+            // Opposite swipe directions, independent of starting position:
+            // right-to-left -> tools; left-to-right -> effects.
             if(eligible){velocity=VelocityTracker.obtain();velocity.addMovement(event);}
             return super.dispatchTouchEvent(event);
         }
@@ -56,30 +54,38 @@ final class SwipeNavigationHost extends FrameLayout {
 
         if(action==MotionEvent.ACTION_MOVE && eligible && event.getPointerCount()==1) {
             float dx=event.getX()-downX,dy=event.getY()-downY;
-            if(!tracking && dx < -activationDistance && Math.abs(dx)>Math.abs(dy)*1.18f){
+            if(!tracking && Math.abs(dx)>activationDistance
+                    && Math.abs(dx)>Math.abs(dy)*1.18f){
                 tracking=true;
+                openingEffects=dx>0;
                 // The original child must not receive ACTION_UP: cancel its touch.
                 MotionEvent cancel=MotionEvent.obtain(event);
                 cancel.setAction(MotionEvent.ACTION_CANCEL);
                 super.dispatchTouchEvent(cancel);
                 cancel.recycle();
-                callback.start(fromRightEdge);
+                callback.start(openingEffects);
             }
             if(tracking) {
-                callback.progress(gestureFraction(-dx));
+                callback.progress(gestureFraction(Math.abs(dx)));
                 return true;
             }
         }
         if(tracking) {
             if(action==MotionEvent.ACTION_UP || action==MotionEvent.ACTION_CANCEL){
-                final float distance=downX-event.getX();
-                float speed=0;
-                if(velocity!=null){velocity.computeCurrentVelocity(1000);speed=-velocity.getXVelocity();}
-                boolean open=action==MotionEvent.ACTION_UP
+                float dx=event.getX()-downX;
+                final float distance=Math.abs(dx);
+                float signedSpeed=0;
+                if(velocity!=null){
+                    velocity.computeCurrentVelocity(1000);
+                    signedSpeed=velocity.getXVelocity()*(openingEffects?1f:-1f);
+                }
+                boolean correctDirection=(openingEffects?dx>0:dx<0);
+                boolean open=action==MotionEvent.ACTION_UP && correctDirection
                     && distance>Math.min(EditorTheme.dp(getContext(),75),getWidth()*.22f)
-                    && Math.abs(event.getY()-downY)<Math.abs(distance)*1.3f;
-                if(action==MotionEvent.ACTION_UP && distance>EditorTheme.dp(getContext(),34)
-                    && speed>EditorTheme.dp(getContext(),410))open=true;
+                    && Math.abs(event.getY()-downY)<distance*1.3f;
+                if(action==MotionEvent.ACTION_UP && correctDirection
+                    && distance>EditorTheme.dp(getContext(),34)
+                    && signedSpeed>EditorTheme.dp(getContext(),410))open=true;
                 callback.finish(open);
                 reset();
             }
@@ -92,13 +98,12 @@ final class SwipeNavigationHost extends FrameLayout {
     }
 
     private float gestureFraction(float delta){
-        // Finger-following progress: the first 60% of the screen reveals 100%
-        // of the wheel. A short gesture can commit without reaching the edge.
+        // Progress target only. OrbitalSelector renders it with frame-paced damping.
         return Math.max(0f,Math.min(1f,(delta-activationDistance)
             /Math.max(EditorTheme.dp(getContext(),155),getWidth()*.60f)));
     }
     private void reset(){
-        eligible=false;tracking=false;fromRightEdge=false;
+        eligible=false;tracking=false;openingEffects=false;
         if(velocity!=null){velocity.recycle();velocity=null;}
     }
 }
