@@ -17,7 +17,7 @@ final class EditorWorkspace extends ViewGroup {
     void cycleSheet(){int min=EditorTheme.dp(getContext(),48),normal=EditorTheme.dp(getContext(),330);resizeSheet(panelHeight<=min+2?normal:panelHeight<normal+8?getHeight():min);}
     boolean landscape(){return getWidth()>getHeight()*1.15f;}
     private void exact(View v,int w,int h){v.measure(MeasureSpec.makeMeasureSpec(Math.max(0,w),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.max(0,h),MeasureSpec.EXACTLY));}
-    @Override protected void onMeasure(int ws,int hs){int w=MeasureSpec.getSize(ws),h=MeasureSpec.getSize(hs),head=EditorTheme.dp(getContext(),52),nav=fullscreen?0:EditorTheme.dp(getContext(),52);setMeasuredDimension(w,h);exact(toolbar,w,head);
+    @Override protected void onMeasure(int ws,int hs){int w=MeasureSpec.getSize(ws),h=MeasureSpec.getSize(hs),head=EditorTheme.dp(getContext(),52),nav=fullscreen?0:EditorTheme.dp(getContext(),34);setMeasuredDimension(w,h);exact(toolbar,w,head);
         int available=Math.max(0,h-head-nav);boolean wide=w>h*1.15f;
         if(fullscreen){exact(stage,w,available);exact(panel,0,0);}
         else if(wide){int pw=Math.min(EditorTheme.dp(getContext(),380),Math.round(w*.46f));exact(stage,w-pw,available);exact(panel,pw,available);}
