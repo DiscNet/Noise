@@ -345,7 +345,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){super.onSizeChanged(w,h,oldW,oldH);radius=Math.max(w*.94f,dp(250));render();}
         private float arcX(float theta){
             float bend=radius*(1f-(float)Math.cos(theta));
-            return effectsMode?getWidth()*.84f+bend:getWidth()*.16f-bend;
+            return effectsMode?getWidth()-dp(44)+bend:dp(36)-bend;
         }
         private float arcY(float theta){return getHeight()*.50f+radius*(float)Math.sin(theta);}
         @Override protected void onDraw(Canvas canvas){
