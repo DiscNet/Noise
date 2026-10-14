@@ -38,7 +38,7 @@ final class OrbitalSelector extends FrameLayout {
         LinearLayout heading=new LinearLayout(c);heading.setOrientation(LinearLayout.VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         TextView label=label(c,title,30,EditorTheme.INK);
-        label.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        label.setTypeface(NoiseTypography.bold(c));
         label.setLetterSpacing(-.035f);label.setMaxLines(2);
         heading.addView(label);
         TextView description=label(c,subtitle,13,EditorTheme.MUTED);
@@ -55,7 +55,7 @@ final class OrbitalSelector extends FrameLayout {
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
         continueButton=label(c,"Abrir "+names[orbit.selected()],16,0xff17121d);
-        continueButton.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
         continueButton.setBackground(EditorTheme.buttonSurface(c,32,true));
         continueButton.setClickable(true);continueButton.setFocusable(true);
@@ -65,7 +65,7 @@ final class OrbitalSelector extends FrameLayout {
     }
     private int dp(float value){return EditorTheme.dp(getContext(),value);}
     private static TextView label(Context c,String value,int size,int color){
-        TextView t=new TextView(c);t.setText(value);t.setTextSize(size);t.setTextColor(color);return t;
+        TextView t=new TextView(c);t.setTypeface(NoiseTypography.regular(c));t.setText(value);t.setTextSize(size);t.setTextColor(color);return t;
     }
     int selected(){return orbit.selected();}
     void dismiss(){if(getParent() instanceof ViewGroup)((ViewGroup)getParent()).removeView(this);}
@@ -151,7 +151,7 @@ final class OrbitalSelector extends FrameLayout {
                 for(int i=0;i<names.length;i++){
                     boolean on=i==active;
                     captions[i].setTextColor(on?EditorTheme.INK:EditorTheme.MUTED);
-                    captions[i].setTypeface(Typeface.create("sans-serif-medium",on?Typeface.BOLD:Typeface.NORMAL));
+                    captions[i].setTypeface(on?NoiseTypography.bold(getContext()):NoiseTypography.medium(getContext()));
                     icons[i].setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],on?0xff1a1421:EditorTheme.INK));
                     icons[i].setBackground(EditorTheme.buttonSurface(getContext(),24,on));
                     rows[i].setContentDescription(names[i]+(on?", selecionado":"")+". Toque para selecionar.");
