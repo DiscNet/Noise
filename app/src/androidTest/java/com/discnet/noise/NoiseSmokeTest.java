@@ -394,7 +394,7 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView openEffect=(TextView)field(orbital,"continueButton");
             runOnMainSync(openEffect::performClick);
             require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
-            stage("edge-only orbit gestures, soft-gradient overlay and delayed menu opening");
+            stage("edge-only gestures and independent critically-damped fade-in and fade-out of wheels");
             SystemClock.sleep(520); // allow prior selection overlay to disappear
             FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
@@ -450,6 +450,19 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Dark gradient builds slowly instead of immediately covering image");
             require(eased.motionAlpha()<.85f,
                 "Wheel content remains translucent during the swipe");
+            runOnMainSync(()->{
+                // Moving the finger farther must never teleport or re-target
+                // the content. Choreographer owns the menu's visual position.
+                float xBefore=eased.motionX();
+                float alphaBefore=eased.motionAlpha();
+                float scrimBefore=eased.scrimOpacity();
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+170,
+                    MotionEvent.ACTION_MOVE,width*.30f,gestureY,0));
+                require(Math.abs(eased.motionX()-xBefore)<.15f
+                    &&Math.abs(eased.motionAlpha()-alphaBefore)<.005f
+                    &&Math.abs(eased.scrimOpacity()-scrimBefore)<.005f,
+                    "Menu and dimming must NOT mirror finger movement");
+            });
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
                 MotionEvent.ACTION_UP,toTools,gestureY,0)));
             // Immediately after release, final animation must still be running.
@@ -463,8 +476,19 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeTools.dockLeft()>width*.09f,"Tools panel docks on RIGHT");
             require(swipeTools.dockRight()==gestureHost.getWidth(),"Tools panel touches right edge");
             require(swipeTools.orbitalScreenX()>width*.65f,"Tools orbit and active icon are on RIGHT");
+            SystemClock.sleep(520);
+            float dimBeforeClose=swipeTools.scrimOpacity();
+            float menuBeforeClose=swipeTools.motionAlpha();
+            require(dimBeforeClose>.55f && menuBeforeClose>.65f,
+                "Menu and overlay became visible smoothly before close");
             runOnMainSync(activity::onBackPressed);
-            SystemClock.sleep(480);
+            SystemClock.sleep(90);
+            require(swipeTools.scrimOpacity()<dimBeforeClose
+                &&swipeTools.scrimOpacity()>0f
+                &&swipeTools.motionAlpha()<menuBeforeClose
+                &&swipeTools.motionAlpha()>0f,
+                "Close applies gradual fade-out to menu AND background");
+            SystemClock.sleep(570);
 
             float fromEffects=width*.04f,toEffects=width*.82f;
             long ge=SystemClock.uptimeMillis();
@@ -500,7 +524,7 @@ public class NoiseSmokeTest extends Instrumentation {
             require(field(activity,"orbital")==swipeEffects && swipeEffects.isEffects(),
                 "Repeating the left swipe does not chain menus");
             runOnMainSync(activity::onBackPressed);
-            SystemClock.sleep(450);
+            SystemClock.sleep(630);
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
             for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}
