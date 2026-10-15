@@ -91,8 +91,17 @@ final class PresetDialog extends FrameLayout {
     }
     private void reload(){
         cards.removeAllViews();
+        boolean listedCameras=false;
         for(int i=0;i<presets.size();i++){
             final int index=i;ProjectStore.Preset p=presets.get(i);
+            if(p.id.startsWith("builtin-camera-")&&!listedCameras){
+                listedCameras=true;
+                TextView category=text("CÂMERAS & FILMES",12,true);
+                category.setLetterSpacing(.09f);
+                category.setTextColor(EditorTheme.LIME);
+                LinearLayout.LayoutParams titleParams=new LinearLayout.LayoutParams(-1,dp(46));
+                cards.addView(category,titleParams);
+            }
             LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(8),dp(8),dp(8),dp(8));
             row.setBackground(EditorTheme.panel(activity,0xff1c1a24,0,16,0));
@@ -108,7 +117,9 @@ final class PresetDialog extends FrameLayout {
             TextView name=text((p.favorite?"★  ":"")+p.name,14,true);
             name.setSingleLine(true);name.setEllipsize(TextUtils.TruncateAt.END);
             info.addView(name);
-            TextView hint=text(p.id.startsWith("builtin")?"INCLUSO NO NOISE!":"PERSONALIZADO",10,false);
+            TextView hint=text(p.id.startsWith("builtin-camera-")?
+                "ESTÉTICA DE CÂMERA ANALÓGICA":
+                p.id.startsWith("builtin")?"INCLUSO NO NOISE!":"PERSONALIZADO",10,false);
             info.addView(hint);
             row.setOnClickListener(v->select(index));
             thumb.setOnClickListener(v->select(index));
