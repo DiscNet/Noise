@@ -210,7 +210,6 @@ final class HomeScreen extends FrameLayout {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Matrix lightMatrix=new Matrix();
         private final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private android.graphics.DashPathEffect contourDash;
         private RadialGradient base,atmosphere,highlight,coolShade;
         private ValueAnimator animator;
         private float phase,radius;
@@ -246,7 +245,6 @@ final class HomeScreen extends FrameLayout {
             radius=Math.min(Math.min(w*.40f,h*.40f),188*density);
             if(radius<=0)return;
             float x=w*.5f,y=h*.5f,r=radius;
-            contourDash=new DashPathEffect(new float[]{Math.max(3,density*8),Math.max(3,density*6)},0f);
             base=new RadialGradient(x-r*.20f,y-r*.37f,r*1.68f,
                 new int[]{0xff756684,0xff382e45,0xff17131e,0xff0a0910},
                 new float[]{0f,.37f,.72f,1f},Shader.TileMode.CLAMP);
@@ -268,44 +266,35 @@ final class HomeScreen extends FrameLayout {
             paint.setStyle(Paint.Style.FILL);
             paint.setShader(atmosphere);
             canvas.drawCircle(x,y,r*1.48f,paint);
-            float corner=r*.29f;
             paint.setShader(base);
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,paint);
+            canvas.drawCircle(x,y,r,paint);
             canvas.save();
-            canvas.clipPath(roundedClip(x,y,r,corner));
+            canvas.clipPath(circleClip(x,y,r));
             float dx=(float)Math.sin(t)*r*.14f,dy=(float)Math.cos(t*.81f)*r*.12f;
             lightMatrix.reset();lightMatrix.setTranslate(dx,dy);
             highlight.setLocalMatrix(lightMatrix);
             paint.setShader(highlight);
             paint.setAlpha(190+(int)(55*(.5f+.5f*Math.sin(t))));
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,paint);
+            canvas.drawCircle(x,y,r,paint);
             lightMatrix.reset();lightMatrix.setTranslate(-dx*.62f,dy*.66f);
             coolShade.setLocalMatrix(lightMatrix);
             paint.setShader(coolShade);
             paint.setAlpha(175);
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,paint);
+            canvas.drawCircle(x,y,r,paint);
             canvas.restore();
             paint.setShader(null);paint.setAlpha(255);
-            // One restrained, luminous outline with a second dashed highlight:
-            // no decorative bars, concentric rings or moving dots.
+            // The Home centerpiece is once again a true CIRCLE. Just one
+            // continuous light rim, without segmented, dashed or inner lines.
             contour.setStyle(Paint.Style.STROKE);
-            contour.setStrokeJoin(Paint.Join.ROUND);
             contour.setPathEffect(null);
-            contour.setColor(0x157bbaff);contour.setStrokeWidth(r*.072f);
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,contour);
-            contour.setColor(0x2da78bff);contour.setStrokeWidth(r*.036f);
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,contour);
-            contour.setColor(0x9ee2dafc);contour.setStrokeWidth(Math.max(1f,r*.009f));
-            canvas.drawRoundRect(x-r,y-r,x+r,y+r,corner,corner,contour);
-            contour.setColor(0x76cfb4ff);contour.setStrokeWidth(Math.max(1f,r*.013f));
-            contour.setPathEffect(contourDash);
-            canvas.drawRoundRect(x-r*.966f,y-r*.966f,x+r*.966f,y+r*.966f,
-                corner*.94f,corner*.94f,contour);
-            contour.setPathEffect(null);contour.setStyle(Paint.Style.FILL);
+            contour.setColor(0x277957c8);contour.setStrokeWidth(Math.max(2f,r*.032f));
+            canvas.drawCircle(x,y,r,contour);
+            contour.setColor(0xc7e9dfff);contour.setStrokeWidth(Math.max(1f,r*.010f));
+            canvas.drawCircle(x,y,r,contour);
+            contour.setStyle(Paint.Style.FILL);
         }
-        private Path roundedClip(float x,float y,float r,float corner){
-            clip.reset();
-            clip.addRoundRect(x-r,y-r,x+r,y+r,corner,corner,Path.Direction.CW);
+        private Path circleClip(float x,float y,float r){
+            clip.reset();clip.addCircle(x,y,r,Path.Direction.CW);
             return clip;
         }
         private final Path clip=new Path();
