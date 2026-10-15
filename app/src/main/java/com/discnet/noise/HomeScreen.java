@@ -167,7 +167,10 @@ final class HomeScreen extends FrameLayout {
             paint.setShader(null);
             // Refresh at a restrained rate: lightweight ambient motion should
             // not compete with GPU processing or interactive editor controls.
-            if(animate&&getWindowVisibility()==VISIBLE)postDelayed(refresh,40);
+            if(animate&&getWindowVisibility()==VISIBLE){
+                removeCallbacks(refresh);
+                postDelayed(refresh,40);
+            }
         }
     }
     private static final class Sphere extends View {
