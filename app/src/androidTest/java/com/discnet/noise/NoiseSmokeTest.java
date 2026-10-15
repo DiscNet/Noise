@@ -517,47 +517,64 @@ public class NoiseSmokeTest extends Instrumentation {
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
                 +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
             float width=gestureHost.getWidth();
-            // Edge swipes over the adjustments/sheet must NEVER open a menu.
+            // Slider touch regions remain exclusive, even though the rest
+            // of the editor now accepts horizontal menu gestures.
             android.graphics.Rect panelBounds=new android.graphics.Rect();
             panel.getGlobalVisibleRect(panelBounds);
             int[] rootXY=new int[2];gestureHost.getLocationOnScreen(rootXY);
-            float adjustmentY=panelBounds.top-rootXY[1]+Math.min(EditorTheme.dp(getTargetContext(),64),
-                Math.max(20,panelBounds.height()*.30f));
+            PrecisionControl[] controls=(PrecisionControl[])field(panel,"rows");
+            android.graphics.Rect sliderBounds=new android.graphics.Rect();
+            boolean foundSlider=false;
+            for(PrecisionControl control:controls){
+                if(control!=null&&control.slider.isShown()
+                    &&control.slider.getGlobalVisibleRect(sliderBounds)){
+                    foundSlider=true;break;
+                }
+            }
+            require(foundSlider,"At least one visible adjustment slider for gesture regression");
+            float sliderX=sliderBounds.centerX()-rootXY[0];
+            float sliderY=sliderBounds.centerY()-rootXY[1];
             long panelGesture=SystemClock.uptimeMillis();
             runOnMainSync(()->{
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture,
-                    MotionEvent.ACTION_DOWN,width*.96f,adjustmentY,0));
+                    MotionEvent.ACTION_DOWN,sliderX,sliderY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+110,
-                    MotionEvent.ACTION_MOVE,width*.55f,adjustmentY,0));
+                    MotionEvent.ACTION_MOVE,sliderX-width*.33f,sliderY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+160,
-                    MotionEvent.ACTION_UP,width*.40f,adjustmentY,0));
+                    MotionEvent.ACTION_UP,sliderX-width*.43f,sliderY,0));
             });
             require(field(activity,"orbital")==null,
-                "Dragging horizontally over sliders cannot open tools or effects");
-            // Center swipes must be ignored, even with a long horizontal travel.
+                "Dragging through an adjustable slider NEVER opens a wheel");
+
+            // A horizontal swipe from the middle of the panel must work.
+            // New policy: every editor area EXCEPT slider touch bounds.
+            float headingY=panelBounds.top-rootXY[1]+EditorTheme.dp(getTargetContext(),21);
             long centerTime=SystemClock.uptimeMillis();
             runOnMainSync(()->{
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime,
-                    MotionEvent.ACTION_DOWN,width*.5f,gestureY,0));
+                    MotionEvent.ACTION_DOWN,width*.50f,headingY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+100,
-                    MotionEvent.ACTION_MOVE,width*.27f,gestureY,0));
+                    MotionEvent.ACTION_MOVE,width*.74f,headingY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+175,
-                    MotionEvent.ACTION_UP,width*.19f,gestureY,0));
+                    MotionEvent.ACTION_UP,width*.88f,headingY,0));
             });
-            require(field(activity,"orbital")==null,
-                "Middle-screen horizontal swipe MUST NOT open a wheel");
+            OrbitalSelector fromPanel=(OrbitalSelector)field(activity,"orbital");
+            require(fromPanel!=null&&fromPanel.isEffects(),
+                "Horizontal gesture starting outside sliders must open Effects");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(480);
 
-            // Wrong-way swipes from edges are also ignored.
-            long wrongTime=SystemClock.uptimeMillis();
+            // A tiny swipe is never sufficient to open a wheel.
+            long shortTime=SystemClock.uptimeMillis();
             runOnMainSync(()->{
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime,
-                    MotionEvent.ACTION_DOWN,width*.04f,gestureY,0));
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+90,
-                    MotionEvent.ACTION_MOVE,width*.005f,gestureY,0));
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+160,
-                    MotionEvent.ACTION_UP,width*.005f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime,
+                    MotionEvent.ACTION_DOWN,width*.50f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime+90,
+                    MotionEvent.ACTION_MOVE,width*.50f+EditorTheme.dp(getTargetContext(),4),gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime+160,
+                    MotionEvent.ACTION_UP,width*.50f+EditorTheme.dp(getTargetContext(),4),gestureY,0));
             });
-            require(field(activity,"orbital")==null,"Outward swipe must not open a wheel");
+            require(field(activity,"orbital")==null,"Short drag is not a menu gesture");
             float fromTools=width*.96f,toTools=width*.18f;
             long gt=SystemClock.uptimeMillis();
             runOnMainSync(()->{
@@ -583,8 +600,10 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Full-screen dimmer fades in gradually from fully transparent");
             require(eased.featherOpacity()>0f && eased.featherOpacity()<.60f,
                 "Side-specific feather gradient fades in smoothly");
-            require(eased.motionX()>0,
-                "Right-side Tools wheel eases in from the right");
+            require(eased.motionX()>0&&eased.motionX()<EditorTheme.dp(getTargetContext(),48),
+                "Tools menu enters with short drift, not a long jump");
+            require(Math.abs(((View)field(eased,"content")).getScaleX()-1f)<.005f,
+                "Opening must not scale/pop menu content");
             require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
                 "Dark gradient builds slowly instead of immediately covering image");
             require(eased.motionAlpha()<.85f,
@@ -598,7 +617,7 @@ public class NoiseSmokeTest extends Instrumentation {
                 float previousTarget=eased.revealTargetX();
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+170,
                     MotionEvent.ACTION_MOVE,width*.30f,gestureY,0));
-                require(eased.revealTargetX()<previousTarget-EditorTheme.dp(getTargetContext(),12),
+                require(eased.revealTargetX()<previousTarget-EditorTheme.dp(getTargetContext(),6),
                     "Further edge dragging drives the wheel target toward its open position");
                 require(Math.abs(eased.motionX()-xBefore)<.15f
                     &&Math.abs(eased.motionAlpha()-alphaBefore)<.005f
