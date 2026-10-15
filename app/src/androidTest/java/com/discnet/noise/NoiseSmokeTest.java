@@ -94,8 +94,20 @@ public class NoiseSmokeTest extends Instrumentation {
                 CameraFrameGuide.geometry(1100,720,16f/9f,landscape);
                 require(Math.abs(landscape.width()/landscape.height()-16f/9f)<.02f,
                     "16:9 frame rotates with device landscape orientation");
-                Rect crop1=CameraFrameGuide.photoCrop(3000,4000,720,1100,square,1f);
-                Rect crop2=CameraFrameGuide.photoCrop(3000,4000,720,1100,square,2f);
+                // The preview remains unchanged; zoom only reduces the square guide.
+                RectF zoomSquare=new RectF(),quadZoom=new RectF();
+                CameraFrameGuide.geometry(720,1100,1f,2f,zoomSquare);
+                CameraFrameGuide.geometry(720,1100,1f,4f,quadZoom);
+                require(Math.abs(zoomSquare.centerX()-square.centerX())<.01f
+                    &&Math.abs(zoomSquare.centerY()-square.centerY())<.01f,
+                    "Zoom must keep the square anchored at the same center");
+                require(Math.abs(zoomSquare.width()*2f-square.width())<.1f
+                    &&Math.abs(zoomSquare.height()*2f-square.height())<.1f,
+                    "2x zoom reduces only the visible square to half its size");
+                require(Math.abs(quadZoom.width()*4f-square.width())<.1f,
+                    "4x zoom reduces the guide but never enlarges the preview");
+                Rect crop1=CameraFrameGuide.photoCrop(3000,4000,720,1100,square);
+                Rect crop2=CameraFrameGuide.photoCrop(3000,4000,720,1100,zoomSquare);
                 require(Math.abs(crop1.width()-crop1.height())<=2,
                     "Saved 1:1 JPEG matches the central square guide");
                 require(crop2.width()<crop1.width()*.55f
@@ -103,6 +115,18 @@ public class NoiseSmokeTest extends Instrumentation {
                     "2x zoom crops a meaningfully smaller area of the final image");
                 require(crop1.left>=0&&crop1.top>=0&&crop1.right<=3000&&crop1.bottom<=4000,
                     "Crop bounds stay within the oriented camera JPEG");
+                // The portrait camera UI does not rotate; only saved bitmap orientation changes.
+                require(CameraScreen.nearestRightAngle(5)==0
+                    &&CameraScreen.nearestRightAngle(88)==90
+                    &&CameraScreen.nearestRightAngle(177)==180
+                    &&CameraScreen.nearestRightAngle(269)==270,
+                    "Device sensor orientation snaps to the four photo rotations");
+                Bitmap portraitPhoto=Bitmap.createBitmap(20,32,Bitmap.Config.ARGB_8888);
+                Bitmap landscapePhoto=CameraScreen.rotateForDevice(portraitPhoto,91);
+                require(landscapePhoto.getWidth()==32&&landscapePhoto.getHeight()==20,
+                    "Turning the phone saves landscape photo while the camera UI remains portrait");
+                if(landscapePhoto!=portraitPhoto)landscapePhoto.recycle();
+                portraitPhoto.recycle();
                 final int[] taps={0};
                 final CameraFrameGuide[] guide={null};
                 runOnMainSync(()->{
@@ -150,6 +174,9 @@ public class NoiseSmokeTest extends Instrumentation {
                         public void close(){}
                         public void edit(Uri photo){}
                     }));
+                require(((LinearLayout)field(cameraUi[0],"cameraBody")).getOrientation()
+                        ==LinearLayout.VERTICAL,
+                    "Camera controls and viewfinder never rotate or rearrange to landscape");
                 require(((java.util.ArrayList<?>)field(cameraUi[0],"bars")).size()==3,
                     "Camera includes exactly three live controls");
                 runOnMainSync(()->cameraUi[0].dispose());
