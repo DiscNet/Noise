@@ -8,6 +8,7 @@ final class EditorWorkspace extends ViewGroup {
     View toolbar,stage,panel,categories;
     private int panelHeight;
     private boolean sheetTouched,fullscreen;
+    private boolean sheetResizeEnabled; // opt-in, off by default
     enum SheetState { COMPACT, INTERMEDIATE, EXPANDED }
     private SheetState state=SheetState.INTERMEDIATE;
     EditorWorkspace(Context c){super(c);panelHeight=EditorTheme.dp(c,340);}
@@ -15,9 +16,12 @@ final class EditorWorkspace extends ViewGroup {
     void fullscreen(boolean enabled){fullscreen=enabled;panel.setVisibility(enabled?GONE:VISIBLE);categories.setVisibility(enabled?GONE:VISIBLE);requestLayout();}
     boolean isFullscreen(){return fullscreen;}
     int sheetHeight(){return panel.getHeight();}
+    void setSheetResizeEnabled(boolean enabled){sheetResizeEnabled=enabled;}
+    boolean isSheetResizeEnabled(){return sheetResizeEnabled;}
     private int maxSheet(){int available=Math.max(1,getHeight()-EditorTheme.dp(getContext(),86));
         return Math.max(EditorTheme.dp(getContext(),48),available-EditorTheme.dp(getContext(),150));}
     void resizeSheet(int height){
+        if(!sheetResizeEnabled)return;
         sheetTouched=true;panelHeight=Math.max(EditorTheme.dp(getContext(),48),Math.min(maxSheet(),height));
         int middle=Math.min(maxSheet(),EditorTheme.dp(getContext(),330));
         state=panelHeight<=EditorTheme.dp(getContext(),94)?SheetState.COMPACT:
@@ -26,6 +30,7 @@ final class EditorWorkspace extends ViewGroup {
     }
     SheetState sheetState(){return state;}
     void cycleSheet(){
+        if(!sheetResizeEnabled)return;
         int compact=EditorTheme.dp(getContext(),48);
         int intermediate=Math.min(maxSheet(),EditorTheme.dp(getContext(),330));
         if(state==SheetState.COMPACT)resizeSheet(intermediate);
