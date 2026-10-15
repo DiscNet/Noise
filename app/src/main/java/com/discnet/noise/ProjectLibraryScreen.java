@@ -29,10 +29,11 @@ final class ProjectLibraryScreen extends FrameLayout {
         void rename(ProjectStore.Project project,String name);
         void delete(ProjectStore.Project project);
         void create();
+        void chooseVault();
     }
     private final Listener listener;
     private final LinearLayout cards;
-    private final TextView countLabel;
+    private final TextView countLabel,vaultButton;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final ExecutorService previews=Executors.newSingleThreadExecutor();
     private final ArrayList<Bitmap> owned=new ArrayList<>();
@@ -68,6 +69,12 @@ final class ProjectLibraryScreen extends FrameLayout {
         bar.addView(add,new LinearLayout.LayoutParams(dp(84),dp(43)));
         add.setOnClickListener(v->listener.create());
 
+        vaultButton=button("",false);
+        LinearLayout.LayoutParams vaultParams=new LinearLayout.LayoutParams(-1,dp(49));
+        vaultParams.bottomMargin=dp(8);page.addView(vaultButton,vaultParams);
+        vaultButton.setOnClickListener(v->listener.chooseVault());
+        vaultStatus(new ProjectVault(context).attached());
+
         TextView subtitle=text("EDITE DE ONDE PAROU",10,false);
         subtitle.setLetterSpacing(.14f);
         LinearLayout.LayoutParams subtitleParams=new LinearLayout.LayoutParams(-1,dp(37));
@@ -78,10 +85,18 @@ final class ProjectLibraryScreen extends FrameLayout {
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         cards=new LinearLayout(context);cards.setOrientation(LinearLayout.VERTICAL);
         cards.setPadding(0,0,0,dp(24));scroll.addView(cards);
-        TextView footer=text("Arquivos preservados no dispositivo  ·  Noise! Studio",11,false);
+        TextView footer=text("Para recuperar após reinstalar, escolha novamente a mesma pasta em Proteger projetos.",11,false);
         footer.setGravity(Gravity.CENTER);
         page.addView(footer,new LinearLayout.LayoutParams(-1,dp(34)));
         showLoading();
+    }
+    void vaultStatus(boolean active){
+        vaultButton.setText(active?
+            "Projetos protegidos · gerenciar pasta  ›":
+            "Proteger projetos após desinstalar  ›");
+        vaultButton.setContentDescription(active?
+            "Selecionar novamente a pasta de armazenamento de projetos":
+            "Escolher pasta compartilhada para preservar projetos após desinstalar");
     }
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
     private TextView text(String value,float size,boolean prominent){
