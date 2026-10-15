@@ -192,6 +192,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void sizeStatus(){if(original!=null){int[] size=document.outputSize(sourceWidth(),sourceHeight(),maxTexture);status.setText(size[0]+" × "+size[1]+"  ·  segure a foto para comparar");}}
     public void action(String a){switch(a){
         case "Recortar":showCrop();break;
+        case "Redimensionar":showExport();break;
         case "Girar 90°":mutate(()->document.rotation=(document.rotation+1)%4);sizeStatus();break;
         case "Espelhar horizontal":mutate(()->document.flipX=!document.flipX);break;
         case "Espelhar vertical":mutate(()->document.flipY=!document.flipY);break;
@@ -205,7 +206,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }}
     private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showGallery();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
     private void showCrop(){if(original==null||loading)return;if(cropEditor!=null)return;
-        cropEditor=new CropEditor(this,original,document,new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
+        cropEditor=new CropEditor(this,original,document,sourceWidth(),sourceHeight(),new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
     private void closeCrop(){if(cropEditor!=null){appBackground.removeView(cropEditor);cropEditor=null;}}
     private void requestFirstLaunchGalleryPermission(){
         if(destroyed||isFinishing())return;
@@ -245,14 +246,22 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private interface Named{void set(String name);}
     private void askName(String title,String initial,Named callback){EditText input=new EditText(this);input.setSingleLine(true);input.setText(initial);input.setSelectAllOnFocus(true);input.setPadding(dp(24),dp(12),dp(24),dp(12));AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(w->{String name=input.getText().toString().trim();if(name.isEmpty()||name.length()>60){input.setError("Use de 1 a 60 caracteres");return;}callback.set(name);d.dismiss();}));d.show();}
     private void showPresets(){if(original==null){toast("Abra uma imagem para visualizar presets");return;}files.execute(()->{ArrayList<ProjectStore.Preset> all=ProjectStore.builtins();all.addAll(store.presets());runOnUiThread(()->{if(!destroyed)new PresetDialog(this,store,original,document,all,new PresetDialog.Listener(){public void apply(EditorDocument look){mutate(()->document.copyLook(look));}public void save(){askName("Novo preset","Meu estilo",name->{ProjectStore.Preset p=new ProjectStore.Preset(ProjectStore.newId(),name,document.copy());files.execute(()->{try{store.savePreset(p);runOnUiThread(()->toast("Preset salvo"));}catch(Exception e){runOnUiThread(()->toast("Falha ao salvar preset"));}});});}}).show();});});}
-    private void showExport(){if(original==null||loading||exporting)return;LinearLayout form=vertical();form.setPadding(dp(24),dp(8),dp(24),dp(12));
-        Spinner format=new Spinner(this);format.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"PNG · mantém transparência","JPEG · fundo branco"}));format.setSelection(document.jpeg?1:0);form.addView(format,new LinearLayout.LayoutParams(-1,dp(52)));
-        TextView label=text("Lado maior (px) · proporção preservada",13,EditorTheme.MUTED);form.addView(label);EditText edge=new EditText(this);edge.setInputType(InputType.TYPE_CLASS_NUMBER);int[] current=document.outputSize(sourceWidth(),sourceHeight(),maxTexture);edge.setText(""+Math.max(current[0],current[1]));form.addView(edge,new LinearLayout.LayoutParams(-1,dp(48)));
-        TextView qLabel=text("Qualidade JPEG: "+document.jpegQuality+"%",13,EditorTheme.INK);form.addView(qLabel);SeekBar quality=new SeekBar(this);quality.setMin(1);quality.setMax(100);quality.setProgress(document.jpegQuality);form.addView(quality,new LinearLayout.LayoutParams(-1,dp(44)));quality.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int n,boolean u){qLabel.setText("Qualidade JPEG: "+n+"%");}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});
-        format.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int n,long id){qLabel.setVisibility(n==1?View.VISIBLE:View.GONE);quality.setVisibility(n==1?View.VISIBLE:View.GONE);}});
-        TextView note=text("Pictures/Noise! · limite deste aparelho: "+maxTexture+" px. O original fica preservado no projeto.",12,EditorTheme.MUTED);form.addView(note);
-        ScrollView scroller=new ScrollView(this);scroller.addView(form);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Exportar imagem").setView(scroller).setNegativeButton("Cancelar",null).setPositiveButton("Salvar imagem",null).create();
-        dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{try{int n=Integer.parseInt(edge.getText().toString());if(n<1||n>maxTexture)throw new NumberFormatException();document.outputLongEdge=n;document.jpeg=format.getSelectedItemPosition()==1;document.jpegQuality=quality.getProgress();saveProject(false);dialog.dismiss();chooseOutput();}catch(NumberFormatException e){edge.setError("Digite entre 1 e "+maxTexture);}}));dialog.show();
+    private void showExport(){
+        if(original==null||loading||exporting)return;
+        new ResizeDialog(this,original,document,sourceWidth(),sourceHeight(),maxTexture,
+            (w,h,jpeg,quality,exportNow)->{
+                int[] nativeSize=document.nativeSize(sourceWidth(),sourceHeight());
+                mutate(()->{
+                    // Preserve the legacy JSON field, but explicit dimensions
+                    // take precedence in the V1.28 output model.
+                    document.outputWidth=w==nativeSize[0]&&h==nativeSize[1]?0:w;
+                    document.outputHeight=w==nativeSize[0]&&h==nativeSize[1]?0:h;
+                    document.outputLongEdge=0;
+                    document.jpeg=jpeg;document.jpegQuality=quality;
+                });
+                sizeStatus();
+                if(exportNow)chooseOutput();
+            }).show();
     }
     private void chooseOutput(){if(Build.VERSION.SDK_INT<29&&checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},SAVE_PERMISSION);return;}export(null);}
     private void export(Uri supplied){if(original==null||loading||exporting)return;final EditorDocument d=document.copy();final ImageSource current=source;final Bitmap previewSource=original;final int w=sourceWidth(),h=sourceHeight(),limit=maxTexture;exporting=true;status.setText("Exportando… você pode continuar editando");updateActions();
