@@ -37,6 +37,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private GalleryScreen galleryScreen;
     private HomeScreen homeScreen;
     private ProjectLibraryScreen projectLibrary;
+    private PresetDialog presetLibrary;
     private OrbitalSelector orbital;
     private CropEditor cropEditor;
     private LinearLayout topBar;
@@ -124,7 +125,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
-        if(projectLibrary!=null)return false;
+        if(projectLibrary!=null||presetLibrary!=null)return false;
         // Only the visible image preview can initiate navigation. Previously
         // the whole workspace (including sliders, crop tools and sheet handle)
         // was eligible, so editing a parameter could open an orbital menu.
@@ -337,7 +338,42 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     private interface Named{void set(String name);}
     private void askName(String title,String initial,Named callback){EditText input=new EditText(this);input.setSingleLine(true);input.setText(initial);input.setSelectAllOnFocus(true);input.setPadding(dp(24),dp(12),dp(24),dp(12));AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(w->{String name=input.getText().toString().trim();if(name.isEmpty()||name.length()>60){input.setError("Use de 1 a 60 caracteres");return;}callback.set(name);d.dismiss();}));d.show();}
-    private void showPresets(){if(original==null){toast("Abra uma imagem para visualizar presets");return;}files.execute(()->{ArrayList<ProjectStore.Preset> all=ProjectStore.builtins();all.addAll(store.presets());runOnUiThread(()->{if(!destroyed)new PresetDialog(this,store,original,document,all,new PresetDialog.Listener(){public void apply(EditorDocument look){mutate(()->document.copyLook(look));}public void save(){askName("Novo preset","Meu estilo",name->{ProjectStore.Preset p=new ProjectStore.Preset(ProjectStore.newId(),name,document.copy());files.execute(()->{try{store.savePreset(p);runOnUiThread(()->toast("Preset salvo"));}catch(Exception e){runOnUiThread(()->toast("Falha ao salvar preset"));}});});}}).show();});});}
+    private void showPresets(){
+        if(original==null){toast("Abra uma imagem para visualizar presets");return;}
+        if(presetLibrary!=null)return;
+        files.execute(()->{
+            ArrayList<ProjectStore.Preset> all=ProjectStore.builtins();
+            all.addAll(store.presets());
+            runOnUiThread(()->{
+                if(destroyed||presetLibrary!=null)return;
+                PresetDialog library=new PresetDialog(this,store,original,document,all,
+                    new PresetDialog.Listener(){
+                        @Override public void apply(EditorDocument look){
+                            mutate(()->document.copyLook(look));
+                        }
+                        @Override public void save(String name){
+                            final ProjectStore.Preset preset=new ProjectStore.Preset(
+                                ProjectStore.newId(),name,document.copy());
+                            files.execute(()->{
+                                try{store.savePreset(preset);
+                                    runOnUiThread(()->{if(!destroyed)toast("Preset salvo");});
+                                }catch(Exception e){
+                                    runOnUiThread(()->{if(!destroyed)toast("Falha ao salvar preset");});
+                                }
+                            });
+                        }
+                    });
+                presetLibrary=library;
+                library.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+                    public void onViewAttachedToWindow(View v){}
+                    public void onViewDetachedFromWindow(View v){
+                        if(presetLibrary==library)presetLibrary=null;
+                    }
+                });
+                library.show();
+            });
+        });
+    }
     private void showExport(){
         if(original==null||loading||exporting)return;
         new ResizeDialog(this,original,document,sourceWidth(),sourceHeight(),maxTexture,
@@ -366,6 +402,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(presetLibrary!=null){presetLibrary.onBack();return;}
         if(projectLibrary!=null){if(!projectLibrary.dismissModal())closeProjectLibrary();return;}
         if(cropEditor!=null){closeCrop();return;}
         if(orbital!=null&&orbital.getParent()!=null){closeOrbital();return;}
@@ -378,5 +415,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());}
     @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
+    @Override protected void onDestroy(){destroyed=true;
+        if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
+        closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }
