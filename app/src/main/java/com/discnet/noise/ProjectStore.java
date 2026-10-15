@@ -145,6 +145,18 @@ final class ProjectStore {
         d.colorWheels[0]=-.12f;d.colorWheels[1]=.09f;
         d.colorWheels[4]=.26f;d.colorWheels[5]=-.12f;
         p.add(new Preset("builtin-camera-copper-rich","Cobre R · Rich Film",d));
+        // Clean retro presets: film tone, halation and light leaks remain.
+        // Remove generated grain, dust and film texture for EVERY camera
+        // preset, including Cobre R. Individual editors can add grain later.
+        for(Preset look:p){
+            if(!look.id.startsWith("builtin-camera-")
+                &&!look.id.equals("builtin-film")
+                &&!look.id.equals("builtin-mono"))continue;
+            look.document.values[7]=0f;   // generated noise
+            look.document.values[14]=0f;  // dust, flecks and scratches
+            look.document.values[54]=0f;  // normal grain
+            look.document.values[65]=0f;  // multiscale film grain
+        }
         return p;
     }
 }
