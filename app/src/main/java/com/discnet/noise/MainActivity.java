@@ -93,6 +93,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         panel.effect=Math.max(0,Math.min(AdjustmentSpec.EFFECTS.length-1,
             getPreferences(0).getInt("lastEffect",0)));
         workspace.setSheetResizeEnabled(SettingsScreen.resizePanelEnabled(this));
+        panel.panelResizeEnabled(workspace.isSheetResizeEnabled());
         installSheetGesture();
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
@@ -235,9 +236,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             @Override public void close(){closeSettings();}
             @Override public void panelResizeChanged(boolean enabled){
                 workspace.setSheetResizeEnabled(enabled);
-                panel.handle.setContentDescription(enabled?
-                    "Arraste para expandir ou recolher o painel":
-                    "Tamanho do painel fixo; habilite o ajuste nas configurações");
+                panel.panelResizeEnabled(enabled);
             }
         });
         settingsScreen=screen;
