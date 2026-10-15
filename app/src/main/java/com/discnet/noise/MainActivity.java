@@ -27,6 +27,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private final AtomicInteger loads=new AtomicInteger();
     private Future<?> importTask;
     private ProjectStore store;
+    private ProjectVault vault;
     private String projectId,projectName="Sem título";
     private ImageSource source;
     private Bitmap original;
@@ -48,13 +49,13 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private TextView status,empty,compareLabel;
     private boolean loading,exporting,destroyed,comparing,orbitalClosing;
     private int maxTexture=4096;
-    private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74;
+    private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74,VAULT_REQUEST=82;
     private int dp(float n){return EditorTheme.dp(this,n);}
     private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setTypeface(NoiseTypography.regular(this));v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView button(String t,boolean primary){TextView v=text(t,14,primary?0xff19121f:EditorTheme.INK);v.setGravity(Gravity.CENTER);EditorTheme.button(v,primary);v.setMinHeight(dp(48));v.setFocusable(true);return v;}
     private LinearLayout vertical(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
     @Override public void onCreate(Bundle saved){
-        super.onCreate(saved);store=new ProjectStore(this);getWindow().setStatusBarColor(0xff0c0b10);getWindow().setNavigationBarColor(0xff0c0b10);
+        super.onCreate(saved);store=new ProjectStore(this);vault=new ProjectVault(this);getWindow().setStatusBarColor(0xff0c0b10);getWindow().setNavigationBarColor(0xff0c0b10);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
             @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
@@ -251,7 +252,11 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void toggleFullscreen(){workspace.fullscreen(!workspace.isFullscreen());}
     public EditorDocument document(){return document;}
     public void begin(){history.begin(document);}
-    public void change(int id,float value){document.values[id]=AdjustmentSpec.clamp(id,value);document.disabled[id]=false;panel.bind(id);publish();}
+    public void change(int id,float value){
+        document.values[id]=AdjustmentSpec.clamp(id,value);document.disabled[id]=false;
+        if(id>=44&&id<50)document.asciiEnabled=true;
+        panel.bind(id);publish();
+    }
     public void end(){history.commit(document);updateActions();saveProject(false);}
     public void toggle(int id){begin();document.disabled[id]=!document.disabled[id];panel.bind(id);publish();end();}
     public void updated(){publish();}
@@ -312,13 +317,19 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     void setImage(Bitmap bitmap){source=null;original=bitmap;preview.setImage(bitmap);loading=false;empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();}
     private void loadProject(String id,boolean retain){int token=loads.incrementAndGet();loading=true;updateActions();status.setText("Abrindo projeto…");files.execute(()->{try{ProjectStore.Project p=store.read(id);ImageSource decoded=ImageSource.open(p.source,Math.min(maxTexture,1600));runOnUiThread(()->{if(destroyed||token!=loads.get()){decoded.preview.recycle();return;}projectId=p.id;projectName=p.name;if(!retain){document=p.document;try{history.restore(p.history);}catch(JSONException ignored){history.clear();}}setSource(decoded);});}catch(Exception|OutOfMemoryError e){loadFailed(token,"Projeto indisponível ou arquivo inválido.");}});}
     private void saveProject(boolean explicit){if(projectId==null||original==null){if(explicit)toast("Abra uma foto para criar um projeto");return;}final String id=projectId,name=projectName;final EditorDocument snapshot=document.copy();final JSONObject h;try{h=history.toJson();}catch(JSONException e){return;}
-        files.execute(()->{try{store.save(id,name,snapshot,h);if(explicit)runOnUiThread(()->toast("Projeto salvo no aparelho"));}catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível salvar o projeto. Verifique o espaço.");});}});
+        files.execute(()->{try{
+            store.save(id,name,snapshot,h);
+            boolean protectedProject=vault.attached();
+            if(protectedProject)vault.backup(store,id);
+            if(explicit)runOnUiThread(()->toast(protectedProject?
+                "Projeto salvo também na pasta compartilhada":"Projeto salvo apenas no app. Proteja em Meus projetos."));}catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível salvar o projeto. Verifique o espaço.");});}});
     }
     private void showProjects(){
         if(projectLibrary!=null)return;
         final ProjectLibraryScreen screen=new ProjectLibraryScreen(this,new ProjectLibraryScreen.Listener(){
             @Override public void close(){closeProjectLibrary();}
             @Override public void create(){closeProjectLibrary();showGallery();}
+            @Override public void chooseVault(){chooseProjectVault();}
             @Override public void open(ProjectStore.Project project){
                 closeProjectLibrary();
                 saveProject(false);
@@ -330,6 +341,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                         ProjectStore.Project current=store.read(project.id);
                         store.save(project.id,name,current.document,
                             current.history==null?new JSONObject():current.history);
+                        if(vault.attached())vault.backup(store,project.id);
                         runOnUiThread(()->{if(destroyed)return;
                             if(project.id.equals(projectId))projectName=name;
                             refreshProjectLibrary();
@@ -340,6 +352,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             @Override public void delete(ProjectStore.Project project){
                 files.execute(()->{
                     try{
+                        vault.delete(project.id);
                         store.delete(project.id);
                         runOnUiThread(()->{if(destroyed)return;
                             if(project.id.equals(projectId))projectId=null;
@@ -353,6 +366,40 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         screen.bringToFront();
         refreshProjectLibrary();
+    }
+    /** Android's SAF picker is necessary: after uninstall the old grant is lost.
+     * Re-select the SAME parent folder to recover its Noise! Projects data.
+     */
+    private void chooseProjectVault(){
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+            |Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            |Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try{startActivityForResult(intent,VAULT_REQUEST);}
+        catch(ActivityNotFoundException e){toast("Seletor de pasta indisponível");}
+    }
+    private void connectProjectVault(Uri selected){
+        if(projectLibrary!=null)projectLibrary.showLoading();
+        files.execute(()->{
+            try{
+                vault.attach(selected);
+                int restored=vault.recover(store);
+                int saved=vault.backupAll(store);
+                runOnUiThread(()->{
+                    if(destroyed)return;
+                    if(projectLibrary!=null)projectLibrary.vaultStatus(true);
+                    refreshProjectLibrary();
+                    toast(restored>0?restored+" projetos recuperados; backup ativo":
+                        "Pasta protegida. Projetos sincronizados: "+saved);
+                });
+            }catch(Exception e){
+                runOnUiThread(()->{
+                    if(destroyed)return;
+                    refreshProjectLibrary();
+                    toast("Não foi possível acessar a pasta escolhida");
+                });
+            }
+        });
     }
     private void refreshProjectLibrary(){
         if(projectLibrary==null)return;
@@ -432,7 +479,12 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==1&&result==RESULT_OK&&data!=null&&data.getData()!=null)load(data.getData());}
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(result!=RESULT_OK||data==null||data.getData()==null)return;
+        if(request==1)load(data.getData());
+        else if(request==VAULT_REQUEST)connectProjectVault(data.getData());
+    }
     @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
