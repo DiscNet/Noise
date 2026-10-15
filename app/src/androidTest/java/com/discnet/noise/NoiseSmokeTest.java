@@ -590,18 +590,24 @@ public class NoiseSmokeTest extends Instrumentation {
             require(eased.motionAlpha()<.85f,
                 "Wheel content remains translucent during the swipe");
             runOnMainSync(()->{
-                // Moving the finger farther must never teleport or re-target
-                // the content. Choreographer owns the menu's visual position.
+                // The finger moves the TARGET, not the displayed position.
+                // A critically damped wheel must lag instead of snapping.
                 float xBefore=eased.motionX();
                 float alphaBefore=eased.motionAlpha();
                 float scrimBefore=eased.scrimOpacity();
+                float previousTarget=eased.revealTargetX();
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+170,
                     MotionEvent.ACTION_MOVE,width*.30f,gestureY,0));
+                require(eased.revealTargetX()<previousTarget-EditorTheme.dp(getTargetContext(),12),
+                    "Further edge dragging drives the wheel target toward its open position");
                 require(Math.abs(eased.motionX()-xBefore)<.15f
                     &&Math.abs(eased.motionAlpha()-alphaBefore)<.005f
                     &&Math.abs(eased.scrimOpacity()-scrimBefore)<.005f,
-                    "Menu and dimming must NOT mirror finger movement");
+                    "Spring must lag behind the finger instead of teleporting");
             });
+            SystemClock.sleep(75);
+            require(eased.motionX()<EditorTheme.dp(getTargetContext(),155),
+                "Wheel should animate toward updated drag target with inertia");
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
                 MotionEvent.ACTION_UP,toTools,gestureY,0)));
             // Immediately after release, final animation must still be running.
@@ -690,9 +696,11 @@ public class NoiseSmokeTest extends Instrumentation {
             long start=System.nanoTime();runOnMainSync(()->activity.change(50,.2f));long parameterMs=(System.nanoTime()-start)/1000000;
             require(((EditState)field(surface,"state")).light[0]==.2f,"State immediately reaches preview");
             stage("live frames="+drawn+", parameter dispatch ms="+parameterMs+", last GL submission ms="+(surface.renderNanos/1000000));
-            // Regression: performing a live edit must not permanently disable
-            // either edge menu or leave an invisible orbital overlay attached.
+            // Regression: changing a slider AND selecting a different
+            // category must never disable both edge menus.
+            runOnMainSync(()->tabs[1].performClick());
             waitForIdleSync();
+            require(panel.category==1,"Category changed after editing a parameter");
             SystemClock.sleep(600);
             android.graphics.Rect previewBounds=new android.graphics.Rect();
             ((FrameLayout)field(activity,"editorStage")).getGlobalVisibleRect(previewBounds);
@@ -711,7 +719,21 @@ public class NoiseSmokeTest extends Instrumentation {
             require(afterEdit!=null&&afterEdit.isEffects(),
                 "After editing a slider, edge gesture MUST reopen effects wheel");
             runOnMainSync(activity::onBackPressed);
-            SystemClock.sleep(640);
+            // Immediately reopening must interrupt an older closing overlay.
+            long immediate=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate,
+                    MotionEvent.ACTION_DOWN,width*.96f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate+90,
+                    MotionEvent.ACTION_MOVE,width*.55f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate+160,
+                    MotionEvent.ACTION_UP,width*.20f,liveY,0));
+            });
+            OrbitalSelector immediateTools=(OrbitalSelector)field(activity,"orbital");
+            require(immediateTools!=null&&!immediateTools.isEffects(),
+                "Another wheel opens immediately even while previous one closes");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(670);
             stage("public PNG and JPEG export");
             EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
             Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
