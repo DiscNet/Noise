@@ -38,6 +38,25 @@ final class EditorPanel extends LinearLayout {
         }
         return false;
     }
+    /** Protect custom color editors from root swipes for their entire bounds. */
+    boolean isOverColorEditor(int screenX,int screenY){
+        return colorHit(controls,screenX,screenY);
+    }
+    private boolean colorHit(View view,int x,int y){
+        if(!view.isShown())return false;
+        if(view instanceof ColorWheelControl||view instanceof ColorCurveControl){
+            android.graphics.Rect rect=new android.graphics.Rect();
+            if(!view.getGlobalVisibleRect(rect))return false;
+            rect.inset(-dp(8),-dp(8));
+            return rect.contains(x,y);
+        }
+        if(view instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)view;
+            for(int i=0;i<group.getChildCount();i++)
+                if(colorHit(group.getChildAt(i),x,y))return true;
+        }
+        return false;
+    }
     void select(int group){
         boolean switched=category!=group;
         category=group;rebuild();
