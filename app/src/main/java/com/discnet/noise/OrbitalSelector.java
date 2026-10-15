@@ -20,6 +20,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float swipeStartX,swipeStartY;
     private boolean horizontal;
     private boolean dismissed;
+    private final Runnable closeWatchdog=()->{
+        // A paused frame callback must never leave an invisible interception
+        // layer over the editor after the wheel has been dismissed.
+        if(closing&&getParent()!=null)removeFromParent();
+    };
     private boolean effectsMode;
     private boolean motionScheduled;
     private long lastMotionFrame;
@@ -221,6 +226,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
     }
     private void targetOpen(){
+        removeCallbacks(closeWatchdog);
         state=MenuState.OPENING;
         closing=false;
         targetX=0f;
@@ -238,6 +244,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetScrim=0f;
         targetFeather=0f;
         targetScale=.985f;
+        removeCallbacks(closeWatchdog);
+        postDelayed(closeWatchdog,1200);
         if(!ValueAnimator.areAnimatorsEnabled()){state=MenuState.CLOSED;removeFromParent();return;}
         requestMotion();
     }
@@ -376,6 +384,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
     @Override protected void onDetachedFromWindow(){
+        removeCallbacks(closeWatchdog);
         stopTracking();content.animate().cancel();scrim.animate().cancel();
         edgeFeather.animate().cancel();orbit.cancelMotion();
         super.onDetachedFromWindow();
