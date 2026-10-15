@@ -2,7 +2,116 @@
 
 O APK oficial usa `applicationId=com.discnet.noise`. Para manter as atualizações, preserve **a mesma chave de assinatura** e aumente o `versionCode` em cada nova versão. A V1.30.2 tem `versionCode 36`. O nome do arquivo ou uma senha igual não recriam a mesma chave.
 
-A configuração abaixo é feita **uma única vez**, em um computador confiável. Não envie a keystore, seu Base64 ou senhas para o chat, commits, issues, logs ou Releases. O GitHub guarda os quatro valores como **Repository Secrets do Actions**. Não são Variables nem Secrets do Dependabot ou Codespaces.
+A configuração abaixo é feita **uma única vez**, em um dispositivo confiável (Android ou computador). Não envie a keystore, seu Base64 ou senhas para o chat, commits, issues, logs ou Releases. O GitHub guarda os quatro valores como **Repository Secrets do Actions**. Não são Variables nem Secrets do Dependabot ou Codespaces.
+
+
+## Android com Termux
+
+Todo o processo pode ser feito no celular, sem computador ou root. A keystore é criada no armazenamento privado do Termux; a compilação do APK continua no GitHub Actions.
+
+### A. Preparar o Termux
+
+Instale o [Termux pelo F-Droid](https://f-droid.org/packages/com.termux/), fonte indicada pelo projeto. Se já usa o Termux, preserve seus arquivos e não o desinstale para seguir este guia.
+
+Abra o Termux e execute:
+
+```bash
+pkg update && pkg install openjdk-21 gh
+```
+
+Confirme a instalação quando solicitado. O OpenJDK fornece o `keytool`; o pacote `gh` é o GitHub CLI. O Java 21 é usado apenas para criar a chave no celular; o build do projeto continua usando Java 17 no Actions.
+
+### B. Criar a chave uma única vez
+
+Cole este bloco no Termux:
+
+```bash
+umask 077
+mkdir -p "$HOME/Noise-Signing"
+if [ -e "$HOME/Noise-Signing/noise-release.p12" ]; then
+  printf '%s\n' 'A keystore já existe. Preserve o arquivo e use a senha original.'
+else
+  keytool -genkeypair -v -storetype PKCS12 \
+    -keystore "$HOME/Noise-Signing/noise-release.p12" \
+    -alias noise -keyalg RSA -keysize 3072 -sigalg SHA256withRSA \
+    -validity 36500 -dname "CN=Noise, O=DiscNet, C=BR"
+fi
+```
+
+Crie e confirme uma senha forte quando o `keytool` pedir. A digitação pode ficar invisível no terminal; isso é normal. Guarde a senha no seu gerenciador de senhas. Neste formato PKCS12, os dois Secrets de senha recebem **a mesma senha**. Se o comando falhar, resolva o erro antes de continuar; não apague uma chave existente para tentar novamente.
+
+### C. Fazer backup antes de publicar
+
+A desinstalação do Termux ou a limpeza de seus dados pode apagar a chave. Para disponibilizar uma cópia do arquivo protegido por senha no aplicativo Arquivos, execute:
+
+```bash
+termux-setup-storage
+```
+
+Autorize o acesso ao armazenamento na solicitação do Android. Depois, execute:
+
+```bash
+cp -i "$HOME/Noise-Signing/noise-release.p12" "$HOME/storage/downloads/Noise-release-backup.p12"
+```
+
+No aplicativo Arquivos, procure **Downloads → Noise-release-backup.p12**. Guarde cópias em **dois locais protegidos e independentes do celular**, como um cofre criptografado e um dispositivo USB protegido. Preserve também a senha no gerenciador de senhas. A pasta Downloads serve apenas como passagem; retire a cópia dali depois de conferir os backups.
+
+Para conferir uma cópia retornada do backup, use `keytool -list -v -keystore CAMINHO_DA_COPIA -alias noise` e digite a senha quando solicitado. Compare a impressão SHA-256 com a do original. Não envie esse arquivo ao chat ou ao repositório.
+
+### D. Conectar sua conta GitHub
+
+No Termux:
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web
+```
+
+Siga o login pelo navegador com sua conta **DiscNet**. Se o navegador não abrir automaticamente, abra no Chrome o endereço de autorização exibido pelo próprio GitHub CLI e informe o código gerado. Volte ao Termux quando terminar. Não envie o código de login ou tokens a outras pessoas.
+
+### E. Cadastrar os quatro Secrets
+
+Execute **um comando por vez**, esperando o resultado. O Base64 vai direto do arquivo para o GitHub CLI, sem ser impresso nem copiado para a área de transferência:
+
+```bash
+base64 -w 0 "$HOME/Noise-Signing/noise-release.p12" | gh secret set NOISE_SIGNING_KEYSTORE_B64 --repo DiscNet/Noise --app actions
+```
+
+```bash
+printf '%s' 'noise' | gh secret set NOISE_SIGNING_KEY_ALIAS --repo DiscNet/Noise --app actions
+```
+
+```bash
+gh secret set NOISE_SIGNING_STORE_PASSWORD --repo DiscNet/Noise --app actions
+```
+
+O comando acima pede a senha de forma interativa. Informe a senha escolhida ao criar a keystore, aguarde a confirmação e execute:
+
+```bash
+gh secret set NOISE_SIGNING_KEY_PASSWORD --repo DiscNet/Noise --app actions
+```
+
+Informe **a mesma senha** novamente. Não coloque senhas no comando com `--body`; o GitHub CLI as recebe na entrada interativa e criptografa os valores antes de enviá-los ao GitHub. Se qualquer comando falhar, não inicie a publicação até corrigir o erro.
+
+Confira os quatro nomes, sem mostrar valores:
+
+```bash
+gh secret list --repo DiscNet/Noise --app actions
+```
+
+### F. Publicar a V1.30.2
+
+Com os backups conferidos e os quatro Secrets cadastrados, execute:
+
+```bash
+gh workflow run android.yml --ref main --repo DiscNet/Noise
+```
+
+Acompanhe em [Actions → Build Noise APK](https://github.com/DiscNet/Noise/actions/workflows/android.yml). O workflow testa, assina e publica `Noise.V1.30.2.apk` em Releases; não substitui uma Release que já exista.
+
+Você também pode avisar ao assistente apenas **“Secrets configurados”**, sem valores, para ele acompanhar e prosseguir com a publicação.
+
+Após concluir, se não precisar mais da sessão GitHub no Termux, use `gh auth logout --hostname github.com`. Preserve a keystore e seus backups.
+
 
 ## 1. Gerar a keystore no Windows
 
@@ -128,3 +237,6 @@ Salvar Secrets, por si só, **não inicia uma execução**. A publicação tamb�
 - [Secrets no GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 - [GitHub CLI: gh secret set](https://cli.github.com/manual/gh_secret_set)
 - [Java 17: keytool](https://docs.oracle.com/en/java/javase/17/docs/specs/man/keytool.html)
+
+- [Termux: instalação](https://github.com/termux/termux-app#installation)
+- [GitHub CLI no Android](https://github.com/cli/cli/blob/trunk/docs/install_linux.md#android)
