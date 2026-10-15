@@ -34,6 +34,7 @@ uniform bool uExport;
 uniform vec4 uGrain; // strength, size in reference pixels, roughness, colored
 uniform vec2 uGlow; // threshold and isotropic radius
 uniform vec2 uDetail;
+uniform vec2 uHDR; // range in tone FBO, local contrast in final pass
 uniform int uDitherMethod; // 0 original Neon, 1 Bayer, 2 Threshold
 uniform int uDitherPalette; // 0 blue/orange/red, 1 mono, 2 quantized RGB
 
@@ -118,6 +119,21 @@ void main() {
             float fade = uFxA.x;
             c = clamp(c * (1.0 - fade * 0.51)
                         + vec3(0.155 * fade), 0.0, 1.0);
+        }
+
+        // Edge-aware HDR microcontrast on the already graded tone texture.
+        // Static images remain sharp; no temporal/ghosting displacement.
+        if(uHDR.y>.001){
+            vec2 px=vec2(2.5)/uSize;
+            vec3 neighborhood=
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(px.x,0.),0.0,1.0)))+
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(px.x,0.),0.0,1.0)))+
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(0.,px.y),0.0,1.0)))+
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(0.,px.y),0.0,1.0)));
+            neighborhood*=.25;
+            vec3 detail=c-neighborhood;
+            float edge=clamp(length(detail)*3.0,0.0,1.0);
+            c=clamp(c+detail*uHDR.y*(.72+.40*edge),0.0,1.0);
         }
 
         // Nitidez: 4-tap unsharp mask, entirely skipped when set to zero.
