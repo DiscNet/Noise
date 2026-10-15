@@ -82,7 +82,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         compareLabel=text("Original",12,EditorTheme.LIME);compareLabel.setBackgroundColor(0xff20242d);compareLabel.setPadding(dp(12),dp(6),dp(12),dp(6));FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);cp.topMargin=dp(8);editorStage.addView(compareLabel,cp);compareLabel.setVisibility(View.GONE);
         status=text("",11,EditorTheme.MUTED);status.setMaxLines(2);status.setPadding(dp(12),dp(5),dp(52),dp(5));status.setBackgroundColor(0xff0c0b10);FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);editorStage.addView(status,sp);
         ImageView full=IconArt.button(this,IconArt.FULL,"Alternar tela cheia");FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.BOTTOM|Gravity.RIGHT);editorStage.addView(full,fp);full.setOnClickListener(v->toggleFullscreen());
-        panel=new EditorPanel(this,this);installSheetGesture();
+        panel=new EditorPanel(this,this);
+        panel.effect=Math.max(0,Math.min(AdjustmentSpec.EFFECTS.length-1,
+            getPreferences(0).getInt("lastEffect",0)));
+        installSheetGesture();
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(18),0,dp(18),0);categoryScroll.addView(strip);
@@ -142,8 +145,16 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         OrbitalSelector wheel=new OrbitalSelector(this,
             effects?"Escolha um\nefeito":"Explore suas\nferramentas",
             effects?"Arraste para percorrer a roda.":"Deslize para explorar todas as categorias.",
-            labels,symbols,effects?panel.effect:panel.category,n->{
-                if(effects){panel.effect=n;selectCategory(3);}else selectCategory(n);
+            labels,symbols,effects?panel.effect:
+                getPreferences(0).getInt("lastTool",panel.category),n->{
+                if(effects){
+                    panel.effect=n;
+                    getPreferences(0).edit().putInt("lastEffect",n).apply();
+                    selectCategory(3);
+                }else{
+                    getPreferences(0).edit().putInt("lastTool",n).apply();
+                    selectCategory(n);
+                }
                 closeOrbital();
             });
         orbital=wheel;
