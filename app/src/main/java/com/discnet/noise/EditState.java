@@ -21,6 +21,7 @@ public final class EditState {
     boolean flipX,flipY;
     float[] colorCurves=new float[18],colorWheels=new float[6];
     float[] noiseControls={0,.55f},hdrControls={0,0},blend={1,0};
+    float[] film={0,0,0,0}; // multiscale grain, stock response, halation, light leak
     float left=0,top=0,right=1,bottom=1;
     EditState(EditorDocument d,boolean before){
         this(slice(d,0,9),slice(d,9,12),slice(d,12,20),slice(d,20,26),
@@ -34,6 +35,7 @@ public final class EditState {
         noiseControls=new float[]{d.value(62),d.value(63)};
         hdrControls=new float[]{d.value(60),d.value(61)};
         blend=new float[]{d.value(64),d.blendMode};
+        film=new float[]{d.value(65),d.value(66),d.value(67),d.value(68)};
         ditherMethod=d.ditherMethod;ditherPalette=d.ditherPalette;
         left=d.left;top=d.top;right=d.right;bottom=d.bottom;rotation=d.rotation;flipX=d.flipX;flipY=d.flipY;
     }
@@ -44,6 +46,7 @@ public final class EditState {
         n=31*n+java.util.Arrays.hashCode(noiseControls);
         n=31*n+java.util.Arrays.hashCode(hdrControls);
         n=31*n+java.util.Arrays.hashCode(blend);
+        n=31*n+java.util.Arrays.hashCode(film);
         return n;}
 
 
