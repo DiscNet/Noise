@@ -38,6 +38,7 @@ final class ProjectLibraryScreen extends FrameLayout {
     private final ArrayList<Bitmap> owned=new ArrayList<>();
     private volatile boolean disposed;
     private int generation;
+    private int displayedProjects;
     private View modal;
     private final File cache;
 
@@ -101,8 +102,11 @@ final class ProjectLibraryScreen extends FrameLayout {
         loading.setGravity(Gravity.CENTER);
         cards.addView(loading,new LinearLayout.LayoutParams(-1,dp(180)));
     }
+    int projectCount(){return displayedProjects;}
+    int previewCount(){return owned.size();}
     void setProjects(ArrayList<ProjectStore.Project> projects){
         if(disposed)return;
+        displayedProjects=projects.size();
         generation++;final int request=generation;
         cards.removeAllViews();
         countLabel.setText(projects.size()==1?"1 projeto salvo":projects.size()+" projetos salvos");
@@ -201,7 +205,8 @@ final class ProjectLibraryScreen extends FrameLayout {
                     }catch(Exception ignored){}
                     return rendered;
                 }catch(Exception|OutOfMemoryError gpu){
-                    return Bitmap.createScaledBitmap(source,w,h,false);
+                    Bitmap fallback=Bitmap.createScaledBitmap(source,w,h,false);
+                    return fallback==source?source.copy(Bitmap.Config.ARGB_8888,false):fallback;
                 }
             }finally{source.recycle();}
         }catch(Exception|OutOfMemoryError e){return null;}
