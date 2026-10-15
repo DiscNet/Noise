@@ -15,6 +15,7 @@ final class SwipeNavigationHost extends FrameLayout {
     interface Handler {
         boolean allow(float x,float y);
         void start(boolean effects);
+        void progress(float fraction);
         void finish(boolean open);
     }
 
@@ -70,8 +71,13 @@ final class SwipeNavigationHost extends FrameLayout {
                 callback.start(openingEffects);
             }
             if(tracking) {
-                // The gesture only decides which wheel to open. The opening
-                // animation runs independently and never tracks the pointer.
+                // The wheel follows the intended displacement with a damped
+                // spring rather than locking itself to the pointer.
+                float distance=Math.max(0f,openingEffects?dx:-dx);
+                float reach=Math.max(EditorTheme.dp(getContext(),160),
+                    getWidth()*.55f);
+                float fraction=Math.max(0f,Math.min(1f,distance/reach));
+                callback.progress(fraction);
                 return true;
             }
         }
