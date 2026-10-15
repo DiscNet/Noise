@@ -34,6 +34,11 @@ public class NoiseSmokeTest extends Instrumentation {
             SystemClock.sleep(800);
             require(activity.getPreferences(0).getBoolean("gallery_permission_first_launch_asked",false),
                 "First app launch records the initial permission request");
+            HomeScreen home=(HomeScreen)field(activity,"homeScreen");
+            require(home!=null,"Noise home screen exists");
+            require(home.getChildAt(0).getClass().getSimpleName().equals("StockAtmosphere"),
+                "Home renders ambient blurred stock-art behind its content");
+            saveScreenshot("noise-home.png");
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
