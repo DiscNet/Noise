@@ -57,3 +57,14 @@ Versão-base: **V1.27, release build-119**. Mudanças aplicadas em `feature/nois
 - **Testes de regressão:** após alterar um slider e trocar de categoria, abrir Efeitos pela borda; fechar e abrir Ferramentas imediatamente; comprovar que o alvo muda com o dedo, mas a View não teleporta no mesmo evento de toque.
 
 Instalador de teste atualizado: `Noise.V1.28.1.apk`. Não é release estável até aprovação da instrumentação e revisão das capturas de emulador.
+
+## V1.28.2 — entrada orbital sem pulo, swipes em todo o editor e home animada
+
+- **Abertura sem salto:** removidos os ~116–164dp de deslocamento e a leve animação de zoom do menu. A roda agora faz uma translação curta de 28–46dp com amortecimento crítico e mantém escala fixa em 1.0.
+- **Fade mais contínuo:** a roda/ícones e as camadas escuras utilizam easing temporal separado (~205ms e ~240ms); o deslocamento responde ao dedo como um alvo com atraso e não acompanha cada pixel rigidamente.
+- **Gestos na área inteira do editor:** swipe horizontal para a direita abre Efeitos e para a esquerda abre Ferramentas, independentemente do ponto de partida. Barras de ajuste permanecem protegidas com hitbox real ampliada verticalmente; telas inicial, galeria, presets, projetos e recorte não permitem navegação orbital indevida.
+- **Tela inicial:** camada `StockAtmosphere` com cinco gradientes radiais suavizados, movimento independente lento e composição em cores violetas/cinzas. São artes abstratas locais, sem internet ou imagens de terceiros. A animação limita a atualização a ~25fps e é desativada quando o sistema desabilita animações.
+- **Botão Importar imagem:** raio de canto reduzido para 11dp.
+- **Testes:** travamento do gesto sobre slider, menu aberto por swipe na área do painel fora dos sliders, gestos curtos ignorados, entrada sem escala/pulo, e screenshot da tela inicial.
+- **APK:** `Noise.V1.28.2.apk` (prévia, não release estável até finalizar instrumentação e revisão visual).
+
