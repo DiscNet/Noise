@@ -40,7 +40,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private final LinearLayout cameraBody;
     private final FrameLayout imageArea;
     private final ScrollView controlsScroll;
-    private SeekBar zoomBar;
+    private EditorTheme.Slider zoomBar;
     private TextView zoomValue;
     private final ArrayList<TextView> ratioButtons=new ArrayList<>();
     private final TextView status, shutter, edit, switchLens;
