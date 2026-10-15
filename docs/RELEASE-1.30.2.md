@@ -13,10 +13,12 @@
 
 ## Atualização de APK no Android
 - `versionCode 36` e `versionName 1.30.2`, com `applicationId=com.discnet.noise` inalterado.
-- O workflow agora suporta uma **chave de assinatura permanente** via GitHub Actions Repository Secrets, evitando certificados de debug diferentes a cada compilação.
-- Sem as quatro secrets configuradas, a prévia continua usando a assinatura temporária de debug; ela **não pode prometer** a opção Atualizar sobre instalações anteriores.
-- Releases públicas na branch `main` passam a exigir assinatura permanente; se faltar, a publicação falha de maneira explícita.
-- Leia [APK-UPDATES.md](APK-UPDATES.md) para configurar a assinatura uma única vez e migrar instalações antigas. A versão anterior pode exigir uma única desinstalação devido a certificados historicamente diferentes — faça backup dos projetos antes.
+- O APK oficial `Noise.V1.30.2.apk` usa a variante **release, sem depuração**, e a keystore permanente configurada nos quatro GitHub Actions Secrets.
+- O workflow exige testes instrumentados aprovados, assinatura válida e certificado correspondente à keystore antes da publicação. O SHA-256 do APK e a impressão digital pública do certificado acompanham o download.
+- APKs com sufixo `-preview.apk` usam certificado temporário de debug e não fazem parte da linha oficial de atualização.
+- Leia [o guia de assinatura e migração](https://github.com/DiscNet/Noise/blob/main/docs/APK-UPDATES.md). Instalações antigas com outro certificado podem exigir uma única desinstalação — faça backup dos projetos antes.
 
-## Status
-Prévia de desenvolvimento. Build e testes em emulador devem ser concluídos antes de publicar no GitHub Releases. Não há teste físico declarado.
+## Validação e publicação
+Esta é a nota preparada para a Release `v1.30.2`. A publicação só ocorre quando os quatro Secrets estão configurados e as verificações do workflow terminam com sucesso; a existência deste arquivo não significa que a versão já foi publicada.
+
+O workflow testa os presets e o processamento GPU em um emulador Android usando a variante debug do mesmo código, compila a variante release e verifica sua assinatura, identificador, versão e ausência de depuração. Não há teste físico declarado.

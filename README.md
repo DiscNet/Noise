@@ -10,7 +10,7 @@ Editor de imagens para Android com <strong>ajustes em tempo real</strong>, efeit
 
 <br/>
 
-<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/BAIXAR%20APK-V1.27-cba6f7?style=for-the-badge&logo=android&logoColor=17111f" alt="Baixar APK Noise! V1.27"/></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><img src="https://img.shields.io/badge/BAIXAR%20APK-RELEASE-cba6f7?style=for-the-badge&logo=android&logoColor=17111f" alt="Baixar a última Release do Noise!"/></a>
 <a href="https://github.com/DiscNet/Noise/releases/latest"><img src="https://img.shields.io/badge/RELEASES-GitHub-282231?style=for-the-badge&logo=github&logoColor=ffffff" alt="Versões publicadas"/></a>
 
 <br/><br/>
@@ -124,11 +124,11 @@ As rodas descrevem arcos circulares espelhados. A abertura tem animação própr
 
 <div align="center">
 
-<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/Download-Noise.V1.27.apk-BBA4E8?style=for-the-badge&logo=android&logoColor=21162b" alt="Download do APK da versão 1.27"/></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><img src="https://img.shields.io/badge/Download-Noise!-BBA4E8?style=for-the-badge&logo=android&logoColor=21162b" alt="Download da última Release publicada"/></a>
 
 </div>
 
-Acesse a [**última release publicada**](https://github.com/DiscNet/Noise/releases/latest), baixe o arquivo **`Noise.V1.27.apk`** da V1.27 e abra-o no Android para instalar. Caso necessário, autorize a instalação a partir do aplicativo usado para abrir o APK.
+Acesse a [**última release publicada**](https://github.com/DiscNet/Noise/releases/latest), baixe o APK **`Noise.V<versão>.apk`** disponível nos assets e abra-o no Android para instalar. Caso necessário, autorize a instalação a partir do aplicativo usado para abrir o APK.
 
 - **Sistema mínimo:** Android 8.0 (API 26).
 - **Primeira abertura:** o Noise! solicita acesso às fotos; se você não conceder, ainda poderá usar o seletor de imagens do sistema.
@@ -154,7 +154,9 @@ Para compilar localmente, instale o **JDK 17**, o **Android SDK 35** e o **Gradl
 gradle --no-daemon assembleDebug assembleDebugAndroidTest
 ```
 
-O APK de debug será gerado em `app/build/outputs/apk/debug/app-debug.apk`. O workflow de CI executa os testes instrumentados e publica o instalador nas [Releases](https://github.com/DiscNet/Noise/releases) após uma compilação válida na branch `main`.
+O APK de debug será gerado em `app/build/outputs/apk/debug/app-debug.apk`. O workflow executa os testes instrumentados e, na branch `main`, compila e verifica o APK **release sem depuração**, assinado com uma keystore permanente, antes de publicá-lo nas [Releases](https://github.com/DiscNet/Noise/releases). Também pode ser iniciado em **Actions → Build Noise APK → Run workflow → main**.
+
+A publicação exige os quatro Repository Secrets descritos no [guia de assinatura permanente](docs/APK-UPDATES.md). As prévias de debug são identificadas por `-preview.apk` e não substituem a instalação oficial por atualização.
 
 <details>
 <summary><b>🗂️ Estrutura do projeto</b></summary>

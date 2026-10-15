@@ -5,29 +5,18 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
-  contents: write
-  actions: write
+  contents: read
 concurrency:
   group: noise-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 36
     steps:
-      - name: Cancel superseded builds
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const current = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: context.runId });
-            const { data } = await github.rest.actions.listWorkflowRuns({ ...context.repo, workflow_id: 'android.yml', branch: current.data.head_branch, status: 'in_progress', per_page: 30 });
-            for (const run of data.workflow_runs) {
-              if (run.id !== context.runId && run.created_at < current.data.created_at) {
-                try { await github.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: run.id }); }
-                catch (error) { if (error.status !== 409) throw error; }
-              }
-            }
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -39,45 +28,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      # Debug keystore caching is NOT a reliable update identity: public
-      # preview runs produced distinct signer fingerprints in the past.
-      # A persistent certificate must be stored as repository secrets.
-      - name: Configure permanent APK signature
-        env:
-          NOISE_KEYSTORE_B64: ${{ secrets.NOISE_SIGNING_KEYSTORE_B64 }}
-          NOISE_STORE_PASS: ${{ secrets.NOISE_SIGNING_STORE_PASSWORD }}
-          NOISE_SIGN_ALIAS: ${{ secrets.NOISE_SIGNING_KEY_ALIAS }}
-          NOISE_SIGN_KEY_PASS: ${{ secrets.NOISE_SIGNING_KEY_PASSWORD }}
-        run: |
-          if [ -n "$NOISE_KEYSTORE_B64" ]; then
-            test -n "$NOISE_STORE_PASS" && test -n "$NOISE_SIGN_ALIAS" && test -n "$NOISE_SIGN_KEY_PASS" || {
-              echo "::error::Incomplete permanent APK signing secrets"; exit 1;
-            }
-            umask 077
-            printf '%s' "$NOISE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/noise-signing.jks"
-            test -s "$RUNNER_TEMP/noise-signing.jks" || exit 1
-            echo "NOISE_KEYSTORE_PATH=$RUNNER_TEMP/noise-signing.jks" >> "$GITHUB_ENV"
-            echo "NOISE_KEYSTORE_PASSWORD=$NOISE_STORE_PASS" >> "$GITHUB_ENV"
-            echo "NOISE_KEY_ALIAS=$NOISE_SIGN_ALIAS" >> "$GITHUB_ENV"
-            echo "NOISE_KEY_PASSWORD=$NOISE_SIGN_KEY_PASS" >> "$GITHUB_ENV"
-            echo "NOISE_SIGNER_MODE=permanent" >> "$GITHUB_ENV"
-          else
-            if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-              echo "::error::Official releases require permanent signing secrets; see docs/APK-UPDATES.md."
-              exit 1
-            fi
-            echo "::warning::PREVIEW ONLY: signing secrets are absent. The generated APK cannot reliably update an existing installation."
-            echo "NOISE_SIGNER_MODE=temporary-debug" >> "$GITHUB_ENV"
-          fi
       - run: gradle --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Prepare installable preview
         run: |
           VERSION=$(sed -n "s/.*versionName '\\([^']*\\)'.*/\\1/p" app/build.gradle)
           test -n "$VERSION"
-          cp app/build/outputs/apk/debug/app-debug.apk "Noise.V${VERSION}.apk"
-          echo "PREVIEW_APK=Noise.V${VERSION}.apk" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/debug/app-debug.apk "Noise.V${VERSION}-preview.apk"
+          echo "PREVIEW_APK=Noise.V${VERSION}-preview.apk" >> "$GITHUB_ENV"
           echo "PREVIEW_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "PREVIEW_CERT=$NOISE_SIGNER_MODE" >> "$GITHUB_ENV"
+          echo "::notice::Preview APK uses a temporary debug key; install the official Release for permanent updates."
       - name: Upload installable preview before emulator
         uses: actions/upload-artifact@v4
         with:
@@ -124,22 +83,79 @@ jobs:
         with:
           name: Noise-smoke-tests
           path: smoke/
-      - name: Rename APK with version
+      - name: Validate release signing with a disposable test key
         run: |
-          VERSION=$(sed -n "s/.*versionName '\\([^']*\\)'.*/\\1/p" app/build.gradle)
-          test -n "$VERSION"
-          FILE="Noise.V${VERSION}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "$FILE"
-          echo "APK_FILE=$FILE" >> "$GITHUB_ENV"
-          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v4
+          set -euo pipefail
+          umask 077
+          FIXTURE_DIR=$(mktemp -d)
+          trap 'rm -rf "$FIXTURE_DIR" release' EXIT
+          export NOISE_SIGNING_STORE_PASSWORD=$(openssl rand -hex 32)
+          export NOISE_SIGNING_KEY_PASSWORD="$NOISE_SIGNING_STORE_PASSWORD"
+          export NOISE_SIGNING_KEY_ALIAS=noise-ci-fixture
+          keytool -genkeypair -noprompt -storetype PKCS12 \
+            -keystore "$FIXTURE_DIR/test.p12" -alias "$NOISE_SIGNING_KEY_ALIAS" \
+            -keyalg RSA -keysize 3072 -validity 2 -dname 'CN=Noise CI Fixture' \
+            -storepass:env NOISE_SIGNING_STORE_PASSWORD \
+            -keypass:env NOISE_SIGNING_KEY_PASSWORD
+          export NOISE_SIGNING_KEYSTORE_B64=$(base64 -w 0 "$FIXTURE_DIR/test.p12")
+          bash scripts/build-signed-release.sh
+
+  release:
+    name: Publish official signed APK
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
         with:
-          name: Noise-V${{ env.APP_VERSION }}
-          path: ${{ env.APK_FILE }}
-      - name: Publish installable APK
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+          persist-credentials: false
+      - name: Require all four signing secrets
+        env:
+          NOISE_SIGNING_KEYSTORE_B64: ${{ secrets.NOISE_SIGNING_KEYSTORE_B64 }}
+          NOISE_SIGNING_STORE_PASSWORD: ${{ secrets.NOISE_SIGNING_STORE_PASSWORD }}
+          NOISE_SIGNING_KEY_ALIAS: ${{ secrets.NOISE_SIGNING_KEY_ALIAS }}
+          NOISE_SIGNING_KEY_PASSWORD: ${{ secrets.NOISE_SIGNING_KEY_PASSWORD }}
+        run: bash scripts/build-signed-release.sh --check-secrets
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-disabled: true
+      - name: Build and verify the permanent release signature
+        env:
+          NOISE_SIGNING_KEYSTORE_B64: ${{ secrets.NOISE_SIGNING_KEYSTORE_B64 }}
+          NOISE_SIGNING_STORE_PASSWORD: ${{ secrets.NOISE_SIGNING_STORE_PASSWORD }}
+          NOISE_SIGNING_KEY_ALIAS: ${{ secrets.NOISE_SIGNING_KEY_ALIAS }}
+          NOISE_SIGNING_KEY_PASSWORD: ${{ secrets.NOISE_SIGNING_KEY_PASSWORD }}
+        run: bash scripts/build-signed-release.sh
+      - name: Upload verified official APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Noise-V${{ env.APP_VERSION }}-Official
+          path: release/
+          if-no-files-found: error
+      - name: Publish Noise release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes-file docs/RELEASE-1.30.2.md
+          set -euo pipefail
+          TAG="v${APP_VERSION}"
+          NOTES="docs/RELEASE-${APP_VERSION}.md"
+          test -s "$NOTES"
+          # A published version is never overwritten by a rebuild.
+          gh release create "$TAG" \
+            "release/$APK_FILE" "release/$APK_FILE.sha256" \
+            release/SIGNING-CERTIFICATE.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Noise! V${APP_VERSION}" --notes-file "$NOTES" --latest
+          echo "Publicado: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"

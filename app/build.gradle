@@ -4,7 +4,7 @@ android { namespace 'com.discnet.noise'; compileSdk 35
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
-// A release/development upgrade must use ONE permanent key across every APK.
+// Official updates must use ONE permanent key for the lifetime of the app.
 // Secret values are delivered through GitHub Actions environment variables,
 // never embedded in repository source code or distributed APK contents.
 def noiseKeyPath = System.getenv('NOISE_KEYSTORE_PATH')
@@ -21,7 +21,12 @@ if (noiseKeyPath) {
         keyAlias = noiseKeyAlias
         keyPassword = noiseKeyPassword
     }
-    // Debug installer stays debuggable but is signed with the persistent
-    // certificate. Incremented versionCodes can then install via "Atualizar".
-    android.buildTypes.debug.signingConfig = android.signingConfigs.noiseStable
+    // Debug/previews retain a disposable debug identity. The permanent key
+    // is used only by the trusted release job, never by pull-request builds.
+    android.buildTypes.release.signingConfig = android.signingConfigs.noiseStable
+}
+
+android.buildTypes.release {
+    debuggable = false
+    minifyEnabled = false
 }
