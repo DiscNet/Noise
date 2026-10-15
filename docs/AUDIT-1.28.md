@@ -27,3 +27,9 @@ Na inspeção inicial **não foi executada ainda a reprodução instrumentada da
 
 ## Critérios
 Os status passam a “reproduzido” apenas após falha confirmada de testes instrumentados e screenshot de emulador. Build/compilação separados de validação visual e de aparelho físico.
+
+## Auditoria pós-feedback — bug informado pelo usuário
+- **Relatado em aparelho:** após utilizar ajustes, a abertura da roda falhava; arrastos nos controles podiam iniciar menus por engano.
+- **Causa verificada em código:** `MainActivity.canSwipeForTools()` abrangia uma parte ampla do workspace, incluindo os limites do painel; `orbitalClosing` também podia persistir se o overlay não fosse removido após encerramento da animação.
+- **Correção aplicada:** detecção estrita na geometria global e visível do preview, recusa na área dos sliders/painel, validação da existência de overlay em fechamento e descarte de proteção caso o callback de frame pare.
+- **Critério de reprodução:** asserções de gestos simulados no painel e depois de edição; o teste no emulador confirma ou reprova a correção. Não confundir relato de aparelho com teste automatizado já concluído.
