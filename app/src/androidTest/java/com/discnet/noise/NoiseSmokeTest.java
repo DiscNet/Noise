@@ -443,6 +443,8 @@ public class NoiseSmokeTest extends Instrumentation {
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
             for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
             stage("V1.28 resize dialog precision and context panel");
+            runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
+            saveScreenshot("noise-panel.png");
             require(workspace.sheetState()!=null,"Workspace supports explicit compact/intermediate/expanded states");
             EditorDocument sheetDoc=new EditorDocument();
             final ResizeDialog[] sheet={null};
@@ -452,6 +454,7 @@ public class NoiseSmokeTest extends Instrumentation {
                     sheetDoc.outputWidth=w;sheetDoc.outputHeight=h;
                 });sheet[0].show();});
             waitForIdleSync();
+            saveScreenshot("noise-transform.png");
             EditText widthInput=(EditText)field(sheet[0],"width");
             EditText heightInput=(EditText)field(sheet[0],"height");
             runOnMainSync(()->widthInput.setText("450"));
