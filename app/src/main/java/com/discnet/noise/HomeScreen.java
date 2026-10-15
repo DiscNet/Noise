@@ -192,13 +192,13 @@ final class HomeScreen extends FrameLayout {
             float w=getWidth(),h=getHeight();
             if(w<=0||h<=0)return;
             for(int i=0;i<lights.length;i++){
-                float t=phase*6.2831853f*(1+i*.13f)+i*1.6f;
+                float t=phase*6.2831853f+i*1.6f;
                 float cx=w*(dx[i]+.105f*(float)Math.sin(t));
-                float cy=h*(dy[i]+.077f*(float)Math.cos(t*.87f));
+                float cy=h*(dy[i]+.077f*(float)Math.cos(t*2f+i*.4f));
                 float rx=w*sx[i],ry=h*sy[i];
                 matrix.reset();matrix.setScale(rx,ry);matrix.postTranslate(cx,cy);
                 lights[i].setLocalMatrix(matrix);paint.setShader(lights[i]);
-                canvas.save();canvas.rotate((float)Math.sin(t*.83f)*22f,cx,cy);
+                canvas.save();canvas.rotate((float)Math.sin(t+i*.31f)*22f,cx,cy);
                 canvas.drawOval(cx-rx,cy-ry,cx+rx,cy+ry,paint);
                 canvas.restore();
             }
