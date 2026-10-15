@@ -46,3 +46,14 @@ Versão-base: **V1.27, release build-119**. Mudanças aplicadas em `feature/nois
 - Mantidos originais e receitas de projetos antigos. Alterações de nome usam a cópia mais atual do documento no disco; exclusão solicita confirmação.
 - Tests Android adicionais: rejeição de swipe sobre ajustes, reabertura da roda após editar, exibição de miniaturas reais da biblioteca de projetos, e abertura de Presets sem diálogos nativos.
 - Capturas esperadas: `noise-projects.png` e `noise-presets.png`, além de painel, transformação e fases da roda.
+
+## V1.28.1 — correção de navegação e retomada das transições após edição
+
+- **Bug corrigido:** uma roda em estado de fechamento podia bloquear a abertura seguinte. O editor agora aceita imediatamente outro swipe pelas bordas válidas do preview, descarta a roda antiga antes de criar a próxima e reconcilia o estado `orbitalClosing` no descarte.
+- **Prioridade de gestos:** o gesto só é iniciado na área visível do preview; sliders e painel inferior não acionam menus.
+- **Abertura com atraso físico:** `SwipeNavigationHost` transmite o progresso horizontal ao seletor; o deslocamento do dedo modifica o alvo de posição, opacidade, escala, scrim e gradiente. A posição exibida se aproxima desse alvo usando mola criticamente amortecida (não fica colada ao dedo).
+- **Fade restaurado:** o fundo escuro em tela inteira e o gradiente lateral reagem suavemente à entrada; ao soltar, atingem sua intensidade final com easing temporal. No fechamento, todos os componentes retornam à transparência antes de a View ser removida.
+- **Compatibilidade:** geometria circular V1.27 preservada, com Ferramentas à direita e Efeitos à esquerda; nenhuma alteração em projetos ou filtros.
+- **Testes de regressão:** após alterar um slider e trocar de categoria, abrir Efeitos pela borda; fechar e abrir Ferramentas imediatamente; comprovar que o alvo muda com o dedo, mas a View não teleporta no mesmo evento de toque.
+
+Instalador de teste atualizado: `Noise.V1.28.1.apk`. Não é release estável até aprovação da instrumentação e revisão das capturas de emulador.
