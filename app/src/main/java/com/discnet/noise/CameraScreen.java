@@ -43,8 +43,9 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private Camera camera;
     private int cameraId=-1;
     private int preferredFacing=Camera.CameraInfo.CAMERA_FACING_BACK;
-    private int generation=0;
-    private boolean active,disposed,capturing;
+    private volatile int generation=0;
+    private volatile boolean active,disposed;
+    private boolean capturing;
     private Uri latestPhoto;
     private float saturation=1f, temperature=0f, exposure=0f;
 
@@ -227,13 +228,14 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         return fallback;
     }
     private void openCamera(){
-        if(!active||disposed||camera!=null||!preview.isAvailable())return;
+        if(!active||disposed||!preview.isAvailable())return;
         if(activity.checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)return;
         prepareThread();
         final int n=++generation;
         cameraHandler.post(()->{
             if(n!=generation||!active||disposed)return;
             try{
+                if(camera!=null)closeCamera();
                 cameraId=chooseCamera();
                 if(cameraId<0)throw new IOException("Nenhuma câmera encontrada");
                 Camera opened=Camera.open(cameraId);
@@ -256,7 +258,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 activity.runOnUiThread(()->{
                     if(!disposed&&active){message("Pronto para fotografar");shutter.setEnabled(true);}
                 });
-            }catch(Exception|RuntimeException error){
+            }catch(Exception error){
                 closeCamera();
                 activity.runOnUiThread(()->{if(!disposed){message("Câmera indisponível. Confira as permissões.");shutter.setEnabled(false);}});
             }
@@ -291,7 +293,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         preferredFacing=preferredFacing==Camera.CameraInfo.CAMERA_FACING_BACK
             ?Camera.CameraInfo.CAMERA_FACING_FRONT:Camera.CameraInfo.CAMERA_FACING_BACK;
         stop();
-        message("Alternando câmera…");start();
+        message("Alternando câmera…");
+        if(cameraHandler!=null)cameraHandler.post(()->activity.runOnUiThread(()->{if(!disposed)start();}));
     }
     private void takePhoto(){
         if(!active||disposed||capturing||cameraHandler==null)return;
@@ -316,6 +319,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 camera.setParameters(parameters);
                 camera.takePicture(null,null,(bytes,device)->{
                     try{device.startPreview();}catch(Exception ignored){}
+                    if(disposed)return;
                     photos.execute(()->{
                         try{
                             Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev);
@@ -334,7 +338,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                         }
                     });
                 });
-            }catch(Exception|RuntimeException e){
+            }catch(Exception e){
                 activity.runOnUiThread(()->{if(!disposed){capturing=false;shutter.setEnabled(camera!=null);
                     message("Não foi possível capturar a foto");}});
             }
