@@ -461,6 +461,28 @@ public class NoiseSmokeTest extends Instrumentation {
             require("450".contentEquals(heightInput.getText()),
                 "Aspect-lock synchronizes opposite dimension without a feedback cycle");
             runOnMainSync(()->sheet[0].dismiss());resizePhoto.recycle();
+            stage("project library and preset library use Noise-owned screens");
+            runOnMainSync(()->activity.action("Meus projetos"));
+            long libraryDeadline=SystemClock.uptimeMillis()+12000;
+            ProjectLibraryScreen library=(ProjectLibraryScreen)field(activity,"projectLibrary");
+            require(library!=null,"Custom project library overlay opens");
+            while(library.projectCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
+                SystemClock.sleep(90);
+            require(library.projectCount()>0,"Imported project appears in custom library");
+            while(library.previewCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
+                SystemClock.sleep(90);
+            require(library.previewCount()>0,"At least one real project image preview decoded");
+            saveScreenshot("noise-projects.png");
+            runOnMainSync(activity::onBackPressed);
+            require(field(activity,"projectLibrary")==null,"Project browser closes without stale touch overlay");
+            runOnMainSync(()->activity.action("Presets"));
+            long presetDeadline=SystemClock.uptimeMillis()+12000;
+            while(field(activity,"presetLibrary")==null&&SystemClock.uptimeMillis()<presetDeadline)
+                SystemClock.sleep(90);
+            require(field(activity,"presetLibrary") instanceof PresetDialog,
+                "Preset library uses custom Noise overlay, not AlertDialog");
+            saveScreenshot("noise-presets.png");
+            runOnMainSync(activity::onBackPressed);
             stage("orbital tool gesture and functional effect routing");
             runOnMainSync(activity::openEffects);waitForIdleSync();
             OrbitalSelector orbital=(OrbitalSelector)field(activity,"orbital");
@@ -495,6 +517,23 @@ public class NoiseSmokeTest extends Instrumentation {
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
                 +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
             float width=gestureHost.getWidth();
+            // Edge swipes over the adjustments/sheet must NEVER open a menu.
+            android.graphics.Rect panelBounds=new android.graphics.Rect();
+            panel.getGlobalVisibleRect(panelBounds);
+            int[] rootXY=new int[2];gestureHost.getLocationOnScreen(rootXY);
+            float adjustmentY=panelBounds.top-rootXY[1]+Math.min(EditorTheme.dp(getTargetContext(),64),
+                Math.max(20,panelBounds.height()*.30f));
+            long panelGesture=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture,
+                    MotionEvent.ACTION_DOWN,width*.96f,adjustmentY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+110,
+                    MotionEvent.ACTION_MOVE,width*.55f,adjustmentY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+160,
+                    MotionEvent.ACTION_UP,width*.40f,adjustmentY,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Dragging horizontally over sliders cannot open tools or effects");
             // Center swipes must be ignored, even with a long horizontal travel.
             long centerTime=SystemClock.uptimeMillis();
             runOnMainSync(()->{
@@ -651,6 +690,28 @@ public class NoiseSmokeTest extends Instrumentation {
             long start=System.nanoTime();runOnMainSync(()->activity.change(50,.2f));long parameterMs=(System.nanoTime()-start)/1000000;
             require(((EditState)field(surface,"state")).light[0]==.2f,"State immediately reaches preview");
             stage("live frames="+drawn+", parameter dispatch ms="+parameterMs+", last GL submission ms="+(surface.renderNanos/1000000));
+            // Regression: performing a live edit must not permanently disable
+            // either edge menu or leave an invisible orbital overlay attached.
+            waitForIdleSync();
+            SystemClock.sleep(600);
+            android.graphics.Rect previewBounds=new android.graphics.Rect();
+            ((FrameLayout)field(activity,"editorStage")).getGlobalVisibleRect(previewBounds);
+            gestureHost.getLocationOnScreen(rootXY);
+            float liveY=previewBounds.centerY()-rootXY[1];
+            long tEdited=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited,
+                    MotionEvent.ACTION_DOWN,width*.04f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited+110,
+                    MotionEvent.ACTION_MOVE,width*.37f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited+185,
+                    MotionEvent.ACTION_UP,width*.55f,liveY,0));
+            });
+            OrbitalSelector afterEdit=(OrbitalSelector)field(activity,"orbital");
+            require(afterEdit!=null&&afterEdit.isEffects(),
+                "After editing a slider, edge gesture MUST reopen effects wheel");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(640);
             stage("public PNG and JPEG export");
             EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
             Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
