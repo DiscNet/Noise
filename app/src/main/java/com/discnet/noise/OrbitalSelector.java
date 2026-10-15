@@ -31,6 +31,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private long lastMotionFrame;
     private float targetX,targetAlpha,targetScale=1f,targetScrim,targetFeather;
     private float horizontalVelocity;
+    private float revealFraction=1f;
     enum MenuState { CLOSED, OPENING, OPEN, CLOSING }
     private MenuState state=MenuState.CLOSED;
     MenuState menuState(){return state;}
@@ -228,12 +229,27 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private void targetOpen(){
         removeCallbacks(closeWatchdog);
         state=MenuState.OPENING;
-        closing=false;
+        closing=false;revealFraction=1f;
         targetX=0f;
         targetAlpha=1f;
         targetScrim=.69f;
         targetFeather=.88f;
         targetScale=1f;
+        requestMotion();
+    }
+    private void targetDrag(float fraction){
+        if(closing||dismissed)return;
+        removeCallbacks(closeWatchdog);
+        state=MenuState.OPENING;
+        revealFraction=Math.max(0f,Math.min(1f,fraction));
+        // A minimum progressive darkening is present as soon as the edge
+        // gesture is accepted; the remainder follows the hand with lag.
+        float p=.12f+.88f*revealFraction;
+        targetX=entrance()*(1f-p);
+        targetAlpha=p;
+        targetScrim=.69f*p;
+        targetFeather=.88f*p;
+        targetScale=.985f+.015f*p;
         requestMotion();
     }
     private void targetClosed(){
@@ -243,7 +259,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetAlpha=0f;
         targetScrim=0f;
         targetFeather=0f;
-        targetScale=.985f;
+        targetScale=.985f;revealFraction=0f;
         removeCallbacks(closeWatchdog);
         postDelayed(closeWatchdog,1200);
         if(!ValueAnimator.areAnimatorsEnabled()){state=MenuState.CLOSED;removeFromParent();return;}
@@ -271,7 +287,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
             state=MenuState.OPEN;return;
         }
-        targetOpen();
+        // Dragging sets a moving target, not a pixel-perfect translation.
+        targetDrag(0f);
     }
     @Override public void doFrame(long frameTimeNanos){
         motionScheduled=false;
@@ -304,7 +321,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             &&Math.abs(feather-targetFeather)<.005f
             &&Math.abs(scale-targetScale)<.0003f;
         if(settled){
-            state=closing?MenuState.CLOSED:MenuState.OPEN;
+            state=closing?MenuState.CLOSED:
+                revealFraction>=.999f?MenuState.OPEN:MenuState.OPENING;
             content.setTranslationX(targetX);content.setAlpha(targetAlpha);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
             scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
@@ -312,11 +330,13 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             if(closing)removeFromParent();
         }else requestMotion();
     }
-    /** The opening is never mapped to the position of the finger. */
-    void setReveal(float ignoredProgress){
-        // Retained for source compatibility; gesture progress does not
-        // control the visual reveal. Opening starts with beginReveal().
+    /** Edge movement changes the target, while Choreographer supplies lag. */
+    void setReveal(float progress){
+        if(getParent()==null||closing||dismissed)return;
+        targetDrag(progress);
     }
+    float revealTargetX(){return targetX;}
+    float revealTargetAlpha(){return targetAlpha;}
     void finishReveal(boolean open){
         if(open)targetOpen();
         else{
