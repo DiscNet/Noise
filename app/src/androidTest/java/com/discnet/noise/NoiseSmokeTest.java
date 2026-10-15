@@ -473,10 +473,16 @@ public class NoiseSmokeTest extends Instrumentation {
             ProjectStore.Preset copper=null;
             for(ProjectStore.Preset look:builtinLooks)
                 if(look.id.equals("builtin-camera-copper-rich"))copper=look;
-            require(copper!=null&&copper.document.values[65]>.80f
+            require(copper!=null&&copper.document.values[65]==0f
                 &&copper.document.values[66]>.90f
                 &&copper.document.values[67]>.70f,
-                "Rich copper film includes organic grain, warm response and halation");
+                "Rich copper film keeps warm response and halation, WITHOUT grain");
+            for(ProjectStore.Preset camera:builtinLooks){
+                if(!camera.id.startsWith("builtin-camera-"))continue;
+                for(int noiseIndex:new int[]{7,14,54,65})
+                    require(camera.document.values[noiseIndex]==0f,
+                        camera.name+" must not generate any noise, grain or dust");
+            }
             require(ProjectVault.validId(ProjectStore.newId())&&!ProjectVault.validId("../bad"),
                 "Shared vault rejects invalid project document IDs");
             stage("document transactions and persistence");
