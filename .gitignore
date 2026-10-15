@@ -3,3 +3,16 @@ build/
 app/build/
 local.properties
 *.jks
+*.keystore
+*.p12
+*.pfx
+*.jks.b64
+*.keystore.b64
+*.p12.b64
+*.pfx.b64
+keystore.properties
+key.properties
+.env
+.env.*
+release/
+*.apk
