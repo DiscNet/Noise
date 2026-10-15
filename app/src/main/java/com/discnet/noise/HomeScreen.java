@@ -12,10 +12,10 @@ import android.widget.*;
 final class HomeScreen extends FrameLayout {
     private final TextView recent;
     private final TextView resume;
-    private final Runnable onImport,onProjects,onSettings,onResume;
-    HomeScreen(Context c,Runnable importAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
+    private final Runnable onImport,onCamera,onProjects,onSettings,onResume;
+    HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
         super(c);
-        onImport=importAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;
+        onImport=importAction;onCamera=cameraAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;
         setBackgroundColor(0xff0c0b10);
         // Decorative animated stock-art: reusable radial shaders simulate
         // defocused light smears and floating color clouds, no bitmaps/video.
@@ -98,7 +98,18 @@ final class HomeScreen extends FrameLayout {
         add.addView(importText,new FrameLayout.LayoutParams(-1,-1));
         add.setClickable(true);add.setFocusable(true);
         add.setContentDescription("Importar imagem");
-        lower.addView(add,new LinearLayout.LayoutParams(-1,dp(54)));
+        // Two compact actions share the original import row.
+        LinearLayout captureActions=new LinearLayout(c);
+        captureActions.setGravity(Gravity.CENTER_VERTICAL);
+        lower.addView(captureActions,new LinearLayout.LayoutParams(-1,dp(54)));
+        captureActions.addView(add,new LinearLayout.LayoutParams(0,dp(54),1));
+        TextView camera=text("Câmera",14,EditorTheme.INK);
+        camera.setGravity(Gravity.CENTER);camera.setTypeface(NoiseTypography.bold(c));
+        EditorTheme.button(camera,false);
+        camera.setContentDescription("Abrir câmera com ajustes ao vivo");
+        LinearLayout.LayoutParams camParams=new LinearLayout.LayoutParams(dp(104),dp(54));
+        camParams.leftMargin=dp(10);captureActions.addView(camera,camParams);
+        camera.setOnClickListener(v->onCamera.run());
         add.setOnClickListener(v->onImport.run());
 
         LinearLayout nav=new LinearLayout(c);nav.setGravity(Gravity.CENTER);
