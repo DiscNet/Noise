@@ -1,5 +1,27 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.discnet.noise'; compileSdk 35
- defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 35; versionName '1.30.1'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
+ defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 36; versionName '1.30.2'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+// A release/development upgrade must use ONE permanent key across every APK.
+// Secret values are delivered through GitHub Actions environment variables,
+// never embedded in repository source code or distributed APK contents.
+def noiseKeyPath = System.getenv('NOISE_KEYSTORE_PATH')
+def noiseStorePassword = System.getenv('NOISE_KEYSTORE_PASSWORD')
+def noiseKeyAlias = System.getenv('NOISE_KEY_ALIAS')
+def noiseKeyPassword = System.getenv('NOISE_KEY_PASSWORD')
+if (noiseKeyPath) {
+    if (!noiseStorePassword || !noiseKeyAlias || !noiseKeyPassword) {
+        throw new GradleException('NOISE signing is incomplete; configure all 4 signing values.')
+    }
+    android.signingConfigs.create('noiseStable') {
+        storeFile = file(noiseKeyPath)
+        storePassword = noiseStorePassword
+        keyAlias = noiseKeyAlias
+        keyPassword = noiseKeyPassword
+    }
+    // Debug installer stays debuggable but is signed with the persistent
+    // certificate. Incremented versionCodes can then install via "Atualizar".
+    android.buildTypes.debug.signingConfig = android.signingConfigs.noiseStable
 }
