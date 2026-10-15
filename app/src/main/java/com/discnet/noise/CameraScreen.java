@@ -308,7 +308,11 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 camera=opened;
                 Camera.Parameters p=opened.getParameters();
                 Camera.Size size=previewSize(p,preview.getWidth(),preview.getHeight());
-                if(size!=null)p.setPreviewSize(size.width,size.height);
+                if(size!=null){
+                    p.setPreviewSize(size.width,size.height);
+                    Camera.Size picture=pictureSize(p,size);
+                    if(picture!=null)p.setPictureSize(picture.width,picture.height);
+                }
                 if(p.getSupportedFocusModes()!=null&&p.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE))
                     p.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
                 opened.setParameters(p);
@@ -318,7 +322,12 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     ?(360-(info.orientation+displayDegrees)%360)%360
                     :(info.orientation-displayDegrees+360)%360;
                 opened.setDisplayOrientation(orientation);
-                if(size!=null)activity.runOnUiThread(()->fitPreview(size.width,size.height,orientation));
+                if(size!=null){
+                    previewBufferWidth=size.width;previewBufferHeight=size.height;
+                    previewDisplayOrientation=orientation;
+                    activity.runOnUiThread(()->{if(!disposed&&active)
+                        fitPreview(size.width,size.height,orientation);});
+                }
                 opened.setPreviewTexture(preview.getSurfaceTexture());
                 opened.startPreview();
                 cameraReady=true;
@@ -337,11 +346,27 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         int viewWidth=preview.getWidth(),viewHeight=preview.getHeight();
         float displayedWidth=(displayOrientation%180==0)?bufferWidth:bufferHeight;
         float displayedHeight=(displayOrientation%180==0)?bufferHeight:bufferWidth;
-        float scale=Math.max(viewWidth/displayedWidth,viewHeight/displayedHeight);
+        float scale=Math.max(viewWidth/displayedWidth,viewHeight/displayedHeight)*digitalZoom;
         Matrix matrix=new Matrix();
         matrix.setScale(displayedWidth*scale/viewWidth,displayedHeight*scale/viewHeight,
             viewWidth*.5f,viewHeight*.5f);
         preview.setTransform(matrix);
+    }
+    /** Match preview and capture sensor aspect ratios to keep the crop predictable. */
+    private static Camera.Size pictureSize(Camera.Parameters p,Camera.Size preview){
+        List<Camera.Size> sizes=p.getSupportedPictureSizes();
+        if(sizes==null||sizes.isEmpty())return null;
+        float previewRatio=preview.width/(float)preview.height;
+        Camera.Size best=null;double score=Double.MAX_VALUE;
+        for(Camera.Size candidate:sizes){
+            float ratio=candidate.width/(float)candidate.height;
+            double mismatch=Math.abs(ratio-previewRatio);
+            int longSide=Math.max(candidate.width,candidate.height);
+            double cost=mismatch*100d + (longSide>4096?2d:0d)
+                +1d/Math.max(1d,candidate.width*(double)candidate.height)*1000000d;
+            if(cost<score){score=cost;best=candidate;}
+        }
+        return best;
     }
     private static Camera.Size previewSize(Camera.Parameters p,int width,int height){
         List<Camera.Size> list=p.getSupportedPreviewSizes();
@@ -359,6 +384,54 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private static int rotationDegrees(int rotation){
         switch(rotation){case Surface.ROTATION_90:return 90;case Surface.ROTATION_180:return 180;
             case Surface.ROTATION_270:return 270;default:return 0;}
+    }
+    /** Autofocus at the tapped point; the tap never opens the media gallery. */
+    private void tapToFocus(float x,float y){
+        if(!active||disposed||capturing||!cameraReady||cameraHandler==null)return;
+        final int width=Math.max(1,frameGuide.getWidth()),height=Math.max(1,frameGuide.getHeight());
+        final int orientation=previewDisplayOrientation;
+        final float zoom=digitalZoom;
+        final boolean front=preferredFacing==Camera.CameraInfo.CAMERA_FACING_FRONT;
+        cameraHandler.post(()->{
+            try{
+                if(camera==null||!active||disposed)return;
+                Camera.Parameters p=camera.getParameters();
+                List<String> modes=p.getSupportedFocusModes();
+                boolean auto=modes!=null&&modes.contains(Camera.Parameters.FOCUS_MODE_AUTO);
+                boolean point=p.getMaxNumFocusAreas()>0||p.getMaxNumMeteringAreas()>0;
+                if(!auto&&!point){
+                    activity.runOnUiThread(()->message("Este aparelho mantém o foco automático contínuo"));
+                    return;
+                }
+                float dx=((x/width)-.5f)*2000f/zoom;
+                float dy=((y/height)-.5f)*2000f/zoom;
+                double angle=Math.toRadians(-orientation);
+                float rx=(float)(dx*Math.cos(angle)-dy*Math.sin(angle));
+                float ry=(float)(dx*Math.sin(angle)+dy*Math.cos(angle));
+                if(front)rx=-rx;
+                int cx=Math.max(-850,Math.min(850,Math.round(rx)));
+                int cy=Math.max(-850,Math.min(850,Math.round(ry)));
+                Camera.Area area=new Camera.Area(new Rect(cx-145,cy-145,cx+145,cy+145),1000);
+                if(p.getMaxNumFocusAreas()>0)
+                    p.setFocusAreas(Collections.singletonList(area));
+                if(p.getMaxNumMeteringAreas()>0)
+                    p.setMeteringAreas(Collections.singletonList(area));
+                camera.cancelAutoFocus();
+                if(auto)p.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+                camera.setParameters(p);
+                if(auto)camera.autoFocus((ok,device)->activity.runOnUiThread(()->{
+                    if(!disposed)message(ok?"Foco ajustado":"Ajustando foco…");
+                }));
+                else activity.runOnUiThread(()->{if(!disposed)message("Área de foco ajustada");});
+            }catch(RuntimeException error){
+                activity.runOnUiThread(()->{if(!disposed)message("Foco automático indisponível");});
+            }
+        });
+    }
+    void orientationChanged(){
+        if(!active||disposed)return;
+        stop();
+        preview.postDelayed(()->{if(!disposed)start();},100);
     }
     private void closeCamera(){
         cameraReady=false;
@@ -386,6 +459,9 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         }
         capturing=true;shutter.setEnabled(false);
         final float sat=saturation,warm=temperature,ev=exposure;
+        final float zoom=digitalZoom;
+        final RectF cropFrame=frameGuide.frame();
+        final int frameWidth=frameGuide.getWidth(),frameHeight=frameGuide.getHeight();
         message("Capturando…");
         cameraHandler.post(()->{
             try{
@@ -402,7 +478,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     if(disposed)return;
                     photos.execute(()->{
                         try{
-                            Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev);
+                            Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev,zoom,cropFrame,frameWidth,frameHeight);
                             activity.runOnUiThread(()->{
                                 if(disposed)return;latestPhoto=uri;
                                 edit.setEnabled(true);edit.setAlpha(1f);
@@ -458,11 +534,15 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         if(oriented!=decoded)decoded.recycle();
         return oriented;
     }
-    private static Uri savePicture(Context c,byte[] jpeg,float saturation,float temperature,float exposure)throws Exception{
-        Bitmap decoded=null,filtered=null;Uri pending=null;File legacy=null;
+    private static Uri savePicture(Context c,byte[] jpeg,float saturation,float temperature,float exposure,
+                                   float zoom,RectF frame,int frameWidth,int frameHeight)throws Exception{
+        Bitmap decoded=null,cropped=null,filtered=null;Uri pending=null;File legacy=null;
         try{
             decoded=decodeAndOrient(jpeg);
-            filtered=processPhoto(decoded,saturation,temperature,exposure);
+            Rect rect=CameraFrameGuide.photoCrop(decoded.getWidth(),decoded.getHeight(),
+                frameWidth,frameHeight,frame,zoom);
+            cropped=Bitmap.createBitmap(decoded,rect.left,rect.top,rect.width(),rect.height());
+            filtered=processPhoto(cropped,saturation,temperature,exposure);
             String name="Noise-Camera-"+new SimpleDateFormat("yyyyMMdd-HHmmss-SSS",Locale.US).format(new Date())+".jpg";
             Uri uri;
             if(Build.VERSION.SDK_INT>=29){
@@ -497,13 +577,17 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             if(legacy!=null)legacy.delete();throw e;
         }finally{
             if(filtered!=null)filtered.recycle();
+            if(cropped!=null&&cropped!=decoded)cropped.recycle();
             if(decoded!=null)decoded.recycle();
         }
     }
     @Override public void onSurfaceTextureAvailable(SurfaceTexture texture,int width,int height){
         if(active)openCamera();
     }
-    @Override public void onSurfaceTextureSizeChanged(SurfaceTexture texture,int width,int height){}
+    @Override public void onSurfaceTextureSizeChanged(SurfaceTexture texture,int width,int height){
+        if(previewBufferWidth>0&&previewBufferHeight>0)
+            fitPreview(previewBufferWidth,previewBufferHeight,previewDisplayOrientation);
+    }
     @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture texture){stop();return true;}
     @Override public void onSurfaceTextureUpdated(SurfaceTexture texture){}
 }
