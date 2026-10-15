@@ -81,6 +81,11 @@ jobs:
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-opening.png > smoke/noise-opening.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-open.png > smoke/noise-open.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-closing.png > smoke/noise-closing.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-panel.png > smoke/noise-panel.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-transform.png > smoke/noise-transform.png || true
             grep -q NOISE_SMOKE_OK smoke/results.txt
       - uses: actions/upload-artifact@v4
         if: always()
