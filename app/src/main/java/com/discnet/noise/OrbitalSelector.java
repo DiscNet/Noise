@@ -384,16 +384,19 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         int selected(){return Math.max(0,Math.min(names.length-1,Math.round(offset)));}
         @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
             super.onSizeChanged(w,h,oldW,oldH);
-            radius=Math.max(w*.82f,dp(225));
+            // Stable radius preserves the round profile on narrow phones
+            // without throwing most of the outer rim beyond the display.
+            radius=Math.max(dp(175),Math.min(dp(235),w*.68f));
             render();
         }
         private float arcX(float theta){
-            // Actual circle geometry. On BOTH sides the off-center items
-            // bend INTO the photograph (not behind the screen boundary).
-            // Critically, do not clamp the icon coordinates independently:
-            // doing that collapses the orbit into a straight vertical list.
+            // Convex outward wheel: its selected item stays by its side,
+            // while the items above and below curve TOWARD that side.
+            // The previous signs made both wheel profiles face backward.
+            // Keep true circular coordinates (no horizontal clamping).
             float bend=radius*(1f-(float)Math.cos(theta));
-            return effectsMode?dp(36)+bend:getWidth()-dp(44)-bend;
+            float anchor=Math.min(dp(89),getWidth()*.29f);
+            return effectsMode?anchor-bend:getWidth()-anchor+bend;
         }
         private float arcY(float theta){return getHeight()*.50f+radius*(float)Math.sin(theta);}
         @Override protected void onDraw(Canvas canvas){
@@ -459,9 +462,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.32f));
                 float topBottom=Math.min(y,getHeight()-y-dp(64));
                 float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(72)));
-                float outerEdge=effectsMode
-                    ?getWidth()-x-dp(220):x;
-                float sideFade=Math.max(0f,Math.min(1f,(outerEdge+dp(75))/dp(105)));
+                // Fade when the icon approaches the physical edge; its
+                // horizontal path still follows the circle exactly.
+                float iconX=arcX(theta);
+                float distanceToSide=effectsMode?iconX:getWidth()-iconX;
+                float sideFade=Math.max(0f,Math.min(1f,(distanceToSide+dp(30))/dp(90)));
                 row.setAlpha(Math.max(0f,1-distance*.18f)
                     *terminalFade*viewportFade*sideFade);
                 float scale=.83f+.17f*emphasis;
