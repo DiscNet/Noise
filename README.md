@@ -6,7 +6,7 @@
 
 <strong>Uma imagem. Mil possibilidades.</strong>
 
-Editor de imagens para Android com <strong>ajustes em tempo real</strong>, efeitos experimentais, <strong>Dither</strong>, <strong>ASCII</strong> e uma interface de edição com <strong>rodas orbitais</strong>.
+Editor de imagens para Android com <strong>ajustes em tempo real</strong>, efeitos experimentais, <strong>Dither</strong>, <strong>ASCII</strong> e uma interface de edição com <strong>rodas orbitais</strong> e <strong>câmera com ajustes ao vivo</strong>.
 
 <br/>
 
@@ -86,6 +86,7 @@ Galeria por álbuns, projetos locais, presets, recorte, exportação em **PNG/JP
 | ▦ **Dither** | Neon/Nonqual, Bayer e Threshold; paletas coloridas, monocromáticas e RGB |
 | ▤ **ASCII** | Imagem formada por caracteres, com densidade, contraste, brilho, limiar, espaçamento e símbolos |
 | ✂️ **Ferramentas** | Recorte, rotação, espelhamento, presets, projetos e exportação |
+| 📷 **Câmera** | Captura com saturação (0–200%), temperatura fria/quente e exposição (±2 EV) ajustadas ao vivo; foto salva em Pictures/Noise! |
 
 > **Mais controle, menos efeitos artificiais:** cada ajuste conserva seus próprios parâmetros. Glow e Brancos usam curvas de processamento desenvolvidas para responder também em imagens com luminosidades diferentes.
 
@@ -114,7 +115,7 @@ As rodas descrevem arcos circulares espelhados. A abertura tem animação própr
 
 ## 📷 Fluxo de edição
 
-1. **Importe uma foto** pela galeria interna, por uma pasta/álbum ou pelo seletor do sistema.
+1. **Importe ou fotografe:** abra uma foto da galeria ou toque em **Câmera** na tela inicial. Na câmera, ajuste saturação, temperatura e exposição em tempo real, capture e, se desejar, toque em **Editar**.
 2. **Ajuste a imagem** nos controles de luz, cor e detalhes, acompanhando a prévia.
 3. **Explore os efeitos** nas rodas laterais e combine Dither, Glow, ASCII e outros estilos.
 4. **Compare e refine** com o original, desfaça/refaça e salve seu projeto ou preset.
@@ -185,7 +186,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.30.3](docs/RELEASE-1.30.3.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.31](docs/RELEASE-1.31.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -201,7 +202,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.30.3.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.31.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
