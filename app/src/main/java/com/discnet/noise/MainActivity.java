@@ -36,6 +36,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
     private HomeScreen homeScreen;
+    private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
     private PresetDialog presetLibrary;
     private OrbitalSelector orbital;
@@ -77,6 +78,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         undo=addIcon(topBar,IconArt.UNDO,"Desfazer",()->{document=history.undo(document);restored();});
         redo=addIcon(topBar,IconArt.REDO,"Refazer",()->{document=history.redo(document);restored();});
         save=addIcon(topBar,IconArt.SAVE,"Exportar imagem",this::showExport);
+        addIcon(topBar,IconArt.SETTINGS,"Configurações",this::showSettings);
         ImageView menu=addIcon(topBar,IconArt.MORE,"Mais opções",()->{});menu.setOnClickListener(v->showMenu(menu));
         editorStage=new FrameLayout(this);preview=new EditorSurface(this,new EditorSurface.Listener(){
             public void ready(int maximum){maxTexture=Math.min(4096,maximum);}
@@ -90,6 +92,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         panel=new EditorPanel(this,this);
         panel.effect=Math.max(0,Math.min(AdjustmentSpec.EFFECTS.length-1,
             getPreferences(0).getInt("lastEffect",0)));
+        workspace.setSheetResizeEnabled(SettingsScreen.resizePanelEnabled(this));
         installSheetGesture();
         categoryScroll=new HorizontalScrollView(this);categoryScroll.setHorizontalScrollBarEnabled(false);categoryScroll.setFillViewport(true);categoryScroll.setBackgroundColor(0xff17161d);
         LinearLayout strip=new LinearLayout(this);strip.setGravity(Gravity.CENTER_VERTICAL);
@@ -113,8 +116,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(saved==null)appBackground.post(this::requestFirstLaunchGalleryPermission);
     }
     private ImageView addIcon(LinearLayout parent,int icon,String label,Runnable action){ImageView v=IconArt.button(this,icon,label);parent.addView(v,new LinearLayout.LayoutParams(dp(48),dp(48)));v.setOnClickListener(w->action.run());return v;}
-    private void installSheetGesture(){panel.handle.setOnClickListener(v->workspace.cycleSheet());panel.handle.setOnTouchListener(new View.OnTouchListener(){float start;int height;boolean moved;public boolean onTouch(View v,MotionEvent e){
-        if(workspace.landscape())return false;
+    private void installSheetGesture(){panel.handle.setOnClickListener(v->{
+        if(workspace.isSheetResizeEnabled())workspace.cycleSheet();
+    });panel.handle.setOnTouchListener(new View.OnTouchListener(){float start;int height;boolean moved;public boolean onTouch(View v,MotionEvent e){
+        if(!workspace.isSheetResizeEnabled()||workspace.landscape())return false;
         switch(e.getActionMasked()){case MotionEvent.ACTION_DOWN:start=e.getRawY();height=workspace.sheetHeight();moved=false;return true;
             case MotionEvent.ACTION_MOVE:if(Math.abs(e.getRawY()-start)>dp(5))moved=true;if(moved)workspace.resizeSheet(height+Math.round(start-e.getRawY()));return true;
             case MotionEvent.ACTION_UP:if(!moved)v.performClick();return true;case MotionEvent.ACTION_CANCEL:return true;}return false;}});}
@@ -131,12 +136,13 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             ||workspace==null||cropEditor!=null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
-        if(projectLibrary!=null||presetLibrary!=null)return false;
+        if(projectLibrary!=null||presetLibrary!=null||settingsScreen!=null)return false;
         int[] rootPosition=new int[2];
         appBackground.getLocationOnScreen(rootPosition);
         int screenX=Math.round(rootPosition[0]+x);
         int screenY=Math.round(rootPosition[1]+y);
-        if(panel!=null&&panel.isOverAdjustmentBar(screenX,screenY))return false;
+        if(panel!=null&&(panel.isOverAdjustmentBar(screenX,screenY)
+            ||panel.isOverColorEditor(screenX,screenY)))return false;
         // Check all four screen extents; system bars have been excluded from
         // the root by WindowInsets padding.
         return x>=appBackground.getPaddingLeft()
@@ -204,7 +210,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showHome(){
         closeOrbital();
         if(homeScreen==null){
-            homeScreen=new HomeScreen(this,this::showGallery,this::showProjects,()->{
+            homeScreen=new HomeScreen(this,this::showGallery,this::showProjects,
+                this::showSettings,()->{
                 String id=getPreferences(0).getString("lastProject",null);
                 if(id!=null)loadProject(id,false);else showGallery();
             });
@@ -221,6 +228,27 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         });
     }
     private void closeHome(){if(homeScreen!=null)homeScreen.setVisibility(View.GONE);}
+    private void showSettings(){
+        if(settingsScreen!=null)return;
+        closeOrbital();
+        SettingsScreen screen=new SettingsScreen(this,new SettingsScreen.Listener(){
+            @Override public void close(){closeSettings();}
+            @Override public void panelResizeChanged(boolean enabled){
+                workspace.setSheetResizeEnabled(enabled);
+                panel.handle.setContentDescription(enabled?
+                    "Arraste para expandir ou recolher o painel":
+                    "Tamanho do painel fixo; habilite o ajuste nas configurações");
+            }
+        });
+        settingsScreen=screen;
+        appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
+        screen.bringToFront();
+    }
+    private void closeSettings(){
+        if(settingsScreen!=null){
+            appBackground.removeView(settingsScreen);settingsScreen=null;
+        }
+    }
     private void toggleFullscreen(){workspace.fullscreen(!workspace.isFullscreen());}
     public EditorDocument document(){return document;}
     public void begin(){history.begin(document);}
@@ -409,6 +437,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
         if(projectLibrary!=null){if(!projectLibrary.dismissModal())closeProjectLibrary();return;}
         if(cropEditor!=null){closeCrop();return;}
@@ -422,7 +451,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());}
     @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;
+    @Override protected void onDestroy(){destroyed=true;closeSettings();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
         closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }
