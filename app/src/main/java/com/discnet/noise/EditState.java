@@ -19,6 +19,8 @@ public final class EditState {
     float[] light={0,0,0,0},grain={0,3.8f,.4f,0},glow={.45f,4.45f},detail={0,0};
     int ditherMethod=0,ditherPalette=0,rotation=0;
     boolean flipX,flipY;
+    float[] colorCurves=new float[18],colorWheels=new float[6];
+    float[] noiseControls={0,.55f},hdrControls={0,0},blend={1,0};
     float left=0,top=0,right=1,bottom=1;
     EditState(EditorDocument d,boolean before){
         this(slice(d,0,9),slice(d,9,12),slice(d,12,20),slice(d,20,26),
@@ -27,11 +29,22 @@ public final class EditState {
         light=new float[]{d.value(50),d.value(51),d.value(52),d.value(53)};
         grain=new float[]{d.value(54),1+7*d.value(55),d.value(56),d.grainColored?1:0};
         glow=new float[]{d.value(57),1+23*d.value(58)};
-        detail=new float[]{d.value(59),0};ditherMethod=d.ditherMethod;ditherPalette=d.ditherPalette;
+        detail=new float[]{d.value(59),0};
+        colorCurves=d.colorCurves.clone();colorWheels=d.colorWheels.clone();
+        noiseControls=new float[]{d.value(62),d.value(63)};
+        hdrControls=new float[]{d.value(60),d.value(61)};
+        blend=new float[]{d.value(64),d.blendMode};
+        ditherMethod=d.ditherMethod;ditherPalette=d.ditherPalette;
         left=d.left;top=d.top;right=d.right;bottom=d.bottom;rotation=d.rotation;flipX=d.flipX;flipY=d.flipY;
     }
     private static float[] slice(EditorDocument d,int from,int to){float[] a=new float[to-from];for(int i=from;i<to;i++)a[i-from]=d.value(i);return a;}
-    int toneKey(){int n=java.util.Arrays.hashCode(color);n=31*n+java.util.Arrays.hashCode(tone);n=31*n+java.util.Arrays.hashCode(hue);n=31*n+java.util.Arrays.hashCode(light);return n;}
+    int toneKey(){int n=java.util.Arrays.hashCode(color);n=31*n+java.util.Arrays.hashCode(tone);n=31*n+java.util.Arrays.hashCode(hue);n=31*n+java.util.Arrays.hashCode(light);
+        n=31*n+java.util.Arrays.hashCode(colorCurves);
+        n=31*n+java.util.Arrays.hashCode(colorWheels);
+        n=31*n+java.util.Arrays.hashCode(noiseControls);
+        n=31*n+java.util.Arrays.hashCode(hdrControls);
+        n=31*n+java.util.Arrays.hashCode(blend);
+        return n;}
 
 
     public EditState(float[] values, boolean invert, boolean original) {
