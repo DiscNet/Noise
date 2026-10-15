@@ -105,4 +105,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes-file docs/RELEASE-1.26.md
+          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes-file docs/RELEASE-1.27.md
