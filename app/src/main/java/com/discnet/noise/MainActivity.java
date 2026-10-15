@@ -43,7 +43,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private final TextView[] tabs=new TextView[7];
     private ImageView undo,redo,save;
     private TextView status,empty,compareLabel;
-    private boolean loading,exporting,destroyed,comparing;
+    private boolean loading,exporting,destroyed,comparing,orbitalClosing;
     private int maxTexture=4096;
     private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74;
     private int dp(float n){return EditorTheme.dp(this,n);}
@@ -59,7 +59,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
              @Override public void finish(boolean open){
                 if(orbital==null)return;
                 OrbitalSelector active=orbital;
-                if(!open)orbital=null;
+                if(!open){orbital=null;orbitalClosing=true;}
                 active.finishReveal(open);
             }
         });
@@ -116,7 +116,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override public void openEffects(){showOrbital(true);}
     private boolean canSwipeForTools(float x,float y){
-        if(original==null||loading||orbital!=null||cropEditor!=null||preview==null
+        if(original==null||loading||orbital!=null||orbitalClosing||cropEditor!=null||preview==null
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
@@ -131,13 +131,12 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             &&y>=y0&&((y<=y1)||(nearSide&&y<=maxY));
     }
     private void closeOrbital(){
-        if(orbital!=null){OrbitalSelector old=orbital;orbital=null;old.dismiss();}
+        if(orbital!=null){OrbitalSelector old=orbital;orbital=null;orbitalClosing=true;old.dismiss();}
     }
     private void showOrbital(boolean effects){showOrbital(effects,false);}
     private void showOrbital(boolean effects,boolean interactive){
         if(original==null){showGallery();return;}
-        OrbitalSelector previous=orbital;
-        if(previous!=null)previous.dismiss();
+        if(orbital!=null||orbitalClosing)return;
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
         OrbitalSelector wheel=new OrbitalSelector(this,
@@ -145,9 +144,13 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             effects?"Arraste para percorrer a roda.":"Deslize para explorar todas as categorias.",
             labels,symbols,effects?panel.effect:panel.category,n->{
                 if(effects){panel.effect=n;selectCategory(3);}else selectCategory(n);
-                orbital=null;
+                closeOrbital();
             });
         orbital=wheel;
+        wheel.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+            @Override public void onViewAttachedToWindow(View v){}
+            @Override public void onViewDetachedFromWindow(View v){orbitalClosing=false;}
+        });
         wheel.setMode(effects);
         // A visible wheel never opens another wheel. Rightward drag closes.
         wheel.setNavigate(direction->closeOrbital());
