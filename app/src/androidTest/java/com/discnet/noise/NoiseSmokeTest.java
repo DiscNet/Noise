@@ -3,6 +3,7 @@ package com.discnet.noise;
 import android.app.*;
 import android.content.Intent;
 import android.graphics.*;
+import android.animation.ValueAnimator;
 import android.os.*;
 import android.widget.*;
 import android.view.*;
@@ -45,6 +46,32 @@ public class NoiseSmokeTest extends Instrumentation {
             require(home.getChildAt(0).getClass().getSimpleName().equals("StockAtmosphere"),
                 "Home renders ambient blurred stock-art behind its content");
             saveScreenshot("noise-home.png");
+            // Home V1.30.3: check the central surface is geometrically a
+            // single, responsive circle with a continuous, restrained rim.
+            ViewGroup homePage=(ViewGroup)home.getChildAt(1);
+            ViewGroup orbRegion=(ViewGroup)homePage.getChildAt(1);
+            View homeCircle=orbRegion.getChildAt(0);
+            require(homeCircle.getClass().getSimpleName().equals("Sphere"),
+                "The Home centerpiece remains a circular Sphere");
+            require(homeCircle.getWidth()>0&&homeCircle.getHeight()>0,
+                "The Home circle has measured bounds");
+            float circleRadius=(Float)field(homeCircle,"radius");
+            float expectedRadius=Math.min(Math.min(homeCircle.getWidth()*.40f,
+                homeCircle.getHeight()*.40f),188*homeCircle.getResources().getDisplayMetrics().density);
+            require(Math.abs(circleRadius-expectedRadius)<1f&&circleRadius>0,
+                "Circle radius is responsive and symmetrical");
+            float rimStroke=(Float)field(homeCircle,"rimWidth");
+            require(rimStroke>0&&rimStroke<=Math.max(2f,circleRadius*.017f),
+                "Only a restrained thin rim is drawn");
+            require(field(homeCircle,"rim") instanceof SweepGradient,
+                "One continuous gradient rim replaces dashed decorative marks");
+            require(((Paint)field(homeCircle,"contour")).getPathEffect()==null,
+                "No dashed border on the Home circle");
+            if(android.animation.ValueAnimator.areAnimatorsEnabled()){
+                ValueAnimator circleAnimator=(ValueAnimator)field(homeCircle,"animator");
+                require(circleAnimator!=null&&circleAnimator.getDuration()==14000,
+                    "The subtle circle animation runs in a 14-second loop");
+            }
             View atmosphere=home.getChildAt(0);
             if(android.animation.ValueAnimator.areAnimatorsEnabled()){
                 float previous=(Float)field(atmosphere,"phase");
