@@ -44,7 +44,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private int cameraId=-1;
     private int preferredFacing=Camera.CameraInfo.CAMERA_FACING_BACK;
     private volatile int generation=0;
-    private volatile boolean active,disposed;
+    private volatile boolean active,disposed,cameraReady;
     private boolean capturing;
     private Uri latestPhoto;
     private float saturation=1f, temperature=0f, exposure=0f;
@@ -228,12 +228,12 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         return fallback;
     }
     private void openCamera(){
-        if(!active||disposed||!preview.isAvailable())return;
+        if(!active||disposed||cameraReady||!preview.isAvailable())return;
         if(activity.checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)return;
         prepareThread();
         final int n=++generation;
         cameraHandler.post(()->{
-            if(n!=generation||!active||disposed)return;
+            if(n!=generation||!active||disposed||cameraReady)return;
             try{
                 if(camera!=null)closeCamera();
                 cameraId=chooseCamera();
@@ -256,6 +256,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 if(size!=null)activity.runOnUiThread(()->fitPreview(size.width,size.height,orientation));
                 opened.setPreviewTexture(preview.getSurfaceTexture());
                 opened.startPreview();
+                cameraReady=true;
                 activity.runOnUiThread(()->{
                     if(!disposed&&active){message("Pronto para fotografar");shutter.setEnabled(true);}
                 });
@@ -295,6 +296,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             case Surface.ROTATION_270:return 270;default:return 0;}
     }
     private void closeCamera(){
+        cameraReady=false;
         if(camera!=null){
             try{camera.stopPreview();}catch(RuntimeException ignored){}
             try{camera.release();}catch(RuntimeException ignored){}
