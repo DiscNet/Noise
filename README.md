@@ -4,9 +4,9 @@
 
 <br/>
 
-**Uma imagem. Mil possibilidades.**
+<strong>Uma imagem. Mil possibilidades.</strong>
 
-Editor de imagens para Android com **ajustes em tempo real**, efeitos experimentais, **Dither**, **ASCII** e uma interface de edição com **rodas orbitais**.
+Editor de imagens para Android com <strong>ajustes em tempo real</strong>, efeitos experimentais, <strong>Dither</strong>, <strong>ASCII</strong> e uma interface de edição com <strong>rodas orbitais</strong>.
 
 <br/>
 
@@ -23,7 +23,7 @@ Editor de imagens para Android com **ajustes em tempo real**, efeitos experiment
 
 <br/>
 
-[**Explorar os efeitos**](#-laboratório-de-efeitos) · [**Navegação orbital**](#-navegação-orbital) · [**Como instalar**](#-instalação) · [**Código e build**](#-desenvolvimento)
+<a href="#-laboratório-de-efeitos"><strong>Explorar os efeitos</strong></a> · <a href="#-navegação-orbital"><strong>Navegação orbital</strong></a> · <a href="#-instalação"><strong>Como instalar</strong></a> · <a href="#-desenvolvimento"><strong>Código e build</strong></a>
 
 </div>
 
@@ -124,7 +124,7 @@ As rodas descrevem arcos circulares espelhados. A abertura tem animação própr
 
 <div align="center">
 
-<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/⬇%20Download-Noise.V1.27.apk-BBA4E8?style=for-the-badge&logo=android&logoColor=21162b" alt="Download do APK da versão 1.27"/></a>
+<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/Download-Noise.V1.27.apk-BBA4E8?style=for-the-badge&logo=android&logoColor=21162b" alt="Download do APK da versão 1.27"/></a>
 
 </div>
 
@@ -197,9 +197,9 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <br/><br/>
 
-**Experimente. Ajuste. Transforme.**
+<strong>Experimente. Ajuste. Transforme.</strong>
 
-[**Baixar Noise!**](https://github.com/DiscNet/Noise/releases/latest) · [**Reportar um problema**](https://github.com/DiscNet/Noise/issues) · [**Notas da versão**](docs/RELEASE-1.27.md)
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.27.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
