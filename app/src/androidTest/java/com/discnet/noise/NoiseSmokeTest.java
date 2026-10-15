@@ -528,9 +528,9 @@ public class NoiseSmokeTest extends Instrumentation {
             require(swipeTools.orbitalScreenX()>width*.65f,"Tools orbit and active icon are on RIGHT");
             int toolCenter=swipeTools.orbitalSelected();
             int toolNeighbor=toolCenter+2<swipeTools.orbitalCount()?toolCenter+2:toolCenter-2;
-            require(swipeTools.orbitalScreenX()
-                    -swipeTools.orbitalIconScreenX(toolNeighbor)>EditorTheme.dp(getTargetContext(),16),
-                "Tools neighboring icons follow a curved wheel toward screen CENTER (not a flat list)");
+            require(swipeTools.orbitalIconScreenX(toolNeighbor)
+                    -swipeTools.orbitalScreenX()>EditorTheme.dp(getTargetContext(),16),
+                "Right-hand Tools wheel bulges toward RIGHT edge, not backward into image");
             SystemClock.sleep(520);
             float dimBeforeClose=swipeTools.scrimOpacity();
             float menuBeforeClose=swipeTools.motionAlpha();
@@ -571,9 +571,9 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Effects orbit, active icon and labels occupy LEFT side");
             int effectCenter=swipeEffects.orbitalSelected();
             int effectNeighbor=effectCenter+2<swipeEffects.orbitalCount()?effectCenter+2:effectCenter-2;
-            require(swipeEffects.orbitalIconScreenX(effectNeighbor)
-                    -swipeEffects.orbitalScreenX()>EditorTheme.dp(getTargetContext(),16),
-                "Effects neighboring icons follow the mirrored circular orbit toward screen CENTER");
+            require(swipeEffects.orbitalScreenX()
+                    -swipeEffects.orbitalIconScreenX(effectNeighbor)>EditorTheme.dp(getTargetContext(),16),
+                "Left-hand Effects wheel bulges toward LEFT edge, not backward into image");
             // Another left swipe while a wheel is open must NOT switch modes.
             long repeat=SystemClock.uptimeMillis();
             float midY=swipeEffects.getHeight()*.55f;
