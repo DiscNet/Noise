@@ -89,7 +89,10 @@ final class EditorPanel extends LinearLayout {
                 extras.setLayoutTransition(transition);
                 controls.setLayoutTransition(transition);
             }
-            if(category==1)toggle("Inverter cores",d.invert,checked->change(()->d.invert=checked));
+            if(category==1){
+                toggle("Inverter cores",d.invert,checked->change(()->d.invert=checked));
+                colorGradeTools(d);
+            }
             if(category==2)toggle("Grão colorido",d.grainColored,checked->change(()->d.grainColored=checked));
         }else if(category==3){
             TextView gestureHint=new TextView(getContext());
@@ -123,6 +126,79 @@ final class EditorPanel extends LinearLayout {
         }
         scroll.post(()->scroll.scrollTo(0,Math.max(0,scrollY)));
         if(category<6){TextView hint=new TextView(getContext());hint.setText("Toque no valor para digitar · dois toques no nome restauram · segure para pausar");hint.setTextSize(11);hint.setTextColor(EditorTheme.MUTED);hint.setPadding(dp(4),dp(12),dp(4),0);controls.addView(hint,new LayoutParams(-1,-2));}
+    }
+    /** Color wheels and curves are actual persistent per-pixel GPU controls. */
+    private void colorGradeTools(EditorDocument doc){
+        groupTitle("Três rodas cromáticas");
+        LinearLayout wheels=new LinearLayout(getContext());
+        wheels.setOrientation(HORIZONTAL);
+        controls.addView(wheels,new LayoutParams(-1,-2));
+        String[] labels={"Sombras","Meios-tons","Realces"};
+        for(int i=0;i<3;i++){
+            final int index=i,base=i*2;
+            LinearLayout cell=new LinearLayout(getContext());cell.setOrientation(VERTICAL);
+            LayoutParams layout=new LayoutParams(0,-2,1);
+            layout.setMargins(dp(3),0,dp(3),dp(5));
+            wheels.addView(cell,layout);
+            TextView title=new TextView(getContext());title.setText(labels[i]);title.setTextSize(11.5f);
+            title.setTextColor(EditorTheme.INK);title.setTypeface(NoiseTypography.medium(getContext()));
+            title.setGravity(Gravity.CENTER);
+            cell.addView(title,new LayoutParams(-1,dp(27)));
+            ColorWheelControl wheel=new ColorWheelControl(getContext(),new ColorWheelControl.Listener(){
+                public void begin(){host.begin();}
+                public void change(float x,float y){
+                    doc.colorWheels[base]=x;doc.colorWheels[base+1]=y;host.updated();
+                }
+                public void end(){host.end();}
+            });
+            wheel.bind(doc.colorWheels[base],doc.colorWheels[base+1]);
+            cell.addView(wheel,new LayoutParams(-1,dp(132)));
+            TextView restore=new TextView(getContext());restore.setText("↺  Neutro");
+            restore.setTextColor(EditorTheme.MUTED);restore.setTextSize(11.5f);
+            restore.setGravity(Gravity.CENTER);restore.setBackground(
+                EditorTheme.panel(getContext(),0xff29232f,0,11,0));
+            cell.addView(restore,new LayoutParams(-1,dp(40)));
+            restore.setOnClickListener(v->{
+                host.begin();doc.colorWheels[base]=doc.colorWheels[base+1]=0;
+                wheel.bind(0,0);host.updated();host.end();
+            });
+        }
+        groupTitle("Curvas de cor");
+        String[] types={"Hue × Hue","Saturação × Hue","Saturação × Saturação"};
+        for(int type=0;type<3;type++){
+            final int group=type,offset=type*6;
+            TextView label=new TextView(getContext());label.setText(types[type]);
+            label.setTextSize(12);label.setTextColor(EditorTheme.INK);
+            label.setTypeface(NoiseTypography.medium(getContext()));
+            label.setPadding(dp(7),dp(8),dp(7),dp(4));
+            controls.addView(label,new LayoutParams(-1,-2));
+            ColorCurveControl curve=new ColorCurveControl(getContext(),type!=2,
+                new ColorCurveControl.Listener(){
+                    public void begin(){host.begin();}
+                    public void change(int knot,float value){
+                        doc.colorCurves[offset+knot]=value;host.updated();
+                    }
+                    public void end(){host.end();}
+                });
+            curve.bind(doc.colorCurves,offset);
+            controls.addView(curve,new LayoutParams(-1,dp(154)));
+            TextView restore=new TextView(getContext());restore.setText("↺  Restaurar curva");
+            restore.setGravity(Gravity.CENTER);restore.setTextColor(EditorTheme.MUTED);
+            restore.setTextSize(11.5f);restore.setBackground(EditorTheme.panel(getContext(),0xff28232e,0,11,0));
+            LayoutParams restoreLayout=new LayoutParams(-1,dp(41));restoreLayout.bottomMargin=dp(6);
+            controls.addView(restore,restoreLayout);
+            restore.setOnClickListener(v->{
+                host.begin();
+                for(int k=0;k<6;k++)doc.colorCurves[offset+k]=0;
+                curve.bind(doc.colorCurves,offset);host.updated();host.end();
+            });
+        }
+        groupTitle("Mesclagem de cor e luz");
+        choices(new String[]{"Normal","Multiplicar","Tela","Sobrepor","Luz suave"},
+            doc.blendMode,index->change(()->{
+                doc.blendMode=index;rebuild();
+            }));
+        add(64);
     }
     private void groupTitle(String title){TextView label=new TextView(getContext());label.setText(title.toUpperCase(java.util.Locale.getDefault()));
         label.setTextSize(10.5f);label.setLetterSpacing(.1f);label.setTextColor(EditorTheme.MUTED);
