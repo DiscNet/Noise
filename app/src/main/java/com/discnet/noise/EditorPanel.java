@@ -15,6 +15,7 @@ final class EditorPanel extends LinearLayout {
     private final Host host;
     private final PrecisionControl[] rows=new PrecisionControl[AdjustmentSpec.COUNT];
     int category,effect;
+    private final boolean[] advancedExpanded={false,false,false};
     EditorPanel(Context c,Host host){super(c);this.host=host;setOrientation(VERTICAL);setBackground(EditorTheme.surface(c,28));
         handle=new TextView(c);handle.setTypeface(NoiseTypography.medium(c));handle.setTextColor(EditorTheme.MUTED);handle.setTextSize(12);handle.setGravity(Gravity.CENTER);handle.setContentDescription("Arraste para ampliar ou recolher o painel. Toque para alternar tamanho.");handle.setFocusable(true);addView(handle,new LayoutParams(-1,dp(48)));
         scroll=new ScrollView(c);scroll.setFillViewport(false);scroll.setClipToPadding(false);
@@ -25,7 +26,11 @@ final class EditorPanel extends LinearLayout {
         for(int i=0;i<rows.length;i++)rows[i]=new PrecisionControl(c,i,host);
     }
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
-    void select(int group){boolean switched=category!=group;category=group;rebuild();if(switched)scroll.scrollTo(0,0);}
+    void select(int group){
+        boolean switched=category!=group;
+        category=group;rebuild();
+        if(switched)scroll.post(()->scroll.scrollTo(0,0));
+    }
     void bind(int id){rows[id].bind(host.document());}
     void rebuild(){
         int scrollY=scroll.getScrollY();
@@ -45,7 +50,33 @@ final class EditorPanel extends LinearLayout {
         controls.addView(heading,new LayoutParams(-1,-2));
         if(category<3){
             int[] ids=AdjustmentSpec.BASIC[category];
-            for(int i=0;i<ids.length;i++){if(i==4&&ids.length>5)groupTitle("Avançados");add(ids[i]);}
+            int essential=category==0?Math.min(ids.length,6):Math.min(ids.length,4);
+            for(int i=0;i<essential;i++)add(ids[i]);
+            if(essential<ids.length){
+                TextView expand=new TextView(getContext());
+                expand.setText((advancedExpanded[category]?"⌄  ":"›  ")+"Ajustes avançados  ·  "+(ids.length-essential));
+                expand.setTextSize(12);expand.setTypeface(NoiseTypography.medium(getContext()));
+                expand.setTextColor(EditorTheme.LIME);expand.setGravity(Gravity.CENTER_VERTICAL);
+                expand.setPadding(dp(12),0,dp(12),0);
+                expand.setBackground(EditorTheme.panel(getContext(),0xff26212e,0,12,0));
+                LayoutParams ep=new LayoutParams(-1,dp(43));ep.bottomMargin=dp(7);
+                controls.addView(expand,ep);
+                LinearLayout extras=new LinearLayout(getContext());extras.setOrientation(VERTICAL);
+                extras.setVisibility(advancedExpanded[category]?View.VISIBLE:View.GONE);
+                controls.addView(extras,new LayoutParams(-1,-2));
+                for(int i=essential;i<ids.length;i++)addTo(ids[i],extras);
+                final int group=category;
+                expand.setOnClickListener(v->{
+                    advancedExpanded[group]=!advancedExpanded[group];
+                    expand.setText((advancedExpanded[group]?"⌄  ":"›  ")+"Ajustes avançados  ·  "+(ids.length-essential));
+                    extras.setVisibility(advancedExpanded[group]?View.VISIBLE:View.GONE);
+                    // Expand with a short layout transition; no GPU render is triggered.
+                });
+                android.animation.LayoutTransition transition=new android.animation.LayoutTransition();
+                transition.setDuration(190);
+                extras.setLayoutTransition(transition);
+                controls.setLayoutTransition(transition);
+            }
             if(category==1)toggle("Inverter cores",d.invert,checked->change(()->d.invert=checked));
             if(category==2)toggle("Grão colorido",d.grainColored,checked->change(()->d.grainColored=checked));
         }else if(category==3){
@@ -85,9 +116,14 @@ final class EditorPanel extends LinearLayout {
         label.setTextSize(10.5f);label.setLetterSpacing(.1f);label.setTextColor(EditorTheme.MUTED);
         label.setTypeface(NoiseTypography.medium(getContext()));label.setPadding(dp(8),dp(12),0,dp(8));
         controls.addView(label,new LayoutParams(-1,-2));}
-    private void add(int id){PrecisionControl row=rows[id];
+    private void add(int id){addTo(id,controls);}
+    private void addTo(int id,LinearLayout destination){
+        PrecisionControl row=rows[id];
         if(row.getParent()!=null)((ViewGroup)row.getParent()).removeView(row);
-        row.bind(host.document());LayoutParams p=new LayoutParams(-1,-2);p.bottomMargin=dp(8);controls.addView(row,p);}
+        row.bind(host.document());
+        LayoutParams p=new LayoutParams(-1,-2);p.bottomMargin=dp(8);
+        destination.addView(row,p);
+    }
     private void change(Runnable r){host.begin();r.run();host.updated();host.end();}
     private void effectSwitch(EditorDocument d,int id,String name){
         toggle(name,!d.disabled[id]&&d.values[id]>0,enabled->change(()->{d.disabled[id]=!enabled;if(enabled&&d.values[id]==0)d.values[id]=id==9||id==26||id==32||id==38?1:.5f;bind(id);}));
