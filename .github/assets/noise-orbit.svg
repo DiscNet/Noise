@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="title desc">
+<title id="title">Noise! — Navegação orbital</title>
+<desc id="desc">Duas ilustrações lado a lado mostram o menu Efeitos em roda na esquerda e Ferramentas em roda na direita, com fundo em gradiente violeta.</desc>
+<defs>
+<linearGradient id="back" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0B0913"/><stop offset=".5" stop-color="#1A1224"/><stop offset="1" stop-color="#0D0A15"/></linearGradient>
+<linearGradient id="pane" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#251832"/><stop offset="1" stop-color="#110D1A"/></linearGradient>
+<linearGradient id="fadeL" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#D9A6F4" stop-opacity=".18"/><stop offset="1" stop-color="#D9A6F4" stop-opacity="0"/></linearGradient>
+<linearGradient id="fadeR" x1="1" y1="0" x2="0" y2="0"><stop stop-color="#D9A6F4" stop-opacity=".18"/><stop offset="1" stop-color="#D9A6F4" stop-opacity="0"/></linearGradient>
+<radialGradient id="aura"><stop stop-color="#D6A3FF" stop-opacity=".28"/><stop offset="1" stop-color="#D6A3FF" stop-opacity="0"/></radialGradient>
+<linearGradient id="active" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E6B6FF"/><stop offset="1" stop-color="#BA85ED"/></linearGradient>
+<clipPath id="round"><rect x="8" y="8" width="1184" height="404" rx="23"/></clipPath>
+</defs>
+<rect width="1200" height="420" rx="25" fill="url(#back)"/>
+<rect x="8" y="8" width="1184" height="404" rx="23" fill="none" stroke="#B58ACA" stroke-opacity=".38"/>
+<g clip-path="url(#round)">
+<rect x="23" y="65" width="558" height="325" rx="20" fill="url(#pane)" stroke="#BA8BC5" stroke-opacity=".18"/>
+<rect x="619" y="65" width="558" height="325" rx="20" fill="url(#pane)" stroke="#BA8BC5" stroke-opacity=".18"/>
+<rect x="23" y="65" width="410" height="325" fill="url(#fadeL)"/>
+<rect x="767" y="65" width="410" height="325" fill="url(#fadeR)"/>
+<circle cx="119" cy="237" r="138" fill="url(#aura)"/><circle cx="1080" cy="237" r="138" fill="url(#aura)"/>
+<path d="M 68 107 C 125 147 159 196 159 225 C 159 256 125 304 68 346" fill="none" stroke="#C89ADD" stroke-width="2" stroke-opacity=".48" stroke-linecap="round"/>
+<path d="M 1132 107 C 1075 147 1041 196 1041 225 C 1041 256 1075 304 1132 346" fill="none" stroke="#C89ADD" stroke-width="2" stroke-opacity=".48" stroke-linecap="round"/>
+<path d="M 68 107 C 125 147 159 196 159 225 C 159 256 125 304 68 346" fill="none" stroke="#F1D5FF" stroke-width="12" stroke-opacity=".055"/>
+<path d="M 1132 107 C 1075 147 1041 196 1041 225 C 1041 256 1075 304 1132 346" fill="none" stroke="#F1D5FF" stroke-width="12" stroke-opacity=".055"/>
+<g font-family="Arial,Helvetica,sans-serif">
+<text x="47" y="110" fill="#E3C8F1" font-size="12" letter-spacing="2" font-weight="700">01  /  BORDA ESQUERDA</text>
+<text x="644" y="110" fill="#E3C8F1" font-size="12" letter-spacing="2" font-weight="700">02  /  BORDA DIREITA</text>
+<g font-size="14" fill="#BBA8CA">
+<text x="185" y="164">Dither</text><text x="197" y="225" fill="#F7EBFF" font-weight="700" font-size="19">Glow</text><text x="187" y="292">CRT</text>
+<text x="962" y="164" text-anchor="end">Recortar</text><text x="957" y="225" text-anchor="end" fill="#F7EBFF" font-weight="700" font-size="19">Ajustes</text><text x="960" y="292" text-anchor="end">Exportar</text>
+</g>
+<g>
+<circle cx="107" cy="159" r="24" fill="#352641" stroke="#8F68A9" stroke-opacity=".7"/>
+<circle cx="154" cy="225" r="31" fill="url(#active)"/><circle cx="107" cy="289" r="24" fill="#352641" stroke="#8F68A9" stroke-opacity=".7"/>
+<circle cx="1093" cy="159" r="24" fill="#352641" stroke="#8F68A9" stroke-opacity=".7"/>
+<circle cx="1046" cy="225" r="31" fill="url(#active)"/><circle cx="1093" cy="289" r="24" fill="#352641" stroke="#8F68A9" stroke-opacity=".7"/>
+</g>
+<g fill="none" stroke="#F9F0FF" stroke-linecap="round" stroke-linejoin="round">
+<path d="M 100 155 h14 m-7 -7 v14" stroke-width="2.2"/>
+<path d="M 148 219 l11 11 M 159 219 l-11 11 M 148 225 h11" stroke="#211428" stroke-width="2.5"/>
+<path d="M 100 289 h14 m-7 -7 v14" stroke-width="1.7" opacity=".8"/>
+<path d="M 1086 159 h14 M1093 152 v14" stroke-width="2"/>
+<path d="M1038 225 h16 M1046 217 v16" stroke="#211428" stroke-width="2.6"/>
+<path d="M1086 289 h14 m-7 -7 v14" stroke-width="1.7" opacity=".8"/>
+</g>
+<g font-size="13" fill="#AE9ABE"><text x="46" y="369">DESLIZE PARA A DIREITA  →</text><text x="1152" y="369" text-anchor="end">←  DESLIZE PARA A ESQUERDA</text></g>
+</g>
+<rect x="500" y="13" width="198" height="40" rx="20" fill="#3A284A" stroke="#B18ACA" stroke-opacity=".48"/>
+<text x="599" y="39" text-anchor="middle" fill="#F9E9FF" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" letter-spacing=".9">ORBITAL UI</text>
+</g>
+<rect x="8" y="8" width="1184" height="404" rx="23" fill="none" stroke="#B58ACA" stroke-opacity=".15"/>
+</svg>
