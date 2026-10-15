@@ -1,0 +1,39 @@
+# Noise! V1.28 — Refinamento dos painéis, Transformar e navegação orbital
+
+Versão-base: **V1.27, release build-119**. Mudanças aplicadas em `feature/noise-v1-28-refinement`.
+
+## Controles e painéis
+- Cartões de ajuste compactos e arredondados em cinza escuro, Manrope, valores alinhados à direita, organização em grupos e cabeçalho contextual.
+- Sliders com trilho fino, marcador de neutro, preenchimento violeta e indicador com microanimação durante o toque.
+- Restauração individual com botão ↺; permanecem o duplo toque no rótulo e o pressionar prolongado para ativar/desativar.
+- Entrada numérica em sheet escuro próprio com sinal/decimais, botões ±, validação, restaurar, cancelar e aplicar.
+- Ajuste ao vivo preservado sem debounce; um gesto de slider continua sendo uma operação única no histórico.
+- Scroll vertical sem scrollbar, com rolagem preservada no rebuild quando apropriado.
+- Painel compacto, intermediário e expandido com reserva de área mínima para o preview.
+
+## Transformar: recorte e resolução
+- A categoria Ferramentas apresenta separadamente **Recortar** e **Redimensionar**.
+- Crop original permanece totalmente não destrutivo com alças de canto/laterais e arraste do centro. A V1.28 adiciona proporção **Original**, chips seletivos, grades com fade durante o gesto, dimensões calculadas com a resolução real e Manrope.
+- Nova interface compacta de redimensionamento: prévia, resolução original/nova, largura e altura editáveis, proporção bloqueada por padrão, presets 25/50/75/100% e Original, formato PNG/JPEG e qualidade JPEG contextual.
+- Exportação continua automática em `Pictures/Noise!`.
+- Nova serialização opcional `outputWidth`/`outputHeight`. Projetos antigos que armazenam só `outputLongEdge` são compatíveis.
+- **Política:** apenas redução. Pedidos acima da resolução original e limites da GPU são limitados. Sem promessa de reconstrução de detalhes.
+
+## Menus orbitais
+- Rodas circulares reais e orientação V1.27 preservadas: Ferramentas à direita, Efeitos à esquerda, gesto exclusivamente pelas bordas.
+- Hitboxes de ícones agora calculadas pelas posições e escalas reais das Views; removida a seleção por X/Y estimados.
+- Máquina de estados explícita (`CLOSED`, `OPENING`, `OPEN`, `CLOSING`); impedidos overlays duplicados enquanto uma roda anterior faz fade out.
+- Toque fora da região do painel fecha o menu sem ativar a imagem ao fundo.
+- Favoritos por roda usando estrela no cabeçalho e acesso por toque prolongado; última seleção de ferramenta e efeito preservada entre sessões.
+- Fade/gradiente escuro em tela inteira, scroll orbital com mola amortecida, snap e reação independente do dedo preservados.
+- Respeito à preferência Android de desligar animações, e shader de halo radial armazenado em cache.
+
+## Verificação
+- Auditoria inicial: [AUDIT-1.28.md](AUDIT-1.28.md).
+- Testes instrumentados estendidos para política de resolução, compatibilidade JSON, proporção automática do sheet, hitbox selecionada e capturas de três fases orbitais.
+- Os requisitos de velocidade, dimensões pequenas e instalação física dependem de validação e não são presumidos aprovados por compilar.
+
+## Observações
+- Ainda não há editor de super-resolução: aumentar dimensões acima das nativas não recupera qualidade e está desabilitado.
+- A estrutura base de projetos, histórico e pipeline GPU é mantida. O layout não foi substituído por listas no lugar das rodas.
+- A aprovação para release definitiva requer instrumentação bem-sucedida e revisão das capturas, além de checagem física quando possível.
