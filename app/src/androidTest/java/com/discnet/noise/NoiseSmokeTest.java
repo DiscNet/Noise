@@ -412,6 +412,27 @@ public class NoiseSmokeTest extends Instrumentation {
             EditorDocument asc=new EditorDocument();asc.asciiEnabled=true;Bitmap darkAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));asc.values[2]=.8f;Bitmap brightAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));delta=0;
             for(int y=0;y<96;y++)for(int x=0;x<128;x++)if(darkAscii.getPixel(x,y)!=brightAscii.getPixel(x,y))delta++;
             require(delta>100,"Exposure must feed ASCII tonal sampling");darkAscii.recycle();brightAscii.recycle();
+            stage("V1.28 explicit width/height resize, no upscale and old project compatibility");
+            EditorDocument resizedDoc=new EditorDocument();
+            resizedDoc.outputWidth=320;resizedDoc.outputHeight=180;
+            int[] requested=resizedDoc.outputSize(1280,720,4096);
+            require(requested[0]==320&&requested[1]==180,"Custom width and height apply precisely");
+            EditorDocument serialized=EditorDocument.fromJson(resizedDoc.toJson());
+            require(serialized.outputWidth==320&&serialized.outputHeight==180,
+                "Explicit resolution persists after project round trip");
+            resizedDoc.outputWidth=3000;resizedDoc.outputHeight=1700;
+            requested=resizedDoc.outputSize(1280,720,4096);
+            require(requested[0]<=1280&&requested[1]<=720,
+                "Upscaling explicitly disallowed, including asymmetric sizes");
+            resizedDoc.outputWidth=640;resizedDoc.outputHeight=360;
+            requested=resizedDoc.outputSize(1280,720,256);
+            require(requested[0]<=256&&requested[1]<=256,"GPU texture limit enforced");
+            EditorDocument legacy=new EditorDocument();
+            legacy.outputLongEdge=640;
+            EditorDocument restoredLegacy=EditorDocument.fromJson(legacy.toJson());
+            requested=restoredLegacy.outputSize(1280,720,4096);
+            require(requested[0]==640&&requested[1]==360,
+                "V1.27 size field remains compatible");
             stage("non-destructive transformed export");
             Bitmap quad=Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888);for(int y=0;y<20;y++)for(int x=0;x<40;x++)quad.setPixel(x,y,x<20?Color.RED:Color.BLUE);
             EditorDocument geometry=new EditorDocument();geometry.left=.5f;int[] shape=geometry.outputSize(40,20,4096);Bitmap cropped=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);require(shape[0]==20&&shape[1]==20,"Crop changes output geometry");closeColor(cropped.getPixel(10,10),Color.BLUE,"Crop selects original source pixels");require(quad.getWidth()==40,"Crop never degrades original");cropped.recycle();geometry.left=0;geometry.rotation=1;shape=geometry.outputSize(40,20,4096);require(shape[0]==20&&shape[1]==40,"Rotation swaps geometry");Bitmap turned=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);closeColor(turned.getPixel(10,5),Color.RED,"Clockwise rotation top");closeColor(turned.getPixel(10,35),Color.BLUE,"Clockwise rotation bottom");turned.recycle();quad.recycle();
@@ -421,11 +442,36 @@ public class NoiseSmokeTest extends Instrumentation {
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
             for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            stage("V1.28 resize dialog precision and context panel");
+            require(workspace.sheetState()!=null,"Workspace supports explicit compact/intermediate/expanded states");
+            EditorDocument sheetDoc=new EditorDocument();
+            final ResizeDialog[] sheet={null};
+            Bitmap resizePhoto=Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888);
+            runOnMainSync(()->{sheet[0]=new ResizeDialog(activity,resizePhoto,
+                sheetDoc,900,900,4096,(w,h,j,q,doExport)->{
+                    sheetDoc.outputWidth=w;sheetDoc.outputHeight=h;
+                });sheet[0].show();});
+            waitForIdleSync();
+            EditText widthInput=(EditText)field(sheet[0],"width");
+            EditText heightInput=(EditText)field(sheet[0],"height");
+            runOnMainSync(()->widthInput.setText("450"));
+            require("450".contentEquals(heightInput.getText()),
+                "Aspect-lock synchronizes opposite dimension without a feedback cycle");
+            runOnMainSync(()->sheet[0].dismiss());resizePhoto.recycle();
             stage("orbital tool gesture and functional effect routing");
             runOnMainSync(activity::openEffects);waitForIdleSync();
             OrbitalSelector orbital=(OrbitalSelector)field(activity,"orbital");
             View orbitStage=(View)field(orbital,"orbit");
             require(orbitStage.getHeight()>0&&orbitStage.getWidth()>0,"Orbital selector measured");
+            LinearLayout[] hitRows=(LinearLayout[])field(orbitStage,"rows");
+            ImageView[] hitIcons=(ImageView[])field(orbitStage,"icons");
+            int activeIndex=orbital.selected();
+            float ix=hitRows[activeIndex].getX()+hitIcons[activeIndex].getX()
+                +hitIcons[activeIndex].getWidth()*.5f;
+            float iy=hitRows[activeIndex].getY()+hitIcons[activeIndex].getY()
+                +hitIcons[activeIndex].getHeight()*.5f;
+            require(orbital.orbitalHitIndex(ix,iy)==activeIndex,
+                "Hit-test identifies exact icon center with transformed coordinates");
             float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
             long time=SystemClock.uptimeMillis();
             runOnMainSync(()->{
@@ -487,6 +533,7 @@ public class NoiseSmokeTest extends Instrumentation {
             float alpha=eased.motionAlpha();
             require(alpha>.01f && alpha<.96f,
                 "Wheel gradually fades in on display frames: "+alpha);
+            saveScreenshot("noise-opening.png");
             require(eased.getAlpha()==1f,"Overlay container stays fully opaque while scrim fades");
             require(eased.wholeScreenDim(),
                 "Dark layer must cover entire screen, not only the menu side");
@@ -538,8 +585,10 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Menu and overlay became visible smoothly before close");
             require(swipeTools.wholeScreenDim() && swipeTools.featherOpacity()>.70f,
                 "Entire editor is substantially darkened with separate edge gradient");
+            saveScreenshot("noise-open.png");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(90);
+            saveScreenshot("noise-closing.png");
             require(swipeTools.scrimOpacity()<dimBeforeClose
                 &&swipeTools.scrimOpacity()>0f
                 &&swipeTools.featherOpacity()>0f
