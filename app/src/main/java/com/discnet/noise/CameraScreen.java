@@ -36,6 +36,10 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private final Activity activity;
     private final Listener listener;
     private final TextureView preview;
+    private final CameraFrameGuide frameGuide;
+    private SeekBar zoomBar;
+    private TextView zoomValue;
+    private final ArrayList<TextView> ratioButtons=new ArrayList<>();
     private final TextView status, shutter, edit, switchLens;
     private final ExecutorService photos = Executors.newSingleThreadExecutor();
     private HandlerThread cameraThread;
@@ -47,7 +51,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private volatile boolean active,disposed,cameraReady;
     private boolean capturing;
     private Uri latestPhoto;
-    private float saturation=1f, temperature=0f, exposure=0f;
+    private float saturation=1f, temperature=0f, exposure=0f, digitalZoom=1f;
+    private volatile int previewBufferWidth,previewBufferHeight,previewDisplayOrientation;
 
     CameraScreen(Activity activity, Listener listener) {
         super(activity);
@@ -82,6 +87,20 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         // It changes the displayed camera frame without copying pixels to the CPU.
         preview.setLayerType(View.LAYER_TYPE_HARDWARE,null);
         imageArea.addView(preview,new FrameLayout.LayoutParams(-1,-1));
+        frameGuide=new CameraFrameGuide(activity,new CameraFrameGuide.Gestures(){
+            @Override public void focus(float x,float y){tapToFocus(x,y);}
+            @Override public void zoom(float factor){setZoom(digitalZoom*factor);}
+        });
+        imageArea.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout ratios=new LinearLayout(activity);
+        ratios.setPadding(dp(12),dp(12),dp(12),dp(8));
+        ratios.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams ratioParams=new FrameLayout.LayoutParams(-1,dp(60),Gravity.TOP);
+        imageArea.addView(ratios,ratioParams);
+        addRatio(ratios,"1:1",1f);
+        addRatio(ratios,"4:3",4f/3f);
+        addRatio(ratios,"16:9",16f/9f);
+        setRatio(1f);
         status=label("Conectando à câmera…",13,0xffded8e6);
         status.setGravity(Gravity.CENTER);
         status.setBackground(EditorTheme.panel(activity,0xd01b1721,0,12,0));
@@ -104,6 +123,24 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         });
         addSlider(controls,"Exposição","−2 EV","+2 EV",100, progress->{
             exposure=(progress-100)/50f;applyLiveAdjustments();
+        });
+        LinearLayout zoomRow=new LinearLayout(activity);zoomRow.setGravity(Gravity.CENTER_VERTICAL);
+        controls.addView(zoomRow,new LinearLayout.LayoutParams(-1,dp(26)));
+        TextView zoomTitle=label("Zoom / enquadramento",13,EditorTheme.INK);
+        zoomRow.addView(zoomTitle,new LinearLayout.LayoutParams(0,-2,1));
+        zoomValue=label("1.0×",13,EditorTheme.LIME);
+        zoomValue.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        zoomRow.addView(zoomValue,new LinearLayout.LayoutParams(dp(65),-2));
+        zoomBar=new EditorTheme.Slider(activity,EditorTheme.LIME);
+        zoomBar.setMax(300);zoomBar.setProgress(0);zoomBar.neutral(0);
+        zoomBar.setContentDescription("Zoom digital de 1 a 4 vezes. A moldura indica a foto final");
+        controls.addView(zoomBar,new LinearLayout.LayoutParams(-1,dp(36)));
+        zoomBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar,int progress,boolean user){
+                setZoom(1f+progress/100f);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar){}
+            @Override public void onStopTrackingTouch(SeekBar bar){}
         });
 
         LinearLayout bottom=new LinearLayout(activity);
@@ -163,7 +200,35 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             @Override public void onStopTrackingTouch(SeekBar b){}
         });
     }
-    private void resetAdjustments(){for(SeekBar b:bars)b.setProgress(100);}
+    private void resetAdjustments(){for(SeekBar b:bars)b.setProgress(100);setZoom(1f);}
+    private void addRatio(LinearLayout row,String text,float ratio){
+        TextView chip=action(text,false);
+        chip.setTag(ratio);
+        chip.setContentDescription("Proporção da fotografia "+text);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(40),1);
+        lp.setMargins(dp(3),0,dp(3),0);
+        row.addView(chip,lp);ratioButtons.add(chip);
+        chip.setOnClickListener(v->setRatio(ratio));
+    }
+    private void setRatio(float ratio){
+        frameGuide.ratio(ratio);
+        for(TextView chip:ratioButtons){
+            boolean selected=Math.abs((Float)chip.getTag()-ratio)<.01f;
+            chip.setTextColor(selected?0xff18121d:EditorTheme.INK);
+            EditorTheme.button(chip,selected);
+        }
+    }
+    private void setZoom(float value){
+        digitalZoom=Math.max(1f,Math.min(4f,value));
+        frameGuide.zoom(digitalZoom);
+        if(zoomValue!=null)zoomValue.setText(String.format(Locale.getDefault(),"%.1f×",digitalZoom));
+        if(zoomBar!=null){
+            int p=Math.round((digitalZoom-1f)*100);
+            if(zoomBar.getProgress()!=p)zoomBar.setProgress(p);
+        }
+        if(previewBufferWidth>0&&previewBufferHeight>0)
+            fitPreview(previewBufferWidth,previewBufferHeight,previewDisplayOrientation);
+    }
     static ColorMatrix colorAdjustments(float saturation,float temperature,float exposure){
         // Common transform shared by preview and captured JPEG.
         float s=Math.max(0f,Math.min(2f,saturation));
