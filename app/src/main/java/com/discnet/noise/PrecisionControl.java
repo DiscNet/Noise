@@ -72,8 +72,11 @@ final class PrecisionControl extends LinearLayout {
     private void restore(){listener.begin();listener.change(id,AdjustmentSpec.neutral(id));listener.end();}
     void bind(EditorDocument d){
         binding=true;disabled=false;
-        slider.setProgress(Math.round((d.values[id]-AdjustmentSpec.min(id))*1000));
-        value.setText(AdjustmentSpec.format(id,d.values[id]));
+        // Older projects may contain disabled values. Show their effective
+        // neutral value while keeping original data untouched until edited.
+        float displayed=d.value(id);
+        slider.setProgress(Math.round((displayed-AdjustmentSpec.min(id))*1000));
+        value.setText(AdjustmentSpec.format(id,displayed));
         label.setAlpha(1f);slider.setAlpha(1f);
         reset.setAlpha(1f);
         value.setContentDescription(AdjustmentSpec.NAMES[id]+": "+value.getText()+", toque para editar");
