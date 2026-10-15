@@ -412,7 +412,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         if(!active||disposed||capturing||!cameraReady||cameraHandler==null)return;
         final int width=Math.max(1,frameGuide.getWidth()),height=Math.max(1,frameGuide.getHeight());
         final int orientation=previewDisplayOrientation;
-        final float zoom=digitalZoom;
+        // The live feed is never zoomed. Focus coordinates must not shrink with the frame.
         final boolean front=preferredFacing==Camera.CameraInfo.CAMERA_FACING_FRONT;
         cameraHandler.post(()->{
             try{
@@ -425,8 +425,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     activity.runOnUiThread(()->message("Este aparelho mantém o foco automático contínuo"));
                     return;
                 }
-                float dx=((x/width)-.5f)*2000f/zoom;
-                float dy=((y/height)-.5f)*2000f/zoom;
+                float dx=((x/width)-.5f)*2000f;
+                float dy=((y/height)-.5f)*2000f;
                 double angle=Math.toRadians(-orientation);
                 float rx=(float)(dx*Math.cos(angle)-dy*Math.sin(angle));
                 float ry=(float)(dx*Math.sin(angle)+dy*Math.cos(angle));
