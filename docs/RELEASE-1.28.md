@@ -37,3 +37,12 @@ Versão-base: **V1.27, release build-119**. Mudanças aplicadas em `feature/nois
 - Ainda não há editor de super-resolução: aumentar dimensões acima das nativas não recupera qualidade e está desabilitado.
 - A estrutura base de projetos, histórico e pipeline GPU é mantida. O layout não foi substituído por listas no lugar das rodas.
 - A aprovação para release definitiva requer instrumentação bem-sucedida e revisão das capturas, além de checagem física quando possível.
+
+## Correção adicional — gestos e bibliotecas personalizadas
+- O swipe orbital **só pode começar dentro do retângulo visível do preview**, próximo às bordas da imagem. A área do painel de ajustes, seus sliders, a alça do sheet, cabeçalho, galeria e telas de projetos/presets ficam excluídas da ativação.
+- Após usar um slider ou ação, a roda continua acessível; uma proteção detecta fechamento visual antigo e um watchdog de descarte encerra overlays que poderiam permanecer invisíveis capturando toques.
+- Substituída a lista de projetos baseada em `AlertDialog` por **ProjectLibraryScreen**, com cartões visuais Manrope, miniaturas reais e prévias GPU dos ajustes salvos quando suportado, geradas e cacheadas fora da UI thread. Abrir, renomear e excluir têm telas de confirmação próprias.
+- Substituída a aba de Presets baseada em `AlertDialog`/`PopupMenu` por biblioteca com prévias GPU, aplicar, salvar com nome, renomear, favoritar e excluir, todos em componentes próprios.
+- Mantidos originais e receitas de projetos antigos. Alterações de nome usam a cópia mais atual do documento no disco; exclusão solicita confirmação.
+- Tests Android adicionais: rejeição de swipe sobre ajustes, reabertura da roda após editar, exibição de miniaturas reais da biblioteca de projetos, e abertura de Presets sem diálogos nativos.
+- Capturas esperadas: `noise-projects.png` e `noise-presets.png`, além de painel, transformação e fases da roda.
