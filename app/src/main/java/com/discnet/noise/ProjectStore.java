@@ -54,5 +54,74 @@ final class ProjectStore {
         d=new EditorDocument();d.values[52]=.18f;d.values[12]=.22f;d.values[54]=.22f;d.values[4]=-.22f;p.add(new Preset("builtin-film","Filme suave",d));
         d=new EditorDocument();d.values[0]=-1;d.values[3]=.25f;d.values[54]=.18f;p.add(new Preset("builtin-mono","Prata",d));
         d=new EditorDocument();d.values[9]=.94f;d.values[10]=.5f;p.add(new Preset("builtin-neon","Nonqual",d));
-        d=new EditorDocument();d.asciiEnabled=true;d.asciiDither=true;p.add(new Preset("builtin-ascii","ASCII Nonqual",d));return p;}
+        d=new EditorDocument();d.asciiEnabled=true;d.asciiDither=true;
+        p.add(new Preset("builtin-ascii","ASCII Nonqual",d));
+
+        // Original analog-camera inspired looks. Not copies of proprietary
+        // filters: every result is produced by Noise!'s own GPU parameters.
+        d=new EditorDocument();d.values[3]=-.13f;d.values[12]=.26f;d.values[13]=.24f;
+        d.values[54]=.31f;d.values[55]=.56f;d.values[15]=.29f;
+        d.values[0]=-.09f;d.values[4]=-.19f;d.values[52]=.14f;
+        p.add(new Preset("builtin-camera-pocket35","Pocket 35",d));
+
+        d=new EditorDocument();d.values[12]=.28f;d.values[15]=.42f;
+        d.values[0]=-.12f;d.values[53]=.06f;d.values[54]=.25f;
+        d.values[52]=-.15f;d.values[6]=.17f;d.values[3]=.13f;
+        p.add(new Preset("builtin-camera-instant","Instantânea",d));
+
+        d=new EditorDocument();d.values[52]=.24f;d.values[13]=.27f;
+        d.values[12]=.31f;d.values[4]=-.21f;d.values[54]=.42f;
+        d.values[15]=.21f;d.values[0]=-.20f;d.values[3]=-.14f;
+        p.add(new Preset("builtin-camera-summer98","Verão 98",d));
+
+        d=new EditorDocument();d.values[3]=.25f;d.values[6]=-.20f;
+        d.values[54]=.66f;d.values[55]=.38f;d.values[56]=.63f;
+        d.values[0]=-.16f;d.values[15]=.31f;d.values[52]=-.06f;
+        p.add(new Preset("builtin-camera-film400","Filme 400",d));
+
+        d=new EditorDocument();d.values[0]=-.19f;d.values[12]=.32f;
+        d.values[3]=.17f;d.values[52]=-.24f;d.values[53]=.18f;
+        d.values[54]=.29f;d.values[15]=.44f;d.values[51]=.19f;
+        d.colorWheels[3]=-.18f;d.colorWheels[5]=.12f;
+        p.add(new Preset("builtin-camera-nightflash","Flash Noturno",d));
+
+        d=new EditorDocument();d.values[0]=-.48f;d.values[12]=.46f;
+        d.values[51]=.24f;d.values[6]=.26f;d.values[52]=.04f;
+        d.values[54]=.20f;d.values[15]=.22f;d.values[3]=-.28f;
+        p.add(new Preset("builtin-camera-worn","Filme Desbotado",d));
+
+        d=new EditorDocument();d.values[0]=-.86f;d.values[3]=.20f;
+        d.values[54]=.44f;d.values[55]=.71f;d.values[12]=.11f;
+        d.values[15]=.36f;d.values[6]=-.24f;d.values[4]=-.12f;
+        p.add(new Preset("builtin-camera-monosilver","Prata 1976",d));
+
+        d=new EditorDocument();d.values[52]=.32f;d.values[53]=.16f;
+        d.values[0]=.08f;d.values[12]=.11f;d.values[10]=.18f;
+        d.values[57]=.69f;d.values[58]=.12f;d.values[54]=.24f;
+        d.values[4]=-.12f;d.values[15]=.19f;
+        p.add(new Preset("builtin-camera-amber","Negativo Âmbar",d));
+
+        d=new EditorDocument();d.values[0]=-.22f;d.values[52]=-.35f;
+        d.values[53]=-.11f;d.values[12]=.14f;d.values[54]=.27f;
+        d.values[15]=.29f;d.values[3]=.09f;d.values[5]=-.11f;
+        d.colorWheels[1]=.12f;d.colorWheels[5]=-.14f;
+        p.add(new Preset("builtin-camera-bluehour","Hora Azul",d));
+
+        d=new EditorDocument();d.values[52]=.22f;d.values[13]=.29f;
+        d.values[12]=.36f;d.values[54]=.47f;d.values[15]=.56f;
+        d.values[3]=-.19f;d.values[6]=.13f;d.values[4]=-.20f;
+        p.add(new Preset("builtin-camera-toy","Câmera de Brinquedo",d));
+
+        d=new EditorDocument();d.values[3]=.24f;d.values[0]=.08f;
+        d.values[12]=.15f;d.values[54]=.21f;d.values[52]=-.15f;
+        d.values[51]=-.06f;d.values[15]=.18f;d.values[1]=.08f;
+        p.add(new Preset("builtin-camera-citynight","Cidade 2002",d));
+
+        d=new EditorDocument();d.values[0]=-.12f;d.values[12]=.35f;
+        d.values[54]=.31f;d.values[51]=.18f;d.values[52]=.17f;
+        d.values[3]=-.11f;d.values[15]=.29f;d.values[4]=-.25f;
+        d.colorWheels[0]=.16f;d.colorWheels[4]=-.18f;
+        p.add(new Preset("builtin-camera-softprint","Papel Fosco",d));
+        return p;
+    }
 }
