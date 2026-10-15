@@ -25,6 +25,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float targetX,targetAlpha,targetScale=1f,targetScrim,targetFeather;
     private float horizontalVelocity;
     private boolean closing;
+    enum MenuState { CLOSED, OPENING, OPEN, CLOSING }
+    private MenuState state=MenuState.CLOSED;
+    MenuState menuState(){return state;}
     private final View scrim;
     private final View edgeFeather;
     private final LinearLayout content;
@@ -145,6 +148,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     float orbitalScreenX(){return orbitalIconScreenX(orbit.selected());}
     int orbitalSelected(){return orbit.selected();}
     int orbitalCount(){return names.length;}
+    int orbitalHitIndex(float x,float y){return orbit.itemAt(x,y);}
     float orbitalIconScreenX(int index){
         LinearLayout row=orbit.rows[index];
         ImageView icon=orbit.icons[index];
@@ -176,6 +180,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
     }
     private void targetOpen(){
+        state=MenuState.OPENING;
         closing=false;
         targetX=0f;
         targetAlpha=1f;
@@ -185,6 +190,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         requestMotion();
     }
     private void targetClosed(){
+        state=MenuState.CLOSING;
         closing=true;
         targetX=exitDirection();
         targetAlpha=0f;
@@ -242,6 +248,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             &&Math.abs(feather-targetFeather)<.005f
             &&Math.abs(scale-targetScale)<.0003f;
         if(settled){
+            state=closing?MenuState.CLOSED:MenuState.OPEN;
             content.setTranslationX(targetX);content.setAlpha(targetAlpha);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
             scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
@@ -289,7 +296,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
     }
     @Override public boolean onTouchEvent(MotionEvent e){
-        if(!horizontal)return super.onTouchEvent(e);
+        if(!horizontal){
+            if(e.getActionMasked()==MotionEvent.ACTION_UP){
+                float x=e.getX();float left=content.getLeft(),right=content.getRight();
+                boolean outside=effectsMode?x>right+dp(7):x<left-dp(7);
+                if(outside&&navigate!=null&&state!=MenuState.CLOSING){
+                    navigate.navigate(0);return true;
+                }
+            }
+            return true; // consume taps: never click through into the preview
+        }
         if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
             // A drag on an already-open wheel is only a navigation intent;
             // the menu never translates rigidly with the finger.
@@ -529,9 +545,30 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             followOffset();
         }
         @Override public boolean onInterceptTouchEvent(MotionEvent ev){
-            if(ev.getActionMasked()==MotionEvent.ACTION_DOWN)return true;
-            return true;
+            return true; // unify orbit drag and icon hit-testing
         }
+        /** Real transformed icon bounds: layout + translation + scale + pivot. */
+        private int hitIndex(float x,float y){
+            int hit=-1;float best=Float.MAX_VALUE;
+            for(int i=0;i<rows.length;i++){
+                LinearLayout row=rows[i];
+                if(row.getVisibility()!=VISIBLE||row.getAlpha()<.12f)continue;
+                ImageView icon=icons[i];float sx=row.getScaleX(),sy=row.getScaleY();
+                float px=row.getPivotX(),py=row.getPivotY();
+                float left=row.getX()+px+(icon.getX()-px)*sx;
+                float right=left+icon.getWidth()*sx;
+                float top=row.getY()+py+(icon.getY()-py)*sy;
+                float bottom=top+icon.getHeight()*sy;
+                float margin=dp(11);
+                if(x>=left-margin&&x<=right+margin&&y>=top-margin&&y<=bottom+margin){
+                    float cx=(left+right)*.5f,cy=(top+bottom)*.5f;
+                    float distance=(x-cx)*(x-cx)+(y-cy)*(y-cy);
+                    if(distance<best){hit=i;best=distance;}
+                }
+            }
+            return hit;
+        }
+        int itemAt(float x,float y){return hitIndex(x,y);}
         @Override public boolean onTouchEvent(MotionEvent ev){
             switch(ev.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:
@@ -551,15 +588,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 case MotionEvent.ACTION_UP:
                     if(velocity!=null)velocity.addMovement(ev);
                     if(!dragged){
-                        float y=ev.getY(),x=ev.getX();int hit=-1;float closest=Float.MAX_VALUE;
-                        for(int i=0;i<names.length;i++){
-                            float angle=(i-offset)*STEP;
-                            if(Math.abs(angle)>1.42f)continue;
-                            float ix=arcX(angle)-dp(75),iy=arcY(angle);
-                            float delta=Math.abs(iy-y)+Math.abs(ix-x)*.3f;
-                            if(delta<closest){closest=delta;hit=i;}
-                        }
-                        if(hit>=0&&closest<dp(82))goTo(hit);else settle(0);
+                        int hit=hitIndex(ev.getX(),ev.getY());
+                        if(hit>=0)goTo(hit);else settle(0);
                     }else if(velocity!=null){
                         velocity.computeCurrentVelocity(1000);
                         settle(velocity.getYVelocity());
