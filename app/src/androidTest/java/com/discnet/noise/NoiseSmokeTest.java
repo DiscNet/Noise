@@ -80,6 +80,40 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(current!=previous,"Home gradient must advance animation frames");
             }
             if(targeted){
+                stage("Camera: saturation, temperature and exposure use real pixels");
+                Bitmap cameraPlate=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
+                cameraPlate.eraseColor(Color.rgb(90,120,165));
+                Bitmap neutralCamera=CameraScreen.processPhoto(cameraPlate,1f,0f,0f);
+                Bitmap monoCamera=CameraScreen.processPhoto(cameraPlate,0f,0f,0f);
+                Bitmap warmCamera=CameraScreen.processPhoto(cameraPlate,1f,1f,0f);
+                Bitmap coolCamera=CameraScreen.processPhoto(cameraPlate,1f,-1f,0f);
+                Bitmap exposedCamera=CameraScreen.processPhoto(cameraPlate,1f,0f,1f);
+                Bitmap darkCamera=CameraScreen.processPhoto(cameraPlate,1f,0f,-1f);
+                int npx=neutralCamera.getPixel(4,4);
+                closeColor(npx,cameraPlate.getPixel(4,4),"Neutral camera preserves pixels");
+                int gray=monoCamera.getPixel(4,4);
+                require(Math.abs(Color.red(gray)-Color.green(gray))<=2
+                    &&Math.abs(Color.green(gray)-Color.blue(gray))<=2,
+                    "Zero saturation creates monochrome pixels");
+                int warm=warmCamera.getPixel(4,4),cool=coolCamera.getPixel(4,4);
+                require(Color.red(warm)>Color.red(cool)+15
+                    &&Color.blue(warm)<Color.blue(cool)-15,
+                    "Temperature slider visibly shifts warm and cold");
+                require(Color.red(exposedCamera.getPixel(4,4))>Color.red(npx)+40
+                    &&Color.red(darkCamera.getPixel(4,4))<Color.red(npx)-25,
+                    "Live exposure applies real positive and negative EV");
+                for(Bitmap b:new Bitmap[]{cameraPlate,neutralCamera,monoCamera,
+                    warmCamera,coolCamera,exposedCamera,darkCamera})b.recycle();
+                // Construct without opening hardware: emulator CI may have no camera.
+                final CameraScreen[] cameraUi=new CameraScreen[1];
+                runOnMainSync(()->cameraUi[0]=new CameraScreen(activity,
+                    new CameraScreen.Listener(){
+                        public void close(){}
+                        public void edit(Uri photo){}
+                    }));
+                require(((java.util.ArrayList<?>)field(cameraUi[0],"bars")).size()==3,
+                    "Camera includes exactly three live controls");
+                runOnMainSync(()->cameraUi[0].dispose());
                 // Fast regression gate for pull requests. Full GPU/control
                 // exhaustive suite remains available without -e noise_test_mode.
                 stage("V1.30.2 targeted presets + circle + GPU");
