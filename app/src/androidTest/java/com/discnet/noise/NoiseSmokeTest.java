@@ -32,6 +32,8 @@ public class NoiseSmokeTest extends Instrumentation {
             Intent launch = new Intent(getTargetContext(), MainActivity.class); launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             MainActivity activity = (MainActivity) startActivitySync(launch); waitForIdleSync();
             SystemClock.sleep(800);
+            require(activity.getPreferences(0).getBoolean("gallery_permission_first_launch_asked",false),
+                "First app launch records the initial permission request");
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
@@ -42,6 +44,71 @@ public class NoiseSmokeTest extends Instrumentation {
                 int c = source.getPixel(x, y); closeColor(neutral.getPixel(x,y), c, "Neutral/orientation");
                 if (Color.alpha(c) > 0) closeColor(inverted.getPixel(x,y), (c & 0xff000000) | ((~c) & 0xffffff), "Invert");
             }
+            stage("Whites slider GPU response");
+            Bitmap whitesSource=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
+            whitesSource.eraseColor(0xffb8b8b8);
+            for(int y=4;y<8;y++)for(int x=0;x<8;x++)whitesSource.setPixel(x,y,0xff282828);
+            EditorDocument whitesDefault=new EditorDocument();
+            Bitmap whitesNeutral=GpuExporter.render(getTargetContext(),whitesSource,whitesDefault.gpu(false));
+            EditorDocument whitesPlus=whitesDefault.copy();whitesPlus.values[5]=1f;
+            EditorDocument whitesMinus=whitesDefault.copy();whitesMinus.values[5]=-1f;
+            Bitmap whitesBright=GpuExporter.render(getTargetContext(),whitesSource,whitesPlus.gpu(false));
+            Bitmap whitesDark=GpuExporter.render(getTargetContext(),whitesSource,whitesMinus.gpu(false));
+            int neutralUpper=Color.red(whitesNeutral.getPixel(2,2));
+            require(Color.red(whitesBright.getPixel(2,2))>neutralUpper+10,
+                "Whites +100% visibly increases near-white luminosity");
+            require(Color.red(whitesDark.getPixel(2,2))<neutralUpper-10,
+                "Whites -100% visibly reduces near-white luminosity");
+            require(Math.abs(Color.red(whitesBright.getPixel(2,6))-Color.red(whitesNeutral.getPixel(2,6)))<=3,
+                "Whites do not wash out dark shadows");
+            Bitmap whitesOriginal=GpuExporter.render(getTargetContext(),whitesSource,whitesPlus.gpu(true));
+            closeColor(whitesOriginal.getPixel(2,2),whitesSource.getPixel(2,2),
+                "Original comparison bypasses Whites");
+            whitesOriginal.recycle();whitesNeutral.recycle();whitesBright.recycle();whitesDark.recycle();whitesSource.recycle();
+
+            // Low-contrast and colored photography must respond to Whites,
+            // rather than only very bright, near-white image pixels.
+            stage("Whites and Glow on dim and colored images");
+            Bitmap lowKey=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
+            lowKey.eraseColor(0xff35323e);
+            for(int y=10;y<54;y++)for(int x=12;x<52;x++)
+                lowKey.setPixel(x,y,0xff69584e);
+            EditorDocument lowNeutral=new EditorDocument();
+            EditorDocument midWhites=lowNeutral.copy();
+            midWhites.values[5]=1f;
+            Bitmap baseline=GpuExporter.render(getTargetContext(),lowKey,lowNeutral.gpu(false));
+            Bitmap midBright=GpuExporter.render(getTargetContext(),lowKey,midWhites.gpu(false));
+            int sumBright=0, sumNeutral=0;
+            for(int y=16;y<48;y+=4)for(int x=16;x<48;x+=4){
+                sumBright+=Color.red(midBright.getPixel(x,y))
+                    +Color.green(midBright.getPixel(x,y))+Color.blue(midBright.getPixel(x,y));
+                sumNeutral+=Color.red(baseline.getPixel(x,y))
+                    +Color.green(baseline.getPixel(x,y))+Color.blue(baseline.getPixel(x,y));
+            }
+            require(sumBright>sumNeutral+320,
+                "Whites +100% must affect medium-toned colored images");
+            EditorDocument lowGlow=lowNeutral.copy();
+            lowGlow.values[10]=1.5f;
+            lowGlow.values[57]=.95f; // old hard gate hid Glow at this threshold
+            lowGlow.values[58]=.65f;
+            Bitmap glowing=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(false));
+            int lumGlow=Color.red(glowing.getPixel(32,32))
+                +Color.green(glowing.getPixel(32,32))+Color.blue(glowing.getPixel(32,32));
+            int lumBase=Color.red(baseline.getPixel(32,32))
+                +Color.green(baseline.getPixel(32,32))+Color.blue(baseline.getPixel(32,32));
+            require(lumGlow>lumBase+15,
+                "Glow needs visible energy on a dark low-contrast colored image");
+            // Threshold 100% must remain numerically well-defined.
+            lowGlow.values[57]=1f;
+            Bitmap maxThreshold=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(false));
+            require(Color.red(maxThreshold.getPixel(32,32))>Color.red(baseline.getPixel(32,32)),
+                "Glow threshold 100% must not disappear or become undefined");
+            Bitmap bypassGlow=GpuExporter.render(getTargetContext(),lowKey,lowGlow.gpu(true));
+            closeColor(bypassGlow.getPixel(32,32),lowKey.getPixel(32,32),
+                "Original compare bypasses Glow");
+            baseline.recycle();midBright.recycle();glowing.recycle();
+            maxThreshold.recycle();bypassGlow.recycle();lowKey.recycle();
+
             ByteArrayOutputStream bytes = new ByteArrayOutputStream(); inverted.compress(Bitmap.CompressFormat.PNG, 100, bytes);
             byte[] png = bytes.toByteArray(); Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
             closeColor(decoded.getPixel(1, 2), inverted.getPixel(1, 2), "PNG alpha"); decoded.recycle();
@@ -354,6 +421,174 @@ public class NoiseSmokeTest extends Instrumentation {
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
             for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            stage("orbital tool gesture and functional effect routing");
+            runOnMainSync(activity::openEffects);waitForIdleSync();
+            OrbitalSelector orbital=(OrbitalSelector)field(activity,"orbital");
+            View orbitStage=(View)field(orbital,"orbit");
+            require(orbitStage.getHeight()>0&&orbitStage.getWidth()>0,"Orbital selector measured");
+            float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
+            long time=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time,MotionEvent.ACTION_DOWN,gestureX,from,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+110,MotionEvent.ACTION_MOVE,gestureX,(from+to)/2,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+180,MotionEvent.ACTION_MOVE,gestureX,to,0));
+                orbitStage.dispatchTouchEvent(MotionEvent.obtain(time,time+210,MotionEvent.ACTION_UP,gestureX,to,0));
+            });
+            SystemClock.sleep(800);
+            int orbitResult=orbital.selected();
+            require(orbitResult>0,"Orbital drag scrolls to a different effect");
+            TextView openEffect=(TextView)field(orbital,"continueButton");
+            runOnMainSync(openEffect::performClick);
+            require(panel.category==3&&panel.effect==orbitResult,"Orbital selection opens real effect controls");
+            stage("genuine circular wheels, mirrored side arcs, smooth scroll and fades");
+            SystemClock.sleep(520); // allow prior selection overlay to disappear
+            FrameLayout gestureHost=(FrameLayout)field(activity,"appBackground");
+            float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
+                +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
+            float width=gestureHost.getWidth();
+            // Center swipes must be ignored, even with a long horizontal travel.
+            long centerTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime,
+                    MotionEvent.ACTION_DOWN,width*.5f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+100,
+                    MotionEvent.ACTION_MOVE,width*.27f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+175,
+                    MotionEvent.ACTION_UP,width*.19f,gestureY,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Middle-screen horizontal swipe MUST NOT open a wheel");
+
+            // Wrong-way swipes from edges are also ignored.
+            long wrongTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime,
+                    MotionEvent.ACTION_DOWN,width*.04f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+90,
+                    MotionEvent.ACTION_MOVE,width*.005f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+160,
+                    MotionEvent.ACTION_UP,width*.005f,gestureY,0));
+            });
+            require(field(activity,"orbital")==null,"Outward swipe must not open a wheel");
+            float fromTools=width*.96f,toTools=width*.18f;
+            long gt=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt,
+                    MotionEvent.ACTION_DOWN,fromTools,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+95,
+                    MotionEvent.ACTION_MOVE,width*.68f,gestureY,0));
+            });
+            // Frame pacing must be observable: not frozen, and not instantly
+            // attached to the finger position without any damping.
+            SystemClock.sleep(85);
+            OrbitalSelector eased=(OrbitalSelector)field(activity,"orbital");
+            require(eased!=null && !eased.isEffects(),
+                "Regular swipe opens tools directly");
+            float alpha=eased.motionAlpha();
+            require(alpha>.01f && alpha<.96f,
+                "Wheel gradually fades in on display frames: "+alpha);
+            require(eased.getAlpha()==1f,"Overlay container stays fully opaque while scrim fades");
+            require(eased.wholeScreenDim(),
+                "Dark layer must cover entire screen, not only the menu side");
+            require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
+                "Full-screen dimmer fades in gradually from fully transparent");
+            require(eased.featherOpacity()>0f && eased.featherOpacity()<.60f,
+                "Side-specific feather gradient fades in smoothly");
+            require(eased.motionX()>0,
+                "Right-side Tools wheel eases in from the right");
+            require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
+                "Dark gradient builds slowly instead of immediately covering image");
+            require(eased.motionAlpha()<.85f,
+                "Wheel content remains translucent during the swipe");
+            runOnMainSync(()->{
+                // Moving the finger farther must never teleport or re-target
+                // the content. Choreographer owns the menu's visual position.
+                float xBefore=eased.motionX();
+                float alphaBefore=eased.motionAlpha();
+                float scrimBefore=eased.scrimOpacity();
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+170,
+                    MotionEvent.ACTION_MOVE,width*.30f,gestureY,0));
+                require(Math.abs(eased.motionX()-xBefore)<.15f
+                    &&Math.abs(eased.motionAlpha()-alphaBefore)<.005f
+                    &&Math.abs(eased.scrimOpacity()-scrimBefore)<.005f,
+                    "Menu and dimming must NOT mirror finger movement");
+            });
+            runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
+                MotionEvent.ACTION_UP,toTools,gestureY,0)));
+            // Immediately after release, final animation must still be running.
+            OrbitalSelector animated=(OrbitalSelector)field(activity,"orbital");
+            require(animated!=null&&animated.motionAlpha()<.99f,
+                "Menu must EASE IN after finger release instead of appearing instantly");
+            OrbitalSelector swipeTools=(OrbitalSelector)field(activity,"orbital");
+            require(swipeTools!=null && !swipeTools.isEffects(),
+                "Non-edge swipe opens tools");
+            waitForIdleSync();
+            require(swipeTools.dockLeft()>width*.09f,"Tools panel docks on RIGHT");
+            require(swipeTools.dockRight()==gestureHost.getWidth(),"Tools panel touches right edge");
+            require(swipeTools.orbitalScreenX()>width*.65f,"Tools orbit and active icon are on RIGHT");
+            int toolCenter=swipeTools.orbitalSelected();
+            int toolNeighbor=toolCenter+2<swipeTools.orbitalCount()?toolCenter+2:toolCenter-2;
+            require(swipeTools.orbitalIconScreenX(toolNeighbor)
+                    -swipeTools.orbitalScreenX()>EditorTheme.dp(getTargetContext(),16),
+                "Right-hand Tools wheel bulges toward RIGHT edge, not backward into image");
+            SystemClock.sleep(520);
+            float dimBeforeClose=swipeTools.scrimOpacity();
+            float menuBeforeClose=swipeTools.motionAlpha();
+            require(dimBeforeClose>.55f && menuBeforeClose>.65f,
+                "Menu and overlay became visible smoothly before close");
+            require(swipeTools.wholeScreenDim() && swipeTools.featherOpacity()>.70f,
+                "Entire editor is substantially darkened with separate edge gradient");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(90);
+            require(swipeTools.scrimOpacity()<dimBeforeClose
+                &&swipeTools.scrimOpacity()>0f
+                &&swipeTools.featherOpacity()>0f
+                &&swipeTools.featherOpacity()<.88f
+                &&swipeTools.motionAlpha()<menuBeforeClose
+                &&swipeTools.motionAlpha()>0f,
+                "Close applies gradual fade-out to menu AND background");
+            SystemClock.sleep(570);
+
+            float fromEffects=width*.04f,toEffects=width*.82f;
+            long ge=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge,
+                    MotionEvent.ACTION_DOWN,fromEffects,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+85,
+                    MotionEvent.ACTION_MOVE,width*.32f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+150,
+                    MotionEvent.ACTION_MOVE,toEffects,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(ge,ge+190,
+                    MotionEvent.ACTION_UP,toEffects,gestureY,0));
+            });
+            OrbitalSelector swipeEffects=(OrbitalSelector)field(activity,"orbital");
+            require(swipeEffects!=null&&swipeEffects.isEffects(),
+                "Left-to-right opens effects DIRECTLY, skipping tools");
+            waitForIdleSync();
+            require(swipeEffects.dockLeft()==0,"Effects panel docks on LEFT");
+            require(swipeEffects.dockRight()<width*.95f,"Effects stays clear of right edge");
+            require(swipeEffects.orbitalScreenX()<width*.35f,
+                "Effects orbit, active icon and labels occupy LEFT side");
+            int effectCenter=swipeEffects.orbitalSelected();
+            int effectNeighbor=effectCenter+2<swipeEffects.orbitalCount()?effectCenter+2:effectCenter-2;
+            require(swipeEffects.orbitalScreenX()
+                    -swipeEffects.orbitalIconScreenX(effectNeighbor)>EditorTheme.dp(getTargetContext(),16),
+                "Left-hand Effects wheel bulges toward LEFT edge, not backward into image");
+            // Another left swipe while a wheel is open must NOT switch modes.
+            long repeat=SystemClock.uptimeMillis();
+            float midY=swipeEffects.getHeight()*.55f;
+            runOnMainSync(()->{
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat,
+                    MotionEvent.ACTION_DOWN,fromTools,midY,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat+120,
+                    MotionEvent.ACTION_MOVE,width*.34f,midY,0));
+                swipeEffects.dispatchTouchEvent(MotionEvent.obtain(repeat,repeat+180,
+                    MotionEvent.ACTION_UP,toTools,midY,0));
+            });
+            require(field(activity,"orbital")==swipeEffects && swipeEffects.isEffects(),
+                "Repeating the left swipe does not chain menus");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(630);
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             int expanded=workspace.sheetHeight();runOnMainSync(()->workspace.resizeSheet(EditorTheme.dp(getTargetContext(),48)));waitForIdleSync();require(workspace.sheetHeight()<expanded,"Sheet collapses");runOnMainSync(()->workspace.resizeSheet(expanded));
             for(int[] dims:new int[][]{{320,568},{800,360},{800,1100}}){runOnMainSync(()->{workspace.measure(View.MeasureSpec.makeMeasureSpec(dims[0],View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(dims[1],View.MeasureSpec.EXACTLY));workspace.layout(0,0,dims[0],dims[1]);});require(workspace.stage.getMeasuredWidth()>0&&workspace.stage.getMeasuredHeight()>0,"Canvas visible at "+dims[0]+"x"+dims[1]);require(workspace.panel.getBottom()<=dims[1],"Panel inside viewport");require(workspace.categories.getBottom()<=dims[1],"Navigation inside viewport");}

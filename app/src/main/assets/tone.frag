@@ -70,10 +70,27 @@ void main(){
           + dot(c, vec3((1.0 - uHue.x) / 3.0));
         c = (c * uColor.z - 0.5) * uColor.w + 0.5;
         lum = clamp(luminance(c), 0.0, 1.0);
+        // Realces and pretos retain their own curves.
         c += uTone.x * 0.45 * smoothstep(0.45, 1.0, lum)
-           + uTone.y * 0.35 * smoothstep(0.70, 1.0, lum)
            + uTone.z * 0.35 * (1.0 - smoothstep(0.0, 0.35, lum));
 
+        // Brancos: adaptive white-point curve. Bright colored areas and
+        // upper-midtone pixels now respond as well as near-white grayscale.
+        // The older double attenuation (mix by upper AND exponent by upper)
+        // made photos without strong highlights look unchanged.
+        float peak = max(c.r, max(c.g, c.b));
+        float whiteSignal = clamp(mix(luminance(c), peak, 0.28), 0.0, 1.0);
+        float upper = pow(smoothstep(0.16, 0.89, whiteSignal), 0.72);
+        float amount = uTone.y;
+        if (abs(amount) > 0.0001) {
+            float strength = 1.65 * abs(amount) * upper;
+            float response = 0.92 * (1.0 - exp(-strength));
+            // Shadows are protected by upper; smooth exponential compression
+            // keeps colors continuous and avoids hard brightness cutoffs.
+            c = amount > 0.0
+                ? c + (vec3(1.0) - c) * response
+                : c * (1.0 - response);
+        }
         c += uLight.x*.25 + uLight.y*.4*(1.0-smoothstep(.05,.65,lum));
         c = clamp(c, 0.0, 1.0);
 

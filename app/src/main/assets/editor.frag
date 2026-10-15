@@ -255,17 +255,39 @@ void main() {
             c = mix(c, dithered, min(amount, 1.0));
         }
 
-        // A symmetric 5x5 luminous kernel adds light; source geometry never moves.
+        // Robust Glow: emit light even when an otherwise valid image is
+        // predominantly dark. Previously a fixed, hard luminance threshold
+        // zeroed the entire kernel on low-key photography; at threshold 1.0,
+        // smoothstep(1,1,x) also produced undefined results on some GPUs.
+        // Only ADD light: the original pixel is never replaced or displaced.
         if (uStyle.y > 0.001) {
-            vec3 bloom=vec3(0.0); float weight=0.0;
+            vec3 bloom=vec3(0.0);
+            float weight=0.0;
+            float threshold=mix(0.035,0.82,clamp(uGlow.x,0.0,1.0));
             for(int yy=-2;yy<=2;yy++)for(int xx=-2;xx<=2;xx++){
                 vec2 offset=vec2(float(xx),float(yy));
                 float w=exp(-dot(offset,offset)*.55);
-                vec3 n=straight(texture2D(uImage,clamp(vTexCoord+offset*uGlow.y*.5/uSize,0.0,1.0)));
-                float gate=smoothstep(uGlow.x,min(1.0,uGlow.x+.25),luminance(n));
-                bloom+=n*gate*w;weight+=w;
+                vec3 n=straight(texture2D(uImage,
+                    clamp(vTexCoord+offset*uGlow.y*.5/uSize,0.0,1.0)));
+                float peak=max(n.r,max(n.g,n.b));
+                float signal=max(luminance(n),peak*.68);
+                float bright=smoothstep(threshold*.30,threshold+.16,signal);
+                // Modest low-light emission remains, but truly black pixels
+                // cannot form halos. This avoids adding uniform grey fog.
+                float sourcePresence=smoothstep(.002,.15,peak);
+                float gate=sourcePresence*(.24+.76*bright);
+                bloom+=n*gate*w;
+                weight+=w;
             }
-            c=clamp(c+bloom/max(weight,.001)*uStyle.y*.55,0.0,1.0);
+            vec3 energy=bloom/max(weight,.001);
+            float strength=uStyle.y*(.54+.21*(1.0-clamp(uGlow.x,0.0,1.0)));
+            vec3 glowLight=energy*strength
+                +sqrt(max(energy,vec3(0.0)))*(.16*uStyle.y);
+            // Compress toward white rather than hard-clipping at 100%.
+            // Preserves visible progression from 100% to 200% Glow on
+            // moderately bright pixels, without introducing image blur.
+            c=vec3(1.0)-(vec3(1.0)-clamp(c,0.0,1.0))
+                *exp(-1.35*glowLight);
         }
         if(uGrain.x>.001){
             vec2 p=vTexCoord*uSize/max(1.0,uGrain.y);

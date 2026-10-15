@@ -41,6 +41,7 @@ public final class EditorSurface extends GLSurfaceView implements GLSurfaceView.
     }
     void gestures(Gestures g){gestures=g;}
     void resetViewport(){zoom=1;panX=panY=0;requestRender();}
+    boolean isZoomed(){return zoom>1.01f||scaling;}
     private void releaseCompare(){if(holding){holding=false;if(gestures!=null)gestures.compare(false);}}
     @Override public boolean onTouchEvent(MotionEvent e){scale.onTouchEvent(e);taps.onTouchEvent(e);
         if(e.getActionMasked()==MotionEvent.ACTION_UP||e.getActionMasked()==MotionEvent.ACTION_CANCEL){releaseCompare();scaling=false;performClick();}return true;}

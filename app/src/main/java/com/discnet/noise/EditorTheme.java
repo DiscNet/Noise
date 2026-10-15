@@ -10,8 +10,8 @@ import android.widget.SeekBar;
 
 /** Noise! workspace styling: opaque neutral surfaces, restrained typography, no glass. */
 final class EditorTheme {
-    static final int INK=0xfff4f4f6, MUTED=0xffa8aab3;
-    static final int LIME=0xffadc5ff, CYAN=0xffadc5ff, VIOLET=0xffadc5ff;
+    static final int INK=0xfff5f2f8, MUTED=0xff98929f;
+    static final int LIME=0xffd8b4f8, CYAN=0xffb79ad9, VIOLET=0xffa986d4;
     static int dp(Context context,float n){
         return Math.round(n*context.getResources().getDisplayMetrics().density);
     }
@@ -20,12 +20,12 @@ final class EditorTheme {
         d.setColor(first);
         d.setCornerRadius(dp(context,radius));
         // No colored bevels, inner reflections, gradients or transparency tricks.
-        if((border>>>24)>0x50)d.setStroke(dp(context,1),0xff3a3b42);
+        if((border>>>24)>0x50)d.setStroke(dp(context,1),0xff38343f);
         return d;
     }
     static void button(View view,boolean primary){
         Context c=view.getContext();
-        GradientDrawable background=panel(c,primary?LIME:0xff27282e,0,10,0);
+        GradientDrawable background=panel(c,primary?LIME:0xff211f29,0,24,0);
         view.setBackground(new RippleDrawable(
             ColorStateList.valueOf(primary?0x33000000:0x28ffffff),background,null));
         view.setMinimumHeight(dp(c,40));
@@ -34,16 +34,16 @@ final class EditorTheme {
     static final class Backdrop extends FrameLayout {
         Backdrop(Context context){
             super(context);
-            setBackgroundColor(0xff101115);
+            setBackgroundColor(0xff0c0b10);
         }
     }
     /** Compatibility name for older views; returns an opaque flat panel. */
     static Drawable surface(Context context,float radius){
-        return panel(context,0xff202126,0xff202126,radius,0);
+        return panel(context,0xff17161d,0xff17161d,radius,0);
     }
     /** Compatibility name for older views; returns an opaque flat panel. */
     static Drawable buttonSurface(Context context,float radius,boolean primary){
-        return panel(context,primary?LIME:0xff25262b,0,radius,0);
+        return panel(context,primary?LIME:0xff211f29,0,radius,0);
     }
     static final class Slider extends SeekBar {
         private int neutralProgress;
@@ -67,13 +67,13 @@ final class EditorTheme {
             paint.setStyle(Paint.Style.FILL);
             paint.setShader(null);paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(dp(getContext(),3));
-            paint.setColor(0xff45464e);
+            paint.setColor(0xff423d49);
             canvas.drawLine(left,y,right,y,paint);
             float neutralX=left+(right-left)*neutralProgress/Math.max(1,getMax());
-            paint.setColor(0xff92969e);canvas.drawCircle(neutralX,y,dp(getContext(),2.5f),paint);
+            paint.setColor(0xff81778e);canvas.drawCircle(neutralX,y,dp(getContext(),2.5f),paint);
             paint.setColor(isEnabled()?LIME:0xff737780);
             canvas.drawLine(neutralX,y,x,y,paint);
-            paint.setColor(0xfff5f5f8);
+            paint.setColor(0xfff5f2f8);
             canvas.drawCircle(x,y,dp(getContext(),isPressed()?7:6),paint);
         }
     }
