@@ -87,7 +87,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             boolean any=false;
             for(int i=0;i<this.names.length;i++)if(isFavorite(i)){
                 final int index=i;popup.getMenu().add(this.names[i]).setOnMenuItemClickListener(item->{
-                    orbit.goTo(index);return true;
+                    selectFavorite(index);return true;
                 });any=true;
             }
             if(any)popup.show();
@@ -133,6 +133,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         favorite.setText(isFavorite(orbit.selected())?"★":"☆");
         favorite.setContentDescription(isFavorite(orbit.selected())?"Remover dos favoritos":"Adicionar aos favoritos");
     }
+    private void selectFavorite(int index){if(orbit!=null)orbit.goTo(index);}
     private void toggleFavorite(){
         int index=orbit.selected();boolean next=!isFavorite(index);
         getContext().getSharedPreferences("noise_favorites",Context.MODE_PRIVATE)
