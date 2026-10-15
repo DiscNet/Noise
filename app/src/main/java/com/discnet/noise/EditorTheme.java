@@ -47,6 +47,7 @@ final class EditorTheme {
     }
     static final class Slider extends SeekBar {
         private int neutralProgress;
+        private float thumbRadius=6f;
         void neutral(int n){neutralProgress=n;invalidate();}
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         Slider(Context context,int accent){
@@ -58,7 +59,7 @@ final class EditorTheme {
             thumb.setSize(dp(context,18),dp(context,18));
             setThumb(thumb);setThumbOffset(dp(context,9));
             setSplitTrack(false);
-            setMinimumHeight(dp(context,36));
+            setMinimumHeight(dp(context,37));
         }
         @Override protected synchronized void onDraw(Canvas canvas){
             float left=getPaddingLeft(),right=getWidth()-getPaddingRight();
@@ -67,14 +68,20 @@ final class EditorTheme {
             paint.setStyle(Paint.Style.FILL);
             paint.setShader(null);paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(dp(getContext(),3));
-            paint.setColor(0xff423d49);
+            paint.setColor(0xff3d3944);
             canvas.drawLine(left,y,right,y,paint);
             float neutralX=left+(right-left)*neutralProgress/Math.max(1,getMax());
-            paint.setColor(0xff81778e);canvas.drawCircle(neutralX,y,dp(getContext(),2.5f),paint);
+            paint.setColor(0xffa89ab6);
+            canvas.drawCircle(neutralX,y,dp(getContext(),2f),paint);
             paint.setColor(isEnabled()?LIME:0xff737780);
             canvas.drawLine(neutralX,y,x,y,paint);
-            paint.setColor(0xfff5f2f8);
-            canvas.drawCircle(x,y,dp(getContext(),isPressed()?7:6),paint);
+            paint.setColor(0x339f75ca);
+            float goal=isPressed()?8f:5.8f;
+            thumbRadius+= (goal-thumbRadius)*.27f;
+            canvas.drawCircle(x,y,dp(getContext(),thumbRadius+3f),paint);
+            paint.setColor(0xffeee2f9);
+            canvas.drawCircle(x,y,dp(getContext(),thumbRadius),paint);
+            if(Math.abs(goal-thumbRadius)>.15f)postInvalidateOnAnimation();
         }
     }
 }

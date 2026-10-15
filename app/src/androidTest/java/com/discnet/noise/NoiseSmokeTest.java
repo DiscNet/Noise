@@ -7,6 +7,7 @@ import android.os.*;
 import android.widget.*;
 import android.view.*;
 import java.io.*;
+import java.util.ArrayList;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import android.net.Uri;
@@ -15,7 +16,12 @@ import android.database.Cursor;
 
 /** Runs on a real Android emulator, including the production GLES shader and export path. */
 public class NoiseSmokeTest extends Instrumentation {
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    private boolean targeted;
+    @Override public void onCreate(Bundle args) {
+        super.onCreate(args);
+        targeted=args!=null&&"targeted".equals(args.getString("noise_test_mode"));
+        start();
+    }
     private void require(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     private Object field(Object object, String name) throws Exception { Field f = object.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(object); }
     private void closeColor(int actual, int expected, String name) {
@@ -34,6 +40,53 @@ public class NoiseSmokeTest extends Instrumentation {
             SystemClock.sleep(800);
             require(activity.getPreferences(0).getBoolean("gallery_permission_first_launch_asked",false),
                 "First app launch records the initial permission request");
+            HomeScreen home=(HomeScreen)field(activity,"homeScreen");
+            require(home!=null,"Noise home screen exists");
+            require(home.getChildAt(0).getClass().getSimpleName().equals("StockAtmosphere"),
+                "Home renders ambient blurred stock-art behind its content");
+            saveScreenshot("noise-home.png");
+            View atmosphere=home.getChildAt(0);
+            if(android.animation.ValueAnimator.areAnimatorsEnabled()){
+                float previous=(Float)field(atmosphere,"phase");
+                SystemClock.sleep(115);
+                float current=(Float)field(atmosphere,"phase");
+                require(current!=previous,"Home gradient must advance animation frames");
+            }
+            if(targeted){
+                // Fast regression gate for pull requests. Full GPU/control
+                // exhaustive suite remains available without -e noise_test_mode.
+                stage("V1.30.2 targeted presets + circle + GPU");
+                ArrayList<ProjectStore.Preset> cameraLooks=ProjectStore.builtins();
+                int count=0;ProjectStore.Preset rich=null;
+                for(ProjectStore.Preset p:cameraLooks){
+                    if(!p.id.startsWith("builtin-camera-"))continue;
+                    count++;
+                    for(int n:new int[]{7,14,54,65})
+                        require(p.document.values[n]==0f,
+                            p.name+" has generated noise at control "+n);
+                    if(p.id.equals("builtin-camera-copper-rich"))rich=p;
+                }
+                require(count==13&&rich!=null,"Thirteen noise-free analog presets");
+                require(rich.document.values[66]>.90f&&rich.document.values[67]>.70f,
+                    "Rich warm color response and halation remain active");
+                require(rich.document.same(EditorDocument.fromJson(rich.document.toJson())),
+                    "Preset JSON preserves existing projects");
+                // Actual GPU image comparison at a small resolution prevents
+                // an accidental no-op preset while keeping CI < emulator limit.
+                Bitmap photo=Bitmap.createBitmap(12,12,Bitmap.Config.ARGB_8888);
+                for(int y=0;y<12;y++)for(int x=0;x<12;x++)
+                    photo.setPixel(x,y,Color.rgb(70+x*10,40+y*8,96+x*3));
+                Bitmap styled=GpuExporter.render(getTargetContext(),photo,rich.document.gpu(false));
+                Bitmap baseline=GpuExporter.render(getTargetContext(),photo,new EditorDocument().gpu(false));
+                int diff=0;
+                for(int y=0;y<12;y++)for(int x=0;x<12;x++)
+                    if(styled.getPixel(x,y)!=baseline.getPixel(x,y))diff++;
+                require(diff>70,"Grain-free retro film still changes real GPU pixels");
+                photo.recycle();styled.recycle();baseline.recycle();
+                result.putString("stream","NOISE_SMOKE_OK: V1.30.2 targeted GPU and noise-free presets\n");
+                finish(Activity.RESULT_OK,result);
+                return;
+            }
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
@@ -44,6 +97,24 @@ public class NoiseSmokeTest extends Instrumentation {
                 int c = source.getPixel(x, y); closeColor(neutral.getPixel(x,y), c, "Neutral/orientation");
                 if (Color.alpha(c) > 0) closeColor(inverted.getPixel(x,y), (c & 0xff000000) | ((~c) & 0xffffff), "Invert");
             }
+            stage("settings: opt-in panel resize and independent custom page");
+            java.lang.reflect.Method showSettings=MainActivity.class.getDeclaredMethod("showSettings");
+            showSettings.setAccessible(true);
+            runOnMainSync(()->{
+                try{showSettings.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            SettingsScreen settings=(SettingsScreen)field(activity,"settingsScreen");
+            require(settings!=null,"Settings accessible from the app");
+            TextView settingToggle=(TextView)field(settings,"toggle");
+            boolean initial=SettingsScreen.resizePanelEnabled(activity);
+            runOnMainSync(()->settingToggle.performClick());
+            require(SettingsScreen.resizePanelEnabled(activity)!=initial,
+                "Preference toggles and persists to device preferences");
+            runOnMainSync(()->settingToggle.performClick());
+            require(SettingsScreen.resizePanelEnabled(activity)==initial,
+                "Settings can be restored");
+            runOnMainSync(activity::onBackPressed);
+            require(field(activity,"settingsScreen")==null,"Settings closes with Android Back");
             stage("Whites slider GPU response");
             Bitmap whitesSource=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
             whitesSource.eraseColor(0xffb8b8b8);
@@ -108,6 +179,60 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Original compare bypasses Glow");
             baseline.recycle();midBright.recycle();glowing.recycle();
             maxThreshold.recycle();bypassGlow.recycle();lowKey.recycle();
+
+            stage("GPU three wheels, color curves, blend, HDR and real denoise");
+            Bitmap colorPlate=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);
+            for(int y=0;y<96;y++)for(int x=0;x<96;x++){
+                int red=35+x*2,green=25+y*2,blue=40+(x+y)/2;
+                colorPlate.setPixel(x,y,Color.rgb(Math.min(255,red),Math.min(255,green),Math.min(255,blue)));
+            }
+            EditorDocument colorDefault=new EditorDocument();
+            Bitmap colorBase=GpuExporter.render(getTargetContext(),colorPlate,colorDefault.gpu(false));
+            EditorDocument colored=colorDefault.copy();
+            colored.colorWheels[0]=.9f;colored.colorWheels[3]=-.8f;
+            colored.colorCurves[0]=.8f;colored.colorCurves[7]=-.9f;
+            colored.colorCurves[15]=.7f;
+            Bitmap colorNew=GpuExporter.render(getTargetContext(),colorPlate,colored.gpu(false));
+            int changedColor=0;
+            for(int y=8;y<88;y+=3)for(int x=8;x<88;x+=3)
+                if(colorBase.getPixel(x,y)!=colorNew.getPixel(x,y))changedColor++;
+            require(changedColor>300,"Three color wheels and Hue/Saturation curves change GPU pixels");
+            EditorDocument colorRoundtrip=EditorDocument.fromJson(colored.toJson());
+            require(colored.same(colorRoundtrip),"Curve and wheel edits survive project JSON round trip");
+            EditorDocument blendTest=colored.copy();blendTest.blendMode=1;
+            Bitmap multiply=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            require(multiply.getPixel(40,40)!=colorNew.getPixel(40,40),
+                "Multiply is an actual graded image blend mode");
+            blendTest.blendMode=2;
+            Bitmap screen=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            require(screen.getPixel(40,40)!=multiply.getPixel(40,40),
+                "Screen differs from Multiply");
+            blendTest.values[64]=0f;
+            Bitmap blendOff=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            closeColor(blendOff.getPixel(40,40),colorPlate.getPixel(40,40),
+                "Zero grading opacity preserves the original pixels");
+            EditorDocument hdrDoc=colorDefault.copy();hdrDoc.values[60]=.9f;hdrDoc.values[61]=.8f;
+            Bitmap hdrOutput=GpuExporter.render(getTargetContext(),colorPlate,hdrDoc.gpu(false));
+            require(hdrOutput.getPixel(40,40)!=colorBase.getPixel(40,40),
+                "HDR range and microcontrast must affect actual pixels");
+            Bitmap rawNoise=Bitmap.createBitmap(48,48,Bitmap.Config.ARGB_8888);
+            for(int y=0;y<48;y++)for(int x=0;x<48;x++){
+                int v=(((x*17+y*23)%7)<3)?153:103;
+                rawNoise.setPixel(x,y,Color.rgb(v,v,v));
+            }
+            EditorDocument noiseDoc=new EditorDocument();
+            noiseDoc.values[62]=1f;noiseDoc.values[63]=.3f;
+            Bitmap filtered=GpuExporter.render(getTargetContext(),rawNoise,noiseDoc.gpu(false));
+            Bitmap noisy=GpuExporter.render(getTargetContext(),rawNoise,colorDefault.gpu(false));
+            int noiseChanged=0;
+            for(int y=4;y<44;y++)for(int x=4;x<44;x++)
+                if(filtered.getPixel(x,y)!=noisy.getPixel(x,y))noiseChanged++;
+            require(noiseChanged>800,"Reduction of noise must visibly change noisy pixels");
+            Bitmap originalGrade=GpuExporter.render(getTargetContext(),colorPlate,colored.gpu(true));
+            closeColor(originalGrade.getPixel(40,40),colorPlate.getPixel(40,40),
+                "Original comparison bypasses all color grades");
+            for(Bitmap tmp:new Bitmap[]{colorBase,colorNew,multiply,screen,blendOff,hdrOutput,
+                filtered,noisy,originalGrade,colorPlate,rawNoise})tmp.recycle();
 
             ByteArrayOutputStream bytes = new ByteArrayOutputStream(); inverted.compress(Bitmap.CompressFormat.PNG, 100, bytes);
             byte[] png = bytes.toByteArray(); Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
@@ -371,6 +496,35 @@ public class NoiseSmokeTest extends Instrumentation {
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
+            stage("rich film stocks and thirteen analog camera looks");
+            ArrayList<ProjectStore.Preset> builtinLooks=ProjectStore.builtins();
+            require(builtinLooks.size()>=18,"13 analog camera presets added without removing old presets");
+            require(builtinLooks.get(3).id.equals("builtin-neon"),
+                "Prior preset indices preserved for existing Neon tool");
+            java.util.HashSet<String> analogIds=new java.util.HashSet<>();
+            for(ProjectStore.Preset look:builtinLooks){
+                if(!look.id.startsWith("builtin-camera-"))continue;
+                require(analogIds.add(look.id),"Analog camera preset names/IDs must be unique");
+                require(look.document!=null,"Every analog look has an editable document");
+                require(look.document.same(EditorDocument.fromJson(look.document.toJson())),
+                    "Analog look survives JSON serialization");
+            }
+            require(analogIds.size()==13,"Thirteen unique analog styles available");
+            ProjectStore.Preset copper=null;
+            for(ProjectStore.Preset look:builtinLooks)
+                if(look.id.equals("builtin-camera-copper-rich"))copper=look;
+            require(copper!=null&&copper.document.values[65]==0f
+                &&copper.document.values[66]>.90f
+                &&copper.document.values[67]>.70f,
+                "Rich copper film keeps warm response and halation, WITHOUT grain");
+            for(ProjectStore.Preset camera:builtinLooks){
+                if(!camera.id.startsWith("builtin-camera-"))continue;
+                for(int noiseIndex:new int[]{7,14,54,65})
+                    require(camera.document.values[noiseIndex]==0f,
+                        camera.name+" must not generate any noise, grain or dust");
+            }
+            require(ProjectVault.validId(ProjectStore.newId())&&!ProjectVault.validId("../bad"),
+                "Shared vault rejects invalid project document IDs");
             stage("document transactions and persistence");
             EditorDocument doc=new EditorDocument();EditHistory history=new EditHistory();history.begin(doc);
             for(int i=0;i<50;i++)doc.values[2]=i/100f;history.commit(doc);
@@ -389,6 +543,19 @@ public class NoiseSmokeTest extends Instrumentation {
             Bitmap controlsSource=scene();
             Bitmap controlsFixture=Bitmap.createScaledBitmap(controlsSource,128,96,true);
             controlsSource.recycle();
+            stage("film stock changes real pixels and compares with bypass");
+            EditorDocument richFilm=copper.document.copy();
+            Bitmap analog=GpuExporter.render(getTargetContext(),controlsFixture,richFilm.gpu(false));
+            Bitmap clean=GpuExporter.render(getTargetContext(),controlsFixture,new EditorDocument().gpu(false));
+            Bitmap bypassFilm=GpuExporter.render(getTargetContext(),controlsFixture,richFilm.gpu(true));
+            int analogChanged=0;
+            for(int y=6;y<90;y+=2)for(int x=6;x<122;x+=2){
+                if(analog.getPixel(x,y)!=clean.getPixel(x,y))analogChanged++;
+                closeColor(bypassFilm.getPixel(x,y),controlsFixture.getPixel(x,y),
+                    "Original bypasses film emulsion");
+            }
+            require(analogChanged>1200,"Film emulsion should be visibly different across image pixels");
+            analog.recycle();clean.recycle();bypassFilm.recycle();
             for(int id=0;id<AdjustmentSpec.COUNT;id++){
                 EditorDocument lo=new EditorDocument();
                 if(id>=20&&id<26)lo.values[9]=1;
@@ -396,6 +563,8 @@ public class NoiseSmokeTest extends Instrumentation {
                 if(id>=44&&id<50)lo.asciiEnabled=true;
                 if(id==55||id==56)lo.values[54]=1;
                 if(id==57||id==58)lo.values[10]=1;
+                if(id==63)lo.values[62]=1f; // edge preservation needs active denoise
+                if(id==64)lo.values[60]=.8f; // blend opacity needs an altered grade
                 EditorDocument hi=lo.copy();// Hue is periodic: -180° and +180° are visually identical.
                 lo.values[id]=id==8?-.5f:AdjustmentSpec.min(id);
                 hi.values[id]=id==8?.5f:AdjustmentSpec.max(id);
@@ -412,20 +581,160 @@ public class NoiseSmokeTest extends Instrumentation {
             EditorDocument asc=new EditorDocument();asc.asciiEnabled=true;Bitmap darkAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));asc.values[2]=.8f;Bitmap brightAscii=GpuExporter.render(getTargetContext(),controlsFixture,asc.gpu(false));delta=0;
             for(int y=0;y<96;y++)for(int x=0;x<128;x++)if(darkAscii.getPixel(x,y)!=brightAscii.getPixel(x,y))delta++;
             require(delta>100,"Exposure must feed ASCII tonal sampling");darkAscii.recycle();brightAscii.recycle();
+            stage("V1.28 explicit width/height resize, no upscale and old project compatibility");
+            EditorDocument resizedDoc=new EditorDocument();
+            resizedDoc.outputWidth=320;resizedDoc.outputHeight=180;
+            int[] requested=resizedDoc.outputSize(1280,720,4096);
+            require(requested[0]==320&&requested[1]==180,"Custom width and height apply precisely");
+            EditorDocument serialized=EditorDocument.fromJson(resizedDoc.toJson());
+            require(serialized.outputWidth==320&&serialized.outputHeight==180,
+                "Explicit resolution persists after project round trip");
+            resizedDoc.outputWidth=3000;resizedDoc.outputHeight=1700;
+            requested=resizedDoc.outputSize(1280,720,4096);
+            require(requested[0]<=1280&&requested[1]<=720,
+                "Upscaling explicitly disallowed, including asymmetric sizes");
+            resizedDoc.outputWidth=640;resizedDoc.outputHeight=360;
+            requested=resizedDoc.outputSize(1280,720,256);
+            require(requested[0]<=256&&requested[1]<=256,"GPU texture limit enforced");
+            EditorDocument legacy=new EditorDocument();
+            legacy.outputLongEdge=640;
+            EditorDocument restoredLegacy=EditorDocument.fromJson(legacy.toJson());
+            requested=restoredLegacy.outputSize(1280,720,4096);
+            require(requested[0]==640&&requested[1]==360,
+                "V1.27 size field remains compatible");
             stage("non-destructive transformed export");
             Bitmap quad=Bitmap.createBitmap(40,20,Bitmap.Config.ARGB_8888);for(int y=0;y<20;y++)for(int x=0;x<40;x++)quad.setPixel(x,y,x<20?Color.RED:Color.BLUE);
             EditorDocument geometry=new EditorDocument();geometry.left=.5f;int[] shape=geometry.outputSize(40,20,4096);Bitmap cropped=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);require(shape[0]==20&&shape[1]==20,"Crop changes output geometry");closeColor(cropped.getPixel(10,10),Color.BLUE,"Crop selects original source pixels");require(quad.getWidth()==40,"Crop never degrades original");cropped.recycle();geometry.left=0;geometry.rotation=1;shape=geometry.outputSize(40,20,4096);require(shape[0]==20&&shape[1]==40,"Rotation swaps geometry");Bitmap turned=GpuExporter.render(getTargetContext(),quad,geometry.gpu(false),shape[0],shape[1]);closeColor(turned.getPixel(10,5),Color.RED,"Clockwise rotation top");closeColor(turned.getPixel(10,35),Color.BLUE,"Clockwise rotation bottom");turned.recycle();quad.recycle();
             stage("UI import, adaptive workspace and live gestures");
+            // System SAF folder picker requires user authorization and is
+            // verified manually. Disable only its first-import prompt in CI.
+            runOnMainSync(()->activity.getPreferences(0).edit()
+                .putBoolean("project_vault_setup_asked",true).apply());
             runOnMainSync(()->activity.load(Uri.fromFile(input)));long deadline=SystemClock.uptimeMillis()+20000;
             while((Boolean)field(activity,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(30);
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
-            for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());
+                require(panel.category==i,"Category "+i+" reachable");
+                require(findDescendant(panel,android.widget.Switch.class)==null,
+                    "No on/off switch is shown for category "+i);
+            }
+            stage("panel resize is blocked when option disabled");
+            runOnMainSync(()->{
+                activity.getSharedPreferences(SettingsScreen.PREFS,0).edit()
+                    .putBoolean(SettingsScreen.RESIZE_PANEL,false).apply();
+                workspace.setSheetResizeEnabled(false);
+                panel.panelResizeEnabled(false);
+            });
+            int panelBefore=workspace.sheetHeight();
+            runOnMainSync(()->{workspace.resizeSheet(panelBefore+EditorTheme.dp(activity,120));
+                workspace.cycleSheet();});
+            require(workspace.sheetHeight()==panelBefore,
+                "Resizing panel is impossible while the setting is off");
+            runOnMainSync(()->{
+                try{showSettings.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            SettingsScreen enableSettings=(SettingsScreen)field(activity,"settingsScreen");
+            runOnMainSync(()->((TextView)fieldUnchecked(enableSettings,"toggle")).performClick());
+            require(workspace.isSheetResizeEnabled(),"Setting enables panel resizing immediately");
+            runOnMainSync(()->workspace.resizeSheet(panelBefore+EditorTheme.dp(activity,70)));
+            waitForIdleSync();
+            require(workspace.sheetHeight()!=panelBefore,"Enabled panel permits resizing");
+            runOnMainSync(()->{
+                ((TextView)fieldUnchecked(enableSettings,"toggle")).performClick();
+                activity.onBackPressed();
+            });
+            stage("gestures do not steal HSL curves or color-wheel drags");
+            runOnMainSync(()->panel.select(1));waitForIdleSync();
+            ColorCurveControl curve=(ColorCurveControl)findDescendant(panel,ColorCurveControl.class);
+            ColorWheelControl wheel=(ColorWheelControl)findDescendant(panel,ColorWheelControl.class);
+            require(curve!=null&&wheel!=null,"All custom color editors are present");
+            runOnMainSync(()->ensureVisible(panel.scroll,curve));
+            waitForIdleSync();
+            android.graphics.Rect colorRect=new android.graphics.Rect();
+            require(curve.getGlobalVisibleRect(colorRect)&&colorRect.height()>EditorTheme.dp(activity,32),
+                "Curve is fully available for direct editing");
+            require(panel.isOverColorEditor(colorRect.centerX(),colorRect.centerY()),
+                "Curve hit bounds take priority over orbital swipes");
+            int[] hostXY=new int[2];appBackgroundLocation(activity,hostXY);
+            FrameLayout rootGesture=(FrameLayout)field(activity,"appBackground");
+            float cx=colorRect.centerX()-hostXY[0],cy=colorRect.centerY()-hostXY[1];
+            long touchTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime,
+                    MotionEvent.ACTION_DOWN,cx,cy,0));
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime+70,
+                    MotionEvent.ACTION_MOVE,cx+EditorTheme.dp(activity,100),cy,0));
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime+110,
+                    MotionEvent.ACTION_UP,cx+EditorTheme.dp(activity,100),cy,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Dragging inside a color curve never opens an orbital menu");
+            runOnMainSync(()->ensureVisible(panel.scroll,wheel));waitForIdleSync();
+            require(wheel.getGlobalVisibleRect(colorRect)&&colorRect.height()>EditorTheme.dp(activity,24),
+                "Color wheel visible in panel");
+            require(panel.isOverColorEditor(colorRect.centerX(),colorRect.centerY()),
+                "Color wheel hit bounds take priority over orbital swipes");
+            stage("V1.28 resize dialog precision and context panel");
+            runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
+            saveScreenshot("noise-panel.png");
+            require(workspace.sheetState()!=null,"Workspace supports explicit compact/intermediate/expanded states");
+            EditorDocument sheetDoc=new EditorDocument();
+            final ResizeDialog[] sheet={null};
+            Bitmap resizePhoto=Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888);
+            runOnMainSync(()->{sheet[0]=new ResizeDialog(activity,resizePhoto,
+                sheetDoc,900,900,4096,(w,h,j,q,doExport)->{
+                    sheetDoc.outputWidth=w;sheetDoc.outputHeight=h;
+                });sheet[0].show();});
+            waitForIdleSync();
+            saveScreenshot("noise-transform.png");
+            EditText widthInput=(EditText)field(sheet[0],"width");
+            EditText heightInput=(EditText)field(sheet[0],"height");
+            runOnMainSync(()->widthInput.setText("450"));
+            require("450".contentEquals(heightInput.getText()),
+                "Aspect-lock synchronizes opposite dimension without a feedback cycle");
+            runOnMainSync(()->sheet[0].dismiss());resizePhoto.recycle();
+            stage("project library and preset library use Noise-owned screens");
+            runOnMainSync(()->activity.action("Meus projetos"));
+            long libraryDeadline=SystemClock.uptimeMillis()+12000;
+            ProjectLibraryScreen library=(ProjectLibraryScreen)field(activity,"projectLibrary");
+            require(library!=null,"Custom project library overlay opens");
+            require(field(library,"vaultButton") instanceof TextView,
+                "Shared-folder backup and restore available from project library");
+            while(library.projectCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
+                SystemClock.sleep(90);
+            require(library.projectCount()>0,"Imported project appears in custom library");
+            while(library.previewCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
+                SystemClock.sleep(90);
+            require(library.previewCount()>0,"At least one real project image preview decoded");
+            saveScreenshot("noise-projects.png");
+            runOnMainSync(activity::onBackPressed);
+            require(field(activity,"projectLibrary")==null,"Project browser closes without stale touch overlay");
+            runOnMainSync(()->activity.action("Presets"));
+            long presetDeadline=SystemClock.uptimeMillis()+12000;
+            while(field(activity,"presetLibrary")==null&&SystemClock.uptimeMillis()<presetDeadline)
+                SystemClock.sleep(90);
+            require(field(activity,"presetLibrary") instanceof PresetDialog,
+                "Preset library uses custom Noise overlay, not AlertDialog");
+            saveScreenshot("noise-presets.png");
+            runOnMainSync(activity::onBackPressed);
             stage("orbital tool gesture and functional effect routing");
             runOnMainSync(activity::openEffects);waitForIdleSync();
             OrbitalSelector orbital=(OrbitalSelector)field(activity,"orbital");
             View orbitStage=(View)field(orbital,"orbit");
             require(orbitStage.getHeight()>0&&orbitStage.getWidth()>0,"Orbital selector measured");
+            LinearLayout[] hitRows=(LinearLayout[])field(orbitStage,"rows");
+            ImageView[] hitIcons=(ImageView[])field(orbitStage,"icons");
+            int activeIndex=orbital.selected();
+            float ix=hitRows[activeIndex].getX()+hitIcons[activeIndex].getX()
+                +hitIcons[activeIndex].getWidth()*.5f;
+            float iy=hitRows[activeIndex].getY()+hitIcons[activeIndex].getY()
+                +hitIcons[activeIndex].getHeight()*.5f;
+            require(orbital.orbitalHitIndex(ix,iy)==activeIndex,
+                "Hit-test identifies exact icon center with transformed coordinates");
+            require(hitIcons[activeIndex].getBackground().getClass()
+                .getSimpleName().equals("IconGlowFrame"),
+                "Selected orbital icon has a custom white-glow outline");
             float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
             long time=SystemClock.uptimeMillis();
             runOnMainSync(()->{
@@ -446,30 +755,64 @@ public class NoiseSmokeTest extends Instrumentation {
             float gestureY=gestureHost.getPaddingTop()+workspace.getTop()
                 +workspace.stage.getTop()+workspace.stage.getHeight()*.50f;
             float width=gestureHost.getWidth();
-            // Center swipes must be ignored, even with a long horizontal travel.
+            // Slider touch regions remain exclusive, even though the rest
+            // of the editor now accepts horizontal menu gestures.
+            android.graphics.Rect panelBounds=new android.graphics.Rect();
+            panel.getGlobalVisibleRect(panelBounds);
+            int[] rootXY=new int[2];gestureHost.getLocationOnScreen(rootXY);
+            PrecisionControl[] controls=(PrecisionControl[])field(panel,"rows");
+            android.graphics.Rect sliderBounds=new android.graphics.Rect();
+            boolean foundSlider=false;
+            for(PrecisionControl control:controls){
+                if(control!=null&&control.slider.isShown()
+                    &&control.slider.getGlobalVisibleRect(sliderBounds)){
+                    foundSlider=true;break;
+                }
+            }
+            require(foundSlider,"At least one visible adjustment slider for gesture regression");
+            float sliderX=sliderBounds.centerX()-rootXY[0];
+            float sliderY=sliderBounds.centerY()-rootXY[1];
+            long panelGesture=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture,
+                    MotionEvent.ACTION_DOWN,sliderX,sliderY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+110,
+                    MotionEvent.ACTION_MOVE,sliderX-width*.33f,sliderY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(panelGesture,panelGesture+160,
+                    MotionEvent.ACTION_UP,sliderX-width*.43f,sliderY,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Dragging through an adjustable slider NEVER opens a wheel");
+
+            // A horizontal swipe from the middle of the panel must work.
+            // New policy: every editor area EXCEPT slider touch bounds.
+            float headingY=panelBounds.top-rootXY[1]+EditorTheme.dp(getTargetContext(),21);
             long centerTime=SystemClock.uptimeMillis();
             runOnMainSync(()->{
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime,
-                    MotionEvent.ACTION_DOWN,width*.5f,gestureY,0));
+                    MotionEvent.ACTION_DOWN,width*.50f,headingY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+100,
-                    MotionEvent.ACTION_MOVE,width*.27f,gestureY,0));
+                    MotionEvent.ACTION_MOVE,width*.74f,headingY,0));
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(centerTime,centerTime+175,
-                    MotionEvent.ACTION_UP,width*.19f,gestureY,0));
+                    MotionEvent.ACTION_UP,width*.88f,headingY,0));
             });
-            require(field(activity,"orbital")==null,
-                "Middle-screen horizontal swipe MUST NOT open a wheel");
+            OrbitalSelector fromPanel=(OrbitalSelector)field(activity,"orbital");
+            require(fromPanel!=null&&fromPanel.isEffects(),
+                "Horizontal gesture starting outside sliders must open Effects");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(480);
 
-            // Wrong-way swipes from edges are also ignored.
-            long wrongTime=SystemClock.uptimeMillis();
+            // A tiny swipe is never sufficient to open a wheel.
+            long shortTime=SystemClock.uptimeMillis();
             runOnMainSync(()->{
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime,
-                    MotionEvent.ACTION_DOWN,width*.04f,gestureY,0));
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+90,
-                    MotionEvent.ACTION_MOVE,width*.005f,gestureY,0));
-                gestureHost.dispatchTouchEvent(MotionEvent.obtain(wrongTime,wrongTime+160,
-                    MotionEvent.ACTION_UP,width*.005f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime,
+                    MotionEvent.ACTION_DOWN,width*.50f,gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime+90,
+                    MotionEvent.ACTION_MOVE,width*.50f+EditorTheme.dp(getTargetContext(),4),gestureY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(shortTime,shortTime+160,
+                    MotionEvent.ACTION_UP,width*.50f+EditorTheme.dp(getTargetContext(),4),gestureY,0));
             });
-            require(field(activity,"orbital")==null,"Outward swipe must not open a wheel");
+            require(field(activity,"orbital")==null,"Short drag is not a menu gesture");
             float fromTools=width*.96f,toTools=width*.18f;
             long gt=SystemClock.uptimeMillis();
             runOnMainSync(()->{
@@ -487,6 +830,7 @@ public class NoiseSmokeTest extends Instrumentation {
             float alpha=eased.motionAlpha();
             require(alpha>.01f && alpha<.96f,
                 "Wheel gradually fades in on display frames: "+alpha);
+            saveScreenshot("noise-opening.png");
             require(eased.getAlpha()==1f,"Overlay container stays fully opaque while scrim fades");
             require(eased.wholeScreenDim(),
                 "Dark layer must cover entire screen, not only the menu side");
@@ -494,25 +838,33 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Full-screen dimmer fades in gradually from fully transparent");
             require(eased.featherOpacity()>0f && eased.featherOpacity()<.60f,
                 "Side-specific feather gradient fades in smoothly");
-            require(eased.motionX()>0,
-                "Right-side Tools wheel eases in from the right");
+            require(eased.motionX()>0&&eased.motionX()<EditorTheme.dp(getTargetContext(),48),
+                "Tools menu enters with short drift, not a long jump");
+            require(Math.abs(((View)field(eased,"content")).getScaleX()-1f)<.005f,
+                "Opening must not scale/pop menu content");
             require(eased.scrimOpacity()>0f && eased.scrimOpacity()<.40f,
                 "Dark gradient builds slowly instead of immediately covering image");
             require(eased.motionAlpha()<.85f,
                 "Wheel content remains translucent during the swipe");
             runOnMainSync(()->{
-                // Moving the finger farther must never teleport or re-target
-                // the content. Choreographer owns the menu's visual position.
+                // The finger moves the TARGET, not the displayed position.
+                // A critically damped wheel must lag instead of snapping.
                 float xBefore=eased.motionX();
                 float alphaBefore=eased.motionAlpha();
                 float scrimBefore=eased.scrimOpacity();
+                float previousTarget=eased.revealTargetX();
                 gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+170,
                     MotionEvent.ACTION_MOVE,width*.30f,gestureY,0));
+                require(eased.revealTargetX()<previousTarget-EditorTheme.dp(getTargetContext(),6),
+                    "Further edge dragging drives the wheel target toward its open position");
                 require(Math.abs(eased.motionX()-xBefore)<.15f
                     &&Math.abs(eased.motionAlpha()-alphaBefore)<.005f
                     &&Math.abs(eased.scrimOpacity()-scrimBefore)<.005f,
-                    "Menu and dimming must NOT mirror finger movement");
+                    "Spring must lag behind the finger instead of teleporting");
             });
+            SystemClock.sleep(75);
+            require(eased.motionX()<EditorTheme.dp(getTargetContext(),155),
+                "Wheel should animate toward updated drag target with inertia");
             runOnMainSync(()->gestureHost.dispatchTouchEvent(MotionEvent.obtain(gt,gt+220,
                 MotionEvent.ACTION_UP,toTools,gestureY,0)));
             // Immediately after release, final animation must still be running.
@@ -538,8 +890,10 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Menu and overlay became visible smoothly before close");
             require(swipeTools.wholeScreenDim() && swipeTools.featherOpacity()>.70f,
                 "Entire editor is substantially darkened with separate edge gradient");
+            saveScreenshot("noise-open.png");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(90);
+            saveScreenshot("noise-closing.png");
             require(swipeTools.scrimOpacity()<dimBeforeClose
                 &&swipeTools.scrimOpacity()>0f
                 &&swipeTools.featherOpacity()>0f
@@ -599,6 +953,44 @@ public class NoiseSmokeTest extends Instrumentation {
             long start=System.nanoTime();runOnMainSync(()->activity.change(50,.2f));long parameterMs=(System.nanoTime()-start)/1000000;
             require(((EditState)field(surface,"state")).light[0]==.2f,"State immediately reaches preview");
             stage("live frames="+drawn+", parameter dispatch ms="+parameterMs+", last GL submission ms="+(surface.renderNanos/1000000));
+            // Regression: changing a slider AND selecting a different
+            // category must never disable both edge menus.
+            runOnMainSync(()->tabs[1].performClick());
+            waitForIdleSync();
+            require(panel.category==1,"Category changed after editing a parameter");
+            SystemClock.sleep(600);
+            android.graphics.Rect previewBounds=new android.graphics.Rect();
+            ((FrameLayout)field(activity,"editorStage")).getGlobalVisibleRect(previewBounds);
+            gestureHost.getLocationOnScreen(rootXY);
+            float liveY=previewBounds.centerY()-rootXY[1];
+            long tEdited=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited,
+                    MotionEvent.ACTION_DOWN,width*.04f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited+110,
+                    MotionEvent.ACTION_MOVE,width*.37f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(tEdited,tEdited+185,
+                    MotionEvent.ACTION_UP,width*.55f,liveY,0));
+            });
+            OrbitalSelector afterEdit=(OrbitalSelector)field(activity,"orbital");
+            require(afterEdit!=null&&afterEdit.isEffects(),
+                "After editing a slider, edge gesture MUST reopen effects wheel");
+            runOnMainSync(activity::onBackPressed);
+            // Immediately reopening must interrupt an older closing overlay.
+            long immediate=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate,
+                    MotionEvent.ACTION_DOWN,width*.96f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate+90,
+                    MotionEvent.ACTION_MOVE,width*.55f,liveY,0));
+                gestureHost.dispatchTouchEvent(MotionEvent.obtain(immediate,immediate+160,
+                    MotionEvent.ACTION_UP,width*.20f,liveY,0));
+            });
+            OrbitalSelector immediateTools=(OrbitalSelector)field(activity,"orbital");
+            require(immediateTools!=null&&!immediateTools.isEffects(),
+                "Another wheel opens immediately even while previous one closes");
+            runOnMainSync(activity::onBackPressed);
+            SystemClock.sleep(670);
             stage("public PNG and JPEG export");
             EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
             Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
@@ -617,6 +1009,30 @@ public class NoiseSmokeTest extends Instrumentation {
         } catch (Throwable error) {
             StringWriter stack = new StringWriter(); error.printStackTrace(new PrintWriter(stack)); result.putString("stream", "NOISE_SMOKE_FAILED\n" + stack); finish(Activity.RESULT_CANCELED, result);
         }
+    }
+    private Object fieldUnchecked(Object object,String key){
+        try{return field(object,key);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private View findDescendant(View root,Class<?> type){
+        if(type.isInstance(root))return root;
+        if(root instanceof ViewGroup){
+            ViewGroup g=(ViewGroup)root;
+            for(int i=0;i<g.getChildCount();i++){
+                View v=findDescendant(g.getChildAt(i),type);
+                if(v!=null)return v;
+            }
+        }
+        return null;
+    }
+    private void ensureVisible(ScrollView scroller,View child){
+        int[] y=new int[2],origin=new int[2];
+        child.getLocationOnScreen(y);scroller.getLocationOnScreen(origin);
+        int scrollBy=y[1]-origin[1]-EditorTheme.dp(scroller.getContext(),45);
+        scroller.scrollBy(0,scrollBy);
+    }
+    private void appBackgroundLocation(MainActivity activity,int[] out){
+        try{((View)field(activity,"appBackground")).getLocationOnScreen(out);}
+        catch(Exception e){throw new RuntimeException(e);}
     }
     private void saveScreenshot(String name)throws Exception{
         Bitmap shot=getUiAutomation().takeScreenshot();require(shot!=null,"Screenshot");try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getFilesDir(),name))){shot.compress(Bitmap.CompressFormat.PNG,100,out);}shot.recycle();

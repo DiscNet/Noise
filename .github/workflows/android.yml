@@ -39,10 +39,36 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: noise-development-signing-v1
+      # Debug keystore caching is NOT a reliable update identity: public
+      # preview runs produced distinct signer fingerprints in the past.
+      # A persistent certificate must be stored as repository secrets.
+      - name: Configure permanent APK signature
+        env:
+          NOISE_KEYSTORE_B64: ${{ secrets.NOISE_SIGNING_KEYSTORE_B64 }}
+          NOISE_STORE_PASS: ${{ secrets.NOISE_SIGNING_STORE_PASSWORD }}
+          NOISE_SIGN_ALIAS: ${{ secrets.NOISE_SIGNING_KEY_ALIAS }}
+          NOISE_SIGN_KEY_PASS: ${{ secrets.NOISE_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -n "$NOISE_KEYSTORE_B64" ]; then
+            test -n "$NOISE_STORE_PASS" && test -n "$NOISE_SIGN_ALIAS" && test -n "$NOISE_SIGN_KEY_PASS" || {
+              echo "::error::Incomplete permanent APK signing secrets"; exit 1;
+            }
+            umask 077
+            printf '%s' "$NOISE_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/noise-signing.jks"
+            test -s "$RUNNER_TEMP/noise-signing.jks" || exit 1
+            echo "NOISE_KEYSTORE_PATH=$RUNNER_TEMP/noise-signing.jks" >> "$GITHUB_ENV"
+            echo "NOISE_KEYSTORE_PASSWORD=$NOISE_STORE_PASS" >> "$GITHUB_ENV"
+            echo "NOISE_KEY_ALIAS=$NOISE_SIGN_ALIAS" >> "$GITHUB_ENV"
+            echo "NOISE_KEY_PASSWORD=$NOISE_SIGN_KEY_PASS" >> "$GITHUB_ENV"
+            echo "NOISE_SIGNER_MODE=permanent" >> "$GITHUB_ENV"
+          else
+            if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+              echo "::error::Official releases require permanent signing secrets; see docs/APK-UPDATES.md."
+              exit 1
+            fi
+            echo "::warning::PREVIEW ONLY: signing secrets are absent. The generated APK cannot reliably update an existing installation."
+            echo "NOISE_SIGNER_MODE=temporary-debug" >> "$GITHUB_ENV"
+          fi
       - run: gradle --no-daemon assembleDebug assembleDebugAndroidTest
       - name: Prepare installable preview
         run: |
@@ -51,6 +77,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk "Noise.V${VERSION}.apk"
           echo "PREVIEW_APK=Noise.V${VERSION}.apk" >> "$GITHUB_ENV"
           echo "PREVIEW_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "PREVIEW_CERT=$NOISE_SIGNER_MODE" >> "$GITHUB_ENV"
       - name: Upload installable preview before emulator
         uses: actions/upload-artifact@v4
         with:
@@ -69,7 +96,7 @@ jobs:
           api-level: 30
           arch: x86_64
           profile: pixel_2
-          disable-animations: true
+          disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             adb install app/build/outputs/apk/debug/app-debug.apk
@@ -77,10 +104,20 @@ jobs:
             # Start gallery without a runtime permission modal during GPU smoke tests.
             adb shell pm grant com.discnet.noise android.permission.READ_EXTERNAL_STORAGE || true
             mkdir -p smoke
-            timeout 1800s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
+            # Focused pull-request gate. Run exhaustive 60-control suite
+            # manually without -e noise_test_mode; it exceeds SwiftShader CI time.
+            timeout 900s adb shell am instrument -w -e noise_test_mode targeted com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-opening.png > smoke/noise-opening.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-open.png > smoke/noise-open.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-closing.png > smoke/noise-closing.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-panel.png > smoke/noise-panel.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-transform.png > smoke/noise-transform.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-projects.png > smoke/noise-projects.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-presets.png > smoke/noise-presets.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-home.png > smoke/noise-home.png || true
             grep -q NOISE_SMOKE_OK smoke/results.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -105,4 +142,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes-file docs/RELEASE-1.27.md
+          gh release create "$TAG" "$APK_FILE" --title "Noise! V${APP_VERSION} ($TAG)" --notes-file docs/RELEASE-1.30.2.md

@@ -16,7 +16,7 @@ final class GlPipeline {
     private int texture,glyphTexture,toneTexture,toneFbo,width,height,toneKey;
     private boolean toneValid;
     private int sourceWidth,sourceHeight;
-    private static final String[] NAMES={"uImage","uSize","uColor","uTone","uHue","uStyle","uFxA","uFxB","uDitherA","uDitherB","uRingsA","uRingsB","uCrtA","uCrtB","uGlitchA","uGlitchB","uAsciiA","uAsciiB","uAsciiEnabled","uAsciiColored","uAsciiDither","uAsciiSymbols","uGlyphs","uPatternScale","uInvert","uOriginal","uExport","uLight","uGrain","uGlow","uDetail","uDitherMethod","uDitherPalette"};
+    private static final String[] NAMES={"uImage","uSize","uColor","uTone","uHue","uStyle","uFxA","uFxB","uDitherA","uDitherB","uRingsA","uRingsB","uCrtA","uCrtB","uGlitchA","uGlitchB","uAsciiA","uAsciiB","uAsciiEnabled","uAsciiColored","uAsciiDither","uAsciiSymbols","uGlyphs","uPatternScale","uInvert","uOriginal","uExport","uLight","uGrain","uGlow","uDetail","uDitherMethod","uDitherPalette","uNoiseControl","uHDR","uBlend","uWheelShadows","uWheelMidtones","uWheelHighlights","uCurveHH0","uCurveHH1","uCurveHS0","uCurveHS1","uCurveSS0","uCurveSS1","uFilm"};
     GlPipeline(Context context)throws IOException{
         program=link(read(context,"editor.vert"),read(context,"editor.frag"));
         toneProgram=link(read(context,"editor.vert"),read(context,"tone.frag"));
@@ -49,6 +49,16 @@ final class GlPipeline {
         glUniform2f(tones.get("uSize"),width,height);
         glUniform4fv(tones.get("uColor"),1,s.color,0);glUniform4fv(tones.get("uTone"),1,s.tone,0);
         glUniform2fv(tones.get("uHue"),1,s.hue,0);glUniform4fv(tones.get("uLight"),1,s.light,0);
+        glUniform2fv(tones.get("uNoiseControl"),1,s.noiseControls,0);
+        glUniform2fv(tones.get("uHDR"),1,s.hdrControls,0);
+        glUniform4fv(tones.get("uFilm"),1,s.film,0);
+        glUniform2fv(tones.get("uBlend"),1,s.blend,0);
+        for(int i=0;i<3;i++){
+            String[] wheelNames={"uWheelShadows","uWheelMidtones","uWheelHighlights"};
+            glUniform2fv(tones.get(wheelNames[i]),1,s.colorWheels,i*2);
+        }
+        String[] curveNames={"uCurveHH0","uCurveHH1","uCurveHS0","uCurveHS1","uCurveSS0","uCurveSS1"};
+        for(int i=0;i<6;i++)glUniform3fv(tones.get(curveNames[i]),1,s.colorCurves,i*3);
         // FBO row zero holds source row zero, like Android's uploaded texture.
         vertices.position(0);vertices.put(new float[]{-1,-1,0,0,1,-1,1,0,-1,1,0,1,1,1,1,1});
         drawQuad(tonePosition,toneCoordinate);glBindFramebuffer(GL_FRAMEBUFFER,target[0]);toneKey=s.toneKey();toneValid=true;
@@ -76,6 +86,8 @@ final class GlPipeline {
         glUniform4fv(uniforms.get("uCrtA"),1,s.crtA,0);glUniform2fv(uniforms.get("uCrtB"),1,s.crtB,0);
         glUniform4fv(uniforms.get("uGlitchA"),1,s.glitchA,0);glUniform2fv(uniforms.get("uGlitchB"),1,s.glitchB,0);
         glUniform4fv(uniforms.get("uAsciiA"),1,s.asciiA,0);glUniform2fv(uniforms.get("uAsciiB"),1,s.asciiB,0);
+        glUniform2fv(uniforms.get("uHDR"),1,s.hdrControls,0);
+        glUniform4fv(uniforms.get("uFilm"),1,s.film,0);
         glUniform4fv(uniforms.get("uGrain"),1,s.grain,0);glUniform2fv(uniforms.get("uGlow"),1,s.glow,0);glUniform2fv(uniforms.get("uDetail"),1,s.detail,0);
         glUniform1i(uniforms.get("uDitherMethod"),s.ditherMethod);glUniform1i(uniforms.get("uDitherPalette"),s.ditherPalette);
         flag("uAsciiEnabled",s.asciiEnabled);flag("uAsciiColored",s.asciiColored);flag("uAsciiDither",s.asciiDither);flag("uAsciiSymbols",s.asciiSymbols);

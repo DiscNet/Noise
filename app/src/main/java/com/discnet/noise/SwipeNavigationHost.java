@@ -15,6 +15,7 @@ final class SwipeNavigationHost extends FrameLayout {
     interface Handler {
         boolean allow(float x,float y);
         void start(boolean effects);
+        void progress(float fraction);
         void finish(boolean open);
     }
 
@@ -23,7 +24,6 @@ final class SwipeNavigationHost extends FrameLayout {
     private final float activationDistance;
     private float downX,downY;
     private boolean eligible,tracking,openingEffects;
-    private int edgeWidth;
     private VelocityTracker velocity;
 
     SwipeNavigationHost(Context context,Handler callback) {
@@ -39,14 +39,11 @@ final class SwipeNavigationHost extends FrameLayout {
         if(action==MotionEvent.ACTION_DOWN) {
             reset();
             downX=event.getX();downY=event.getY();
-            // Only touches initiated within a real side-edge activation band
-            // can open either wheel. Gestures from the middle must never open.
-            edgeWidth=Math.round(Math.min(EditorTheme.dp(getContext(),72),
-                Math.max(EditorTheme.dp(getContext(),48),getWidth()*.16f)));
-            boolean fromLeft=downX<=getPaddingLeft()+edgeWidth;
-            boolean fromRight=downX>=getWidth()-getPaddingRight()-edgeWidth;
-            eligible=(fromLeft||fromRight)&&callback.allow(downX,downY);
-            openingEffects=fromLeft;
+            // Horizontal gestures may start anywhere in the editor except
+            // the touch regions explicitly protected by callback.allow
+            // (adjustment sliders, overlays and non-editor screens).
+            eligible=callback.allow(downX,downY);
+            openingEffects=false;
             if(eligible){velocity=VelocityTracker.obtain();velocity.addMovement(event);}
             return super.dispatchTouchEvent(event);
         }
@@ -59,8 +56,9 @@ final class SwipeNavigationHost extends FrameLayout {
 
         if(action==MotionEvent.ACTION_MOVE && eligible && event.getPointerCount()==1) {
             float dx=event.getX()-downX,dy=event.getY()-downY;
-            boolean movingInward=openingEffects?dx>activationDistance:dx< -activationDistance;
-            if(!tracking && movingInward && Math.abs(dx)>Math.abs(dy)*1.20f){
+            if(!tracking&&Math.abs(dx)>activationDistance
+                &&Math.abs(dx)>Math.abs(dy)*1.20f){
+                openingEffects=dx>0f; // swipe → Effects, swipe ← Tools
                 tracking=true;
                 // The original child must not receive ACTION_UP: cancel its touch.
                 MotionEvent cancel=MotionEvent.obtain(event);
@@ -70,8 +68,13 @@ final class SwipeNavigationHost extends FrameLayout {
                 callback.start(openingEffects);
             }
             if(tracking) {
-                // The gesture only decides which wheel to open. The opening
-                // animation runs independently and never tracks the pointer.
+                // The wheel follows the intended displacement with a damped
+                // spring rather than locking itself to the pointer.
+                float distance=Math.max(0f,openingEffects?dx:-dx);
+                float reach=Math.max(EditorTheme.dp(getContext(),160),
+                    getWidth()*.55f);
+                float fraction=Math.max(0f,Math.min(1f,distance/reach));
+                callback.progress(fraction);
                 return true;
             }
         }

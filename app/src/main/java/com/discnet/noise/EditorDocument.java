@@ -12,7 +12,14 @@ final class EditorDocument {
     boolean flipX,flipY;
     float left=0,top=0,right=1,bottom=1;
     int outputLongEdge=0,jpegQuality=95;
+    int outputWidth=0,outputHeight=0; // V1.28 optional; legacy outputLongEdge retained
     boolean jpeg=false;
+    // Six stops per editable curve: H→H, H→S, S→S. Zero is the identity curve.
+    final float[] colorCurves=new float[18];
+    // Three separate chromatic wheels: shadow, midtone, highlight (XY vectors).
+    final float[] colorWheels=new float[6];
+    int blendMode=0; // 0 normal, 1 multiply, 2 screen, 3 overlay, 4 soft light
+
     EditorDocument(){for(int i=0;i<values.length;i++)values[i]=AdjustmentSpec.neutral(i);}
     EditorDocument copy(){try{return fromJson(toJson());}catch(JSONException e){throw new IllegalStateException(e);}}
     float value(int i){return disabled[i]?AdjustmentSpec.neutral(i):values[i];}
@@ -23,6 +30,9 @@ final class EditorDocument {
         invert=from.invert;asciiEnabled=from.asciiEnabled;asciiColored=from.asciiColored;
         asciiDither=from.asciiDither;asciiSymbols=from.asciiSymbols;grainColored=from.grainColored;
         ditherMethod=from.ditherMethod;ditherPalette=from.ditherPalette;
+        System.arraycopy(from.colorCurves,0,colorCurves,0,colorCurves.length);
+        System.arraycopy(from.colorWheels,0,colorWheels,0,colorWheels.length);
+        blendMode=from.blendMode;
     }
     JSONObject toJson() throws JSONException {
         JSONObject o=new JSONObject();o.put("schema",1);
@@ -33,7 +43,14 @@ final class EditorDocument {
         o.put("grainColored",grainColored);o.put("ditherMethod",ditherMethod);o.put("ditherPalette",ditherPalette);
         o.put("rotation",rotation);o.put("flipX",flipX);o.put("flipY",flipY);
         o.put("crop",new JSONArray(new double[]{left,top,right,bottom}));
-        o.put("outputLongEdge",outputLongEdge);o.put("jpeg",jpeg);o.put("jpegQuality",jpegQuality);return o;
+        o.put("outputLongEdge",outputLongEdge);
+        o.put("outputWidth",outputWidth);o.put("outputHeight",outputHeight);
+        o.put("blendMode",blendMode);
+        JSONArray curves=new JSONArray(),wheels=new JSONArray();
+        for(float v1:colorCurves)curves.put((double)v1);
+        for(float v1:colorWheels)wheels.put((double)v1);
+        o.put("colorCurves",curves);o.put("colorWheels",wheels);
+        o.put("jpeg",jpeg);o.put("jpegQuality",jpegQuality);return o;
     }
     static EditorDocument fromJson(JSONObject o)throws JSONException{
         if(o.optInt("schema",1)!=1)throw new JSONException("Versão de projeto não suportada");
@@ -52,15 +69,44 @@ final class EditorDocument {
             if(d.right-d.left<.001f||d.bottom-d.top<.001f){d.left=d.top=0;d.right=d.bottom=1;}
         }
         d.outputLongEdge=Math.max(0,Math.min(4096,o.optInt("outputLongEdge")));
+        d.outputWidth=Math.max(0,Math.min(4096,o.optInt("outputWidth",0)));
+        d.outputHeight=Math.max(0,Math.min(4096,o.optInt("outputHeight",0)));
+        if(d.outputWidth==0||d.outputHeight==0){d.outputWidth=0;d.outputHeight=0;}
+        d.blendMode=Math.max(0,Math.min(4,o.optInt("blendMode",0)));
+        JSONArray curves=o.optJSONArray("colorCurves"),wheels=o.optJSONArray("colorWheels");
+        for(int i=0;i<d.colorCurves.length;i++)if(curves!=null&&i<curves.length()){
+            double n=curves.optDouble(i,0);d.colorCurves[i]=Double.isFinite(n)?
+                (float)Math.max(-1,Math.min(1,n)):0f;
+        }
+        for(int i=0;i<d.colorWheels.length;i++)if(wheels!=null&&i<wheels.length()){
+            double n=wheels.optDouble(i,0);d.colorWheels[i]=Double.isFinite(n)?
+                (float)Math.max(-1,Math.min(1,n)):0f;
+        }
         d.jpeg=o.optBoolean("jpeg");d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
     }
     private static float bounded(double n){return Double.isFinite(n)?(float)Math.max(0,Math.min(1,n)):0;}
     boolean same(EditorDocument d){try{return toJson().toString().equals(d.toJson().toString());}catch(JSONException e){return false;}}
     float aspect(int width,int height){float w=width*(right-left),h=height*(bottom-top);return rotation%2==0?w/h:h/w;}
-    int[] outputSize(int width,int height,int limit){
-        float w=width*(right-left),h=height*(bottom-top);
+    int[] nativeSize(int width,int height){
+        float w=Math.max(1,width*(right-left)),h=Math.max(1,height*(bottom-top));
         if(rotation%2!=0){float t=w;w=h;h=t;}
-        float edge=Math.min(limit,outputLongEdge>0?outputLongEdge:Math.max(w,h));
-        float factor=Math.min(1,edge/Math.max(w,h));return new int[]{Math.max(1,Math.round(w*factor)),Math.max(1,Math.round(h*factor))};
+        return new int[]{Math.max(1,Math.round(w)),Math.max(1,Math.round(h))};
+    }
+    int[] outputSize(int width,int height,int limit){
+        int[] original=nativeSize(width,height);
+        int safeLimit=Math.max(1,Math.min(4096,limit));
+        int reqW=outputWidth>0?outputWidth:original[0];
+        int reqH=outputHeight>0?outputHeight:original[1];
+        if(outputWidth==0||outputHeight==0){
+            float edge=outputLongEdge>0?outputLongEdge:Math.max(original[0],original[1]);
+            float scale=Math.min(1,edge/Math.max(original[0],original[1]));
+            reqW=Math.max(1,Math.round(original[0]*scale));
+            reqH=Math.max(1,Math.round(original[1]*scale));
+        }
+        // Deliberate v1.28 policy: allow reductions only. Do not advertise
+        // artificial detail restoration or exceed the actual GPU texture limit.
+        float safety=Math.min(1f,Math.min(safeLimit/(float)Math.max(1,reqW),safeLimit/(float)Math.max(1,reqH)));
+        safety=Math.min(safety,Math.min(original[0]/(float)Math.max(1,reqW),original[1]/(float)Math.max(1,reqH)));
+        return new int[]{Math.max(1,Math.round(reqW*safety)),Math.max(1,Math.round(reqH*safety))};
     }
 }

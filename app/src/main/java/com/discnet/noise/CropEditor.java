@@ -14,9 +14,13 @@ final class CropEditor extends FrameLayout {
     private final Listener listener;
     CropEditor(Context context,Bitmap source,Listener listener){this(context,source,new EditorDocument(),listener);}
     CropEditor(Context context,Bitmap source,EditorDocument document,Listener listener){
+        this(context,source,document,source.getWidth(),source.getHeight(),listener);
+    }
+    CropEditor(Context context,Bitmap source,EditorDocument document,
+        int originalWidth,int originalHeight,Listener listener){
         super(context);
         this.listener=listener;
-        setBackgroundColor(0xff101216);
+        setBackgroundColor(0xff101015);
         LinearLayout root=new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         setPadding(dp(10),dp(12),dp(10),dp(12));
@@ -27,12 +31,12 @@ final class CropEditor extends FrameLayout {
         top.addView(back,new LinearLayout.LayoutParams(dp(46),dp(46)));
         back.setOnClickListener(v->listener.cancel());
         TextView title=label("Recortar",18,EditorTheme.INK);
-        title.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
+        title.setTypeface(NoiseTypography.bold(context));
         title.setGravity(Gravity.CENTER);
         top.addView(title,new LinearLayout.LayoutParams(0,dp(52),1));
         ImageView restore=IconArt.button(context,IconArt.RESET,"Reiniciar recorte");
         top.addView(restore,new LinearLayout.LayoutParams(dp(46),dp(46)));
-        canvas=new CropView(context,source);
+        canvas=new CropView(context,source,originalWidth,originalHeight);
         canvas.region.set(document.left,document.top,document.right,document.bottom);
         restore.setOnClickListener(v->canvas.reset());
         TextView hint=label("Arraste alças ou centro · o original permanece intacto",12,EditorTheme.MUTED);
@@ -41,8 +45,25 @@ final class CropEditor extends FrameLayout {
         root.addView(canvas,new LinearLayout.LayoutParams(-1,0,1));
         HorizontalScrollView ratios=new HorizontalScrollView(context);ratios.setHorizontalScrollBarEnabled(false);
         LinearLayout options=new LinearLayout(context);ratios.addView(options);root.addView(ratios,new LinearLayout.LayoutParams(-1,dp(48)));
-        String[] names={"Livre","1:1","4:3","3:4","16:9","9:16"};float[] values={0,1,4f/3,3f/4,16f/9,9f/16};
-        for(int i=0;i<names.length;i++){final float ratio=values[i];TextView b=action(names[i],false);options.addView(b,new LinearLayout.LayoutParams(dp(72),dp(48)));b.setOnClickListener(v->{canvas.setRatio(document.rotation%2==0?ratio:ratio==0?0:1/ratio);});}
+        String[] names={"Livre","Original","1:1","4:3","3:4","16:9","9:16"};
+        float originalRatio=originalWidth/(float)Math.max(1,originalHeight);
+        float[] values={0,originalRatio,1,4f/3,3f/4,16f/9,9f/16};
+        TextView[] chips=new TextView[names.length];
+        for(int i=0;i<names.length;i++){final int k=i;final float ratio=values[i];
+            TextView b=action(names[i],false);chips[i]=b;
+            LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(44));
+            cp.setMargins(dp(3),0,dp(3),0);b.setMinWidth(dp(65));
+            options.addView(b,cp);
+            b.setOnClickListener(v->{
+                canvas.setRatio(document.rotation%2==0?ratio:ratio==0?0:1/ratio);
+                for(int j=0;j<chips.length;j++){
+                    chips[j].setBackground(EditorTheme.buttonSurface(context,15,j==k));
+                    chips[j].setTextColor(j==k?0xff16111f:EditorTheme.INK);
+                }
+            });
+        }
+        chips[0].setBackground(EditorTheme.buttonSurface(context,15,true));
+        chips[0].setTextColor(0xff16111f);
         LinearLayout foot=new LinearLayout(context);foot.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(64));
         root.addView(foot,fp);
@@ -69,13 +90,15 @@ final class CropEditor extends FrameLayout {
 
     private static final class CropView extends View {
         private final Bitmap bitmap;
+        private final int realWidth,realHeight;
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
         private final RectF picture=new RectF();
         private final RectF region=new RectF(0f,0f,1f,1f);
         private final RectF screenCrop=new RectF();
         private int dragging=-1;
-        private float previousX,previousY,ratio;
-        CropView(Context c,Bitmap bitmap){super(c);this.bitmap=bitmap;
+        private float previousX,previousY,ratio,gridOpacity=.32f;
+        CropView(Context c,Bitmap bitmap,int realWidth,int realHeight){super(c);this.bitmap=bitmap;
+            this.realWidth=realWidth;this.realHeight=realHeight;
             setContentDescription("Área de recorte: arraste cantos, laterais ou o centro. Proporções disponíveis abaixo.");}
         void reset(){ratio=0;region.set(0f,0f,1f,1f);invalidate();}
         void setRatio(float physical){ratio=physical==0?0:physical*bitmap.getHeight()/bitmap.getWidth();fitRatio();invalidate();}
@@ -108,7 +131,7 @@ final class CropEditor extends FrameLayout {
         }
         @Override protected void onDraw(Canvas c){
             dimensions();
-            c.drawColor(0xff101216);
+            c.drawColor(0xff101015);
             p.setShader(null);p.setColor(Color.WHITE);p.setStyle(Paint.Style.FILL);
             c.drawBitmap(bitmap,null,picture,p);
             // Draw translucent outside mask, not obscuring crop selection.
@@ -119,7 +142,11 @@ final class CropEditor extends FrameLayout {
             c.drawRect(screenCrop.right,screenCrop.top,picture.right,screenCrop.bottom,p);
             p.setShader(null);p.setColor(0xfffaf0ff);p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dp(1.5f));c.drawRect(screenCrop,p);
-            p.setColor(0x88ffffff);p.setStrokeWidth(dp(.8f));
+            float goal=dragging>=0?.67f:.31f;
+            gridOpacity+=(goal-gridOpacity)*.24f;
+            if(Math.abs(goal-gridOpacity)>.015f)postInvalidateOnAnimation();
+            p.setColor(Color.argb(Math.round(255*gridOpacity),255,255,255));
+            p.setStrokeWidth(dp(.8f));
             for(int i=1;i<3;i++){
                 float x=screenCrop.left+screenCrop.width()*i/3f;
                 float y=screenCrop.top+screenCrop.height()*i/3f;
@@ -128,12 +155,12 @@ final class CropEditor extends FrameLayout {
             }
             p.setColor(0xfff8eaff);p.setStrokeWidth(dp(3.4f));
             float len=dp(22);
-            float[] xs={screenCrop.left,screenCrop.right,screenCrop.left,screenCrop.right};
-            float[] ys={screenCrop.top,screenCrop.top,screenCrop.bottom,screenCrop.bottom};
             for(int i=0;i<4;i++){
-                float signX=(i%2==0)?1f:-1f,signY=(i<2)?1f:-1f;
-                c.drawLine(xs[i],ys[i],xs[i]+signX*len,ys[i],p);
-                c.drawLine(xs[i],ys[i],xs[i],ys[i]+signY*len,p);
+                float px=i%2==0?screenCrop.left:screenCrop.right;
+                float py=i<2?screenCrop.top:screenCrop.bottom;
+                float signX=i%2==0?1f:-1f,signY=i<2?1f:-1f;
+                c.drawLine(px,py,px+signX*len,py,p);
+                c.drawLine(px,py,px,py+signY*len,p);
             }
             for(int i=0;i<4;i++){
                 float x=i==0?screenCrop.left:i==1?screenCrop.right:screenCrop.centerX();
@@ -141,7 +168,8 @@ final class CropEditor extends FrameLayout {
                 if(i<2)c.drawLine(x,y-dp(10),x,y+dp(10),p);else c.drawLine(x-dp(10),y,x+dp(10),y,p);
             }
             p.setStyle(Paint.Style.FILL);
-            int croppedW=getCropPixels().width(),croppedH=getCropPixels().height();
+            int croppedW=Math.max(1,Math.round(realWidth*region.width()));
+            int croppedH=Math.max(1,Math.round(realHeight*region.height()));
             p.setTextAlign(Paint.Align.CENTER);p.setColor(0xfff5ebff);p.setTextSize(dp(13));
             c.drawText(croppedW+" × "+croppedH+" px",getWidth()/2f,Math.max(dp(20),picture.top-dp(9)),p);
         }
@@ -151,10 +179,10 @@ final class CropEditor extends FrameLayout {
                 dimensions();
                 float x=event.getX(),y=event.getY(),closest=dp(38);
                 dragging=-1;
-                float[] xs={screenCrop.left,screenCrop.right,screenCrop.left,screenCrop.right};
-                float[] ys={screenCrop.top,screenCrop.top,screenCrop.bottom,screenCrop.bottom};
                 for(int i=0;i<4;i++){
-                    float distance=(float)Math.hypot(x-xs[i],y-ys[i]);
+                    float hx=i%2==0?screenCrop.left:screenCrop.right;
+                    float hy=i<2?screenCrop.top:screenCrop.bottom;
+                    float distance=(float)Math.hypot(x-hx,y-hy);
                     if(distance<closest){closest=distance;dragging=i;}
                 }
                 if(dragging<0){

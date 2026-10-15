@@ -3,6 +3,7 @@ package com.discnet.noise;
 import android.content.Context;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.animation.ValueAnimator;
 import android.view.*;
 import android.view.animation.PathInterpolator;
 import android.widget.*;
@@ -19,18 +20,27 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float swipeStartX,swipeStartY;
     private boolean horizontal;
     private boolean dismissed;
+    private boolean closing;
+    private final Runnable closeWatchdog=()->{
+        // A paused frame callback must never leave an invisible interception
+        // layer over the editor after the wheel has been dismissed.
+        if(closing&&getParent()!=null)removeFromParent();
+    };
     private boolean effectsMode;
     private boolean motionScheduled;
     private long lastMotionFrame;
     private float targetX,targetAlpha,targetScale=1f,targetScrim,targetFeather;
     private float horizontalVelocity;
-    private boolean closing;
+    private float revealFraction=1f;
+    enum MenuState { CLOSED, OPENING, OPEN, CLOSING }
+    private MenuState state=MenuState.CLOSED;
+    MenuState menuState(){return state;}
     private final View scrim;
     private final View edgeFeather;
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
     private final OrbitStage orbit;
-    private final TextView continueButton;
+    private final TextView continueButton,favorite;
     private final Selection callback;
     private final String[] names;
     private final int[] symbols;
@@ -64,7 +74,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         // contrast without a hard black dividing edge.
         content.setBackgroundColor(Color.TRANSPARENT);
         content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
-        content.setScaleX(.985f);content.setScaleY(.985f);
+        content.setScaleX(1f);content.setScaleY(1f);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout column=content;
 
@@ -73,6 +83,23 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         column.addView(header,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout heading=new LinearLayout(c);heading.setOrientation(LinearLayout.VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        favorite=label(c,"☆",29,EditorTheme.LIME);
+        favorite.setGravity(Gravity.CENTER);favorite.setContentDescription("Marcar favorito");
+        favorite.setFocusable(true);
+        header.addView(favorite,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        favorite.setOnClickListener(v->toggleFavorite());
+        favorite.setOnLongClickListener(v->{
+            PopupMenu popup=new PopupMenu(c,favorite);
+            boolean any=false;
+            for(int i=0;i<this.names.length;i++)if(isFavorite(i)){
+                final int index=i;popup.getMenu().add(this.names[i]).setOnMenuItemClickListener(item->{
+                    selectFavorite(index);return true;
+                });any=true;
+            }
+            if(any)popup.show();
+            else favorite.setContentDescription("Nenhum favorito. Toque para favoritar a seleção.");
+            return true;
+        });
         headerTitle=label(c,title,30,EditorTheme.INK);
         headerTitle.setTypeface(NoiseTypography.bold(c));
         headerTitle.setLetterSpacing(-.035f);headerTitle.setMaxLines(2);
@@ -96,7 +123,29 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
         continueButton.setOnClickListener(v->commit());
-        orbit.onSelection=()->continueButton.setText("Selecionar "+this.names[orbit.selected()]);
+        orbit.onSelection=()->{
+            continueButton.setText("Selecionar "+this.names[orbit.selected()]);
+            updateFavorite();
+        };
+        updateFavorite();
+    }
+    private String favoriteKey(int index){return "orbital_fav_"+(effectsMode?"effect_":"tool_")+index;}
+    private boolean isFavorite(int index){
+        return getContext().getSharedPreferences("noise_favorites",Context.MODE_PRIVATE)
+            .getBoolean(favoriteKey(index),false);
+    }
+    private void updateFavorite(){
+        if(favorite==null||orbit==null)return;
+        favorite.setText(isFavorite(orbit.selected())?"★":"☆");
+        favorite.setContentDescription(isFavorite(orbit.selected())?"Remover dos favoritos":"Adicionar aos favoritos");
+    }
+    private void selectFavorite(int index){if(orbit!=null)orbit.goTo(index);}
+    private void toggleFavorite(){
+        int index=orbit.selected();boolean next=!isFavorite(index);
+        getContext().getSharedPreferences("noise_favorites",Context.MODE_PRIVATE)
+            .edit().putBoolean(favoriteKey(index),next).apply();
+        favorite.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        updateFavorite();
     }
     private int dp(float value){return EditorTheme.dp(getContext(),value);}
     private static TextView label(Context c,String value,int size,int color){
@@ -118,6 +167,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         updateDock(getWidth());
         orbit.updateItemOrientation();
         orbit.render();
+        updateFavorite();
     }
     private void updateDock(int availableWidth){
         int screenWidth=availableWidth>0?availableWidth:getResources().getDisplayMetrics().widthPixels;
@@ -145,6 +195,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     float orbitalScreenX(){return orbitalIconScreenX(orbit.selected());}
     int orbitalSelected(){return orbit.selected();}
     int orbitalCount(){return names.length;}
+    int orbitalHitIndex(float x,float y){return orbit.itemAt(x,y);}
     float orbitalIconScreenX(int index){
         LinearLayout row=orbit.rows[index];
         ImageView icon=orbit.icons[index];
@@ -155,7 +206,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float travelDistance(){
         // A restrained slide brings the wheel into view; a full-width
         // translation made the animation appear to jump into the screen.
-        return Math.min(dp(164),Math.max(dp(116),getWidth()*.38f));
+        // Short, almost imperceptible drift. The old 116-164dp leap was
+        // perceived as a "jump" when a gesture began or ended.
+        return Math.min(dp(46),Math.max(dp(28),getWidth()*.085f));
     }
     private float entrance(){return effectsMode?-travelDistance():travelDistance();}
     private float exitDirection(){return entrance();}
@@ -176,7 +229,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
     }
     private void targetOpen(){
-        closing=false;
+        removeCallbacks(closeWatchdog);
+        state=MenuState.OPENING;
+        closing=false;revealFraction=1f;
         targetX=0f;
         targetAlpha=1f;
         targetScrim=.69f;
@@ -184,13 +239,32 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetScale=1f;
         requestMotion();
     }
+    private void targetDrag(float fraction){
+        if(closing||dismissed)return;
+        removeCallbacks(closeWatchdog);
+        state=MenuState.OPENING;
+        revealFraction=Math.max(0f,Math.min(1f,fraction));
+        // A minimum progressive darkening is present as soon as the edge
+        // gesture is accepted; the remainder follows the hand with lag.
+        float p=.12f+.88f*revealFraction;
+        targetX=entrance()*(1f-p);
+        targetAlpha=p;
+        targetScrim=.69f*p;
+        targetFeather=.88f*p;
+        targetScale=1f; // no zoom/pop on finger down or release
+        requestMotion();
+    }
     private void targetClosed(){
+        state=MenuState.CLOSING;
         closing=true;
         targetX=exitDirection();
         targetAlpha=0f;
         targetScrim=0f;
         targetFeather=0f;
-        targetScale=.985f;
+        targetScale=1f;revealFraction=0f;
+        removeCallbacks(closeWatchdog);
+        postDelayed(closeWatchdog,1200);
+        if(!ValueAnimator.areAnimatorsEnabled()){state=MenuState.CLOSED;removeFromParent();return;}
         requestMotion();
     }
     /**
@@ -209,7 +283,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         content.setAlpha(0f);
         content.setScaleX(.985f);content.setScaleY(.985f);
         scrim.setAlpha(0f);edgeFeather.setAlpha(0f);
-        targetOpen();
+        if(!ValueAnimator.areAnimatorsEnabled()){
+            targetOpen();stopTracking();
+            content.setTranslationX(0);content.setAlpha(1);content.setScaleX(1);content.setScaleY(1);
+            scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
+            state=MenuState.OPEN;return;
+        }
+        // Dragging sets a moving target, not a pixel-perfect translation.
+        targetDrag(0f);
     }
     @Override public void doFrame(long frameTimeNanos){
         motionScheduled=false;
@@ -220,14 +301,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         // Analytic critically damped spring. Unlike a view animation tied
         // to the pointer, this never jumps when a touch MOVE or UP arrives.
-        final float omega=12f;
+        final float omega=11f; // soft, critically-damped settling; no overshoot
         float displacement=content.getTranslationX()-targetX;
         float carry=horizontalVelocity+omega*displacement;
         float decay=(float)Math.exp(-omega*dt);
         float x=targetX+(displacement+carry*dt)*decay;
         horizontalVelocity=(horizontalVelocity-omega*carry*dt)*decay;
-        float fadeBlend=1f-(float)Math.exp(-dt/.160f);
-        float scrimBlend=1f-(float)Math.exp(-dt/.200f);
+        float fadeBlend=1f-(float)Math.exp(-dt/.205f);
+        float scrimBlend=1f-(float)Math.exp(-dt/.240f);
         float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*fadeBlend;
         float dim=scrim.getAlpha()+(targetScrim-scrim.getAlpha())*scrimBlend;
         float feather=edgeFeather.getAlpha()+(targetFeather-edgeFeather.getAlpha())*scrimBlend;
@@ -242,6 +323,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             &&Math.abs(feather-targetFeather)<.005f
             &&Math.abs(scale-targetScale)<.0003f;
         if(settled){
+            state=closing?MenuState.CLOSED:
+                revealFraction>=.999f?MenuState.OPEN:MenuState.OPENING;
             content.setTranslationX(targetX);content.setAlpha(targetAlpha);
             content.setScaleX(targetScale);content.setScaleY(targetScale);
             scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
@@ -249,11 +332,13 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             if(closing)removeFromParent();
         }else requestMotion();
     }
-    /** The opening is never mapped to the position of the finger. */
-    void setReveal(float ignoredProgress){
-        // Retained for source compatibility; gesture progress does not
-        // control the visual reveal. Opening starts with beginReveal().
+    /** Edge movement changes the target, while Choreographer supplies lag. */
+    void setReveal(float progress){
+        if(getParent()==null||closing||dismissed)return;
+        targetDrag(progress);
     }
+    float revealTargetX(){return targetX;}
+    float revealTargetAlpha(){return targetAlpha;}
     void finishReveal(boolean open){
         if(open)targetOpen();
         else{
@@ -289,7 +374,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
     }
     @Override public boolean onTouchEvent(MotionEvent e){
-        if(!horizontal)return super.onTouchEvent(e);
+        if(!horizontal){
+            if(e.getActionMasked()==MotionEvent.ACTION_UP){
+                float x=e.getX();float left=content.getLeft(),right=content.getRight();
+                boolean outside=effectsMode?x>right+dp(7):x<left-dp(7);
+                if(outside&&navigate!=null&&state!=MenuState.CLOSING){
+                    navigate.navigate(0);return true;
+                }
+            }
+            return true; // consume taps: never click through into the preview
+        }
         if(e.getActionMasked()==MotionEvent.ACTION_MOVE){
             // A drag on an already-open wheel is only a navigation intent;
             // the menu never translates rigidly with the finger.
@@ -312,15 +406,48 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     }
     private void commit(){int n=selected();dismiss();callback.chosen(n);}
     @Override protected void onDetachedFromWindow(){
+        removeCallbacks(closeWatchdog);
         stopTracking();content.animate().cancel();scrim.animate().cancel();
         edgeFeather.animate().cancel();orbit.cancelMotion();
         super.onDetachedFromWindow();
+    }
+
+    /** Reusable lightweight icon backing with a thin white rim and diffuse
+     * simulated glow; no software blur or per-frame allocations. */
+    private static final class IconGlowFrame extends android.graphics.drawable.Drawable {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float scale;
+        private final boolean active;
+        IconGlowFrame(Context c,boolean active){
+            this.active=active;scale=c.getResources().getDisplayMetrics().density;
+        }
+        @Override public void draw(Canvas canvas){
+            android.graphics.Rect b=getBounds();
+            float l=b.left+scale*2.2f,t=b.top+scale*2.2f;
+            float r=b.right-scale*2.2f,bt=b.bottom-scale*2.2f;
+            float radius=scale*19f;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(active?0xc9bd92dd:0x5b1c1925);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setColor(active?0x229edaff:0x0fb2b6cf);p.setStrokeWidth(scale*6f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setColor(active?0x5df5f1ff:0x25faf8ff);p.setStrokeWidth(scale*3f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setColor(active?0xdffaf9ff:0x88fbfaff);p.setStrokeWidth(scale*1.1f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setStyle(Paint.Style.FILL);
+        }
+        @Override public void setAlpha(int a){p.setAlpha(a);invalidateSelf();}
+        @Override public void setColorFilter(android.graphics.ColorFilter filter){p.setColorFilter(filter);}
+        @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
     }
 
     private final class OrbitStage extends FrameLayout implements Choreographer.FrameCallback {
         private static final float STEP=.29f;
         private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint light=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private RadialGradient halo;
         private final LinearLayout[] rows=new LinearLayout[names.length];
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
@@ -387,6 +514,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Stable radius preserves the round profile on narrow phones
             // without throwing most of the outer rim beyond the display.
             radius=Math.max(dp(175),Math.min(dp(235),w*.68f));
+            halo=new RadialGradient(arcX(0f),arcY(0f),dp(96),
+                new int[]{0x30d8b4f8,0x11b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP);
             render();
         }
         private float arcX(float theta){
@@ -423,12 +552,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
             float x=arcX(0),y=arcY(0);
             light.setStyle(Paint.Style.FILL);
-            light.setShader(new RadialGradient(x,y,dp(96),
-                new int[]{0x3bd8b4f8,0x14b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP));
+            light.setShader(halo);
             canvas.drawCircle(x,y,dp(96),light);
-            light.setShader(null);light.setColor(EditorTheme.LIME);
-            float markerX=x+(effectsMode?dp(40):-dp(40));
-            canvas.drawRoundRect(markerX-dp(8),y-dp(2),markerX+dp(8),y+dp(2),dp(3),dp(3),light);
+            light.setShader(null);
+            // Place the locator OUTSIDE the icon, not between icon and text:
+            // Effects: left of icon; Tools: right of icon.
+            // Short, low-contrast stroke should not dominate the selection.
+            light.setColor(0x719f9aa9);
+            float markerX=x+(effectsMode?-dp(54):dp(54));
+            canvas.drawRoundRect(markerX-dp(5),y-dp(.75f),
+                markerX+dp(5),y+dp(.75f),dp(1),dp(1),light);
         }
         private void render(){
             if(getWidth()==0||getHeight()==0)return;
@@ -440,7 +573,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                     captions[i].setTextColor(on?EditorTheme.INK:EditorTheme.MUTED);
                     captions[i].setTypeface(on?NoiseTypography.bold(getContext()):NoiseTypography.medium(getContext()));
                     icons[i].setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],on?0xff1a1421:EditorTheme.INK));
-                    icons[i].setBackground(EditorTheme.buttonSurface(getContext(),24,on));
+                    icons[i].setBackground(new IconGlowFrame(getContext(),on));
                     rows[i].setContentDescription(names[i]+(on?", selecionado":"")+". Toque para selecionar.");
                 }
                 if(onSelection!=null)onSelection.run();
@@ -529,9 +662,30 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             followOffset();
         }
         @Override public boolean onInterceptTouchEvent(MotionEvent ev){
-            if(ev.getActionMasked()==MotionEvent.ACTION_DOWN)return true;
-            return true;
+            return true; // unify orbit drag and icon hit-testing
         }
+        /** Real transformed icon bounds: layout + translation + scale + pivot. */
+        private int hitIndex(float x,float y){
+            int hit=-1;float best=Float.MAX_VALUE;
+            for(int i=0;i<rows.length;i++){
+                LinearLayout row=rows[i];
+                if(row.getVisibility()!=VISIBLE||row.getAlpha()<.12f)continue;
+                ImageView icon=icons[i];float sx=row.getScaleX(),sy=row.getScaleY();
+                float px=row.getPivotX(),py=row.getPivotY();
+                float left=row.getX()+px+(icon.getX()-px)*sx;
+                float right=left+icon.getWidth()*sx;
+                float top=row.getY()+py+(icon.getY()-py)*sy;
+                float bottom=top+icon.getHeight()*sy;
+                float margin=dp(11);
+                if(x>=left-margin&&x<=right+margin&&y>=top-margin&&y<=bottom+margin){
+                    float cx=(left+right)*.5f,cy=(top+bottom)*.5f;
+                    float distance=(x-cx)*(x-cx)+(y-cy)*(y-cy);
+                    if(distance<best){hit=i;best=distance;}
+                }
+            }
+            return hit;
+        }
+        int itemAt(float x,float y){return hitIndex(x,y);}
         @Override public boolean onTouchEvent(MotionEvent ev){
             switch(ev.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:
@@ -551,15 +705,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 case MotionEvent.ACTION_UP:
                     if(velocity!=null)velocity.addMovement(ev);
                     if(!dragged){
-                        float y=ev.getY(),x=ev.getX();int hit=-1;float closest=Float.MAX_VALUE;
-                        for(int i=0;i<names.length;i++){
-                            float angle=(i-offset)*STEP;
-                            if(Math.abs(angle)>1.42f)continue;
-                            float ix=arcX(angle)-dp(75),iy=arcY(angle);
-                            float delta=Math.abs(iy-y)+Math.abs(ix-x)*.3f;
-                            if(delta<closest){closest=delta;hit=i;}
-                        }
-                        if(hit>=0&&closest<dp(82))goTo(hit);else settle(0);
+                        int hit=hitIndex(ev.getX(),ev.getY());
+                        if(hit>=0)goTo(hit);else settle(0);
                     }else if(velocity!=null){
                         velocity.computeCurrentVelocity(1000);
                         settle(velocity.getYVelocity());
