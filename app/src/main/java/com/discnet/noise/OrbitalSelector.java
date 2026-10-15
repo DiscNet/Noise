@@ -74,7 +74,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         // contrast without a hard black dividing edge.
         content.setBackgroundColor(Color.TRANSPARENT);
         content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
-        content.setScaleX(.985f);content.setScaleY(.985f);
+        content.setScaleX(1f);content.setScaleY(1f);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout column=content;
 
@@ -206,7 +206,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float travelDistance(){
         // A restrained slide brings the wheel into view; a full-width
         // translation made the animation appear to jump into the screen.
-        return Math.min(dp(164),Math.max(dp(116),getWidth()*.38f));
+        // Short, almost imperceptible drift. The old 116-164dp leap was
+        // perceived as a "jump" when a gesture began or ended.
+        return Math.min(dp(46),Math.max(dp(28),getWidth()*.085f));
     }
     private float entrance(){return effectsMode?-travelDistance():travelDistance();}
     private float exitDirection(){return entrance();}
@@ -249,7 +251,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetAlpha=p;
         targetScrim=.69f*p;
         targetFeather=.88f*p;
-        targetScale=.985f+.015f*p;
+        targetScale=1f; // no zoom/pop on finger down or release
         requestMotion();
     }
     private void targetClosed(){
@@ -259,7 +261,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetAlpha=0f;
         targetScrim=0f;
         targetFeather=0f;
-        targetScale=.985f;revealFraction=0f;
+        targetScale=1f;revealFraction=0f;
         removeCallbacks(closeWatchdog);
         postDelayed(closeWatchdog,1200);
         if(!ValueAnimator.areAnimatorsEnabled()){state=MenuState.CLOSED;removeFromParent();return;}
@@ -299,14 +301,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         // Analytic critically damped spring. Unlike a view animation tied
         // to the pointer, this never jumps when a touch MOVE or UP arrives.
-        final float omega=12f;
+        final float omega=11f; // soft, critically-damped settling; no overshoot
         float displacement=content.getTranslationX()-targetX;
         float carry=horizontalVelocity+omega*displacement;
         float decay=(float)Math.exp(-omega*dt);
         float x=targetX+(displacement+carry*dt)*decay;
         horizontalVelocity=(horizontalVelocity-omega*carry*dt)*decay;
-        float fadeBlend=1f-(float)Math.exp(-dt/.160f);
-        float scrimBlend=1f-(float)Math.exp(-dt/.200f);
+        float fadeBlend=1f-(float)Math.exp(-dt/.205f);
+        float scrimBlend=1f-(float)Math.exp(-dt/.240f);
         float alpha=content.getAlpha()+(targetAlpha-content.getAlpha())*fadeBlend;
         float dim=scrim.getAlpha()+(targetScrim-scrim.getAlpha())*scrimBlend;
         float feather=edgeFeather.getAlpha()+(targetFeather-edgeFeather.getAlpha())*scrimBlend;
