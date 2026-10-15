@@ -35,6 +35,7 @@ uniform vec4 uGrain; // strength, size in reference pixels, roughness, colored
 uniform vec2 uGlow; // threshold and isotropic radius
 uniform vec2 uDetail;
 uniform vec2 uHDR; // range in tone FBO, local contrast in final pass
+uniform vec4 uFilm; // multiscale grain, stock response, halation, light leak
 uniform int uDitherMethod; // 0 original Neon, 1 Bayer, 2 Threshold
 uniform int uDitherPalette; // 0 blue/orange/red, 1 mono, 2 quantized RGB
 
@@ -380,6 +381,49 @@ void main() {
             c += vec3(0.38,0.31,0.24)*ring*uFxA.z*0.24;
             c += grain*grainAmp;
             c=clamp(c,0.0,1.0);
+        }
+
+        // Dedicated analog-film layer. This is intentionally separate from
+        // dust/grain sliders: a strong camera preset produces real, visible
+        // emulsion texture even on otherwise clean imported photographs.
+        if(uFilm.x>.001){
+            vec2 px=floor(vTexCoord*uSize);
+            float fine=hash(px+vec2(7.31,84.27))-.5;
+            float mid=hash(floor(px*.54)+vec2(113.9,17.2))-.5;
+            float rough=hash(floor(px*.21)+vec2(47.6,231.8))-.5;
+            float emulsion=fine*.58+mid*.29+rough*.13;
+            float exposure=clamp(luminance(c),0.0,1.0);
+            float filmMask=.55+.45*sin(exposure*3.14159265);
+            float power=(.13+.20*uFilm.x)*uFilm.x;
+            vec3 noise=vec3(emulsion,
+                emulsion*.92+mid*.08,emulsion*.83+rough*.17);
+            c=clamp(c+noise*power*filmMask,0.0,1.0);
+        }
+        if(uFilm.z>.001){
+            // Warm halation follows bright contours and light sources, not a
+            // uniform blur: a bounded 4-tap sample of the tone pass.
+            vec2 px=vec2(2.8+5.0*uFilm.z)/uSize;
+            vec3 neighborhood=(
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(px.x,0.),0.,1.)))+
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(px.x,0.),0.,1.)))+
+                straight(texture2D(uImage,clamp(vTexCoord+vec2(0.,px.y),0.,1.)))+
+                straight(texture2D(uImage,clamp(vTexCoord-vec2(0.,px.y),0.,1.))))*.25;
+            float hot=smoothstep(.46,.94,luminance(neighborhood));
+            float edge=clamp(length(neighborhood-c)*2.7,0.,1.);
+            float shine=hot*(.36+.64*edge)*uFilm.z;
+            vec3 amber=vec3(.94,.36,.14)*shine*.27;
+            c=clamp(c+amber*(1.0-c),0.,1.);
+        }
+        if(uFilm.w>.001){
+            // Organic gate/film-edge light spill: feathered broad gradient,
+            // different amber/magenta response at opposite corners.
+            vec2 uv=vTexCoord;
+            float flareA=exp(-pow(length((uv-vec2(.04,.12))
+                /vec2(.33,.63)),2.0)*2.0);
+            float flareB=exp(-pow(length((uv-vec2(.96,.88))
+                /vec2(.57,.52)),2.0)*2.35);
+            float a=flareA*uFilm.w*.31,b=flareB*uFilm.w*.23;
+            c=clamp(c+(vec3(1.,.54,.19)*a+vec3(.91,.28,.49)*b)*(1.0-c),0.,1.);
         }
 
         // Edge detail replaces rotational blur: never rotate/move source pixels.
