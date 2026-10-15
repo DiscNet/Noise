@@ -412,6 +412,37 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         super.onDetachedFromWindow();
     }
 
+    /** Reusable lightweight icon backing with a thin white rim and diffuse
+     * simulated glow; no software blur or per-frame allocations. */
+    private static final class IconGlowFrame extends android.graphics.drawable.Drawable {
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float scale;
+        private final boolean active;
+        IconGlowFrame(Context c,boolean active){
+            this.active=active;scale=c.getResources().getDisplayMetrics().density;
+        }
+        @Override public void draw(Canvas canvas){
+            android.graphics.Rect b=getBounds();
+            float l=b.left+scale*2.2f,t=b.top+scale*2.2f;
+            float r=b.right-scale*2.2f,bt=b.bottom-scale*2.2f;
+            float radius=scale*19f;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(active?0xc9bd92dd:0x5b1c1925);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setColor(active?0x229edaff:0x0fb2b6cf);p.setStrokeWidth(scale*6f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setColor(active?0x5df5f1ff:0x25faf8ff);p.setStrokeWidth(scale*3f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setColor(active?0xdffaf9ff:0x88fbfaff);p.setStrokeWidth(scale*1.1f);
+            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setStyle(Paint.Style.FILL);
+        }
+        @Override public void setAlpha(int a){p.setAlpha(a);invalidateSelf();}
+        @Override public void setColorFilter(android.graphics.ColorFilter filter){p.setColorFilter(filter);}
+        @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
+    }
+
     private final class OrbitStage extends FrameLayout implements Choreographer.FrameCallback {
         private static final float STEP=.29f;
         private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -523,9 +554,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             light.setStyle(Paint.Style.FILL);
             light.setShader(halo);
             canvas.drawCircle(x,y,dp(96),light);
-            light.setShader(null);light.setColor(EditorTheme.LIME);
-            float markerX=x+(effectsMode?dp(40):-dp(40));
-            canvas.drawRoundRect(markerX-dp(8),y-dp(2),markerX+dp(8),y+dp(2),dp(3),dp(3),light);
+            light.setShader(null);
+            // Place the locator OUTSIDE the icon, not between icon and text:
+            // Effects: left of icon; Tools: right of icon.
+            // Short, low-contrast stroke should not dominate the selection.
+            light.setColor(0x719f9aa9);
+            float markerX=x+(effectsMode?-dp(54):dp(54));
+            canvas.drawRoundRect(markerX-dp(5),y-dp(.75f),
+                markerX+dp(5),y+dp(.75f),dp(1),dp(1),light);
         }
         private void render(){
             if(getWidth()==0||getHeight()==0)return;
@@ -537,7 +573,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                     captions[i].setTextColor(on?EditorTheme.INK:EditorTheme.MUTED);
                     captions[i].setTypeface(on?NoiseTypography.bold(getContext()):NoiseTypography.medium(getContext()));
                     icons[i].setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],on?0xff1a1421:EditorTheme.INK));
-                    icons[i].setBackground(EditorTheme.buttonSurface(getContext(),24,on));
+                    icons[i].setBackground(new IconGlowFrame(getContext(),on));
                     rows[i].setContentDescription(names[i]+(on?", selecionado":"")+". Toque para selecionar.");
                 }
                 if(onSelection!=null)onSelection.run();
