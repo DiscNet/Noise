@@ -35,6 +35,7 @@ uniform vec4 uLight;
 uniform vec2 uNoiseControl; // reduction strength, edge preservation
 uniform vec2 uHDR;          // tone range, local microcontrast (editor pass)
 uniform vec2 uBlend;        // processed layer opacity and blend mode
+uniform vec4 uFilm;         // grain, stock response, halation, light leak
 uniform vec2 uWheelShadows;
 uniform vec2 uWheelMidtones;
 uniform vec2 uWheelHighlights;
@@ -174,6 +175,21 @@ void main(){
         c+=hdr*.27*(1.0-smoothstep(.10,.54,ll))*(vec3(1.0)-c);
         c-=hdr*.15*smoothstep(.71,1.0,ll)*c;
         c=clamp(c,0.0,1.0);
+        if(uFilm.y>.001){
+            // Analog film stock: rounded shoulder, lifted toe, split-tone
+            // chemistry and warmer skin/midtones. No source-image warping.
+            float film=clamp(uFilm.y,0.0,1.0);
+            float filmL=clamp(luminance(c),0.0,1.0);
+            float toe=1.0-smoothstep(.06,.49,filmL);
+            float shoulder=smoothstep(.45,.94,filmL);
+            c+=film*toe*vec3(.022,.030,.055);
+            c+=film*shoulder*vec3(.074,.039,-.025);
+            c+=film*(1.0-toe)*vec3(.030,.008,-.043);
+            c=mix(c,vec3(smoothstep(.02,.99,c.r),
+                smoothstep(.025,.99,c.g),smoothstep(.028,.99,c.b)),
+                film*.32);
+            c=clamp(c,0.0,1.0);
+        }
         // Blend the non-destructive grade over the unchanged source.
         c=mix(straight(source),blendColors(straight(source),c,uBlend.y),
             clamp(uBlend.x,0.0,1.0));
