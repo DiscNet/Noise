@@ -201,8 +201,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     }
     void stop(){
         active=false;
-        final int n=++generation;
-        if(cameraHandler!=null)cameraHandler.post(()->closeCamera());
+        ++generation;
+        if(cameraHandler!=null)cameraHandler.post(this::closeCamera);
     }
     void dispose(){
         disposed=true;stop();photos.shutdown();
@@ -253,6 +253,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     ?(360-(info.orientation+displayDegrees)%360)%360
                     :(info.orientation-displayDegrees+360)%360;
                 opened.setDisplayOrientation(orientation);
+                if(size!=null)activity.runOnUiThread(()->fitPreview(size.width,size.height,orientation));
                 opened.setPreviewTexture(preview.getSurfaceTexture());
                 opened.startPreview();
                 activity.runOnUiThread(()->{
@@ -263,6 +264,18 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 activity.runOnUiThread(()->{if(!disposed){message("Câmera indisponível. Confira as permissões.");shutter.setEnabled(false);}});
             }
         });
+    }
+    /** Center crop the camera feed without nonuniform stretching. */
+    private void fitPreview(int bufferWidth,int bufferHeight,int displayOrientation){
+        if(disposed||preview.getWidth()<=0||preview.getHeight()<=0)return;
+        int viewWidth=preview.getWidth(),viewHeight=preview.getHeight();
+        float displayedWidth=(displayOrientation%180==0)?bufferWidth:bufferHeight;
+        float displayedHeight=(displayOrientation%180==0)?bufferHeight:bufferWidth;
+        float scale=Math.max(viewWidth/displayedWidth,viewHeight/displayedHeight);
+        Matrix matrix=new Matrix();
+        matrix.setScale(displayedWidth*scale/viewWidth,displayedHeight*scale/viewHeight,
+            viewWidth*.5f,viewHeight*.5f);
+        preview.setTransform(matrix);
     }
     private static Camera.Size previewSize(Camera.Parameters p,int width,int height){
         List<Camera.Size> list=p.getSupportedPreviewSizes();
