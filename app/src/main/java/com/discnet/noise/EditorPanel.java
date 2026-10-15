@@ -26,6 +26,18 @@ final class EditorPanel extends LinearLayout {
         for(int i=0;i<rows.length;i++)rows[i]=new PrecisionControl(c,i,host);
     }
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
+    /** Excludes the visible sliders' touch zones from edge navigation. */
+    boolean isOverAdjustmentBar(int screenX,int screenY){
+        android.graphics.Rect hit=new android.graphics.Rect();
+        for(PrecisionControl control:rows){
+            if(control==null||!control.slider.isShown())continue;
+            if(!control.slider.getGlobalVisibleRect(hit))continue;
+            // Pad the narrow drawn track, preserving its comfortable touch area.
+            hit.inset(0,-EditorTheme.dp(getContext(),8));
+            if(hit.contains(screenX,screenY))return true;
+        }
+        return false;
+    }
     void select(int group){
         boolean switched=category!=group;
         category=group;rebuild();
