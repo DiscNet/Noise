@@ -104,7 +104,9 @@ jobs:
             # Start gallery without a runtime permission modal during GPU smoke tests.
             adb shell pm grant com.discnet.noise android.permission.READ_EXTERNAL_STORAGE || true
             mkdir -p smoke
-            timeout 1800s adb shell am instrument -w com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
+            # Focused pull-request gate. Run exhaustive 60-control suite
+            # manually without -e noise_test_mode; it exceeds SwiftShader CI time.
+            timeout 900s adb shell am instrument -w -e noise_test_mode targeted com.discnet.noise.test/com.discnet.noise.NoiseSmokeTest | tee smoke/results.txt
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
