@@ -28,7 +28,7 @@ final class PrecisionControl extends LinearLayout {
         label=new TextView(c);label.setText(AdjustmentSpec.NAMES[id]);label.setTextColor(EditorTheme.INK);
         label.setTypeface(NoiseTypography.medium(c));label.setTextSize(13.5f);label.setGravity(Gravity.CENTER_VERTICAL);
         label.setMaxLines(1);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        label.setContentDescription(AdjustmentSpec.NAMES[id]+", dois toques para restaurar, segure para alternar");
+        label.setContentDescription(AdjustmentSpec.NAMES[id]+", dois toques para restaurar");
         title.addView(label,new LayoutParams(0,-1,1));
 
         reset=new TextView(c);reset.setText("↺");reset.setTextColor(EditorTheme.MUTED);
@@ -60,7 +60,6 @@ final class PrecisionControl extends LinearLayout {
             new android.view.GestureDetector.SimpleOnGestureListener(){
                 @Override public boolean onDown(MotionEvent e){return true;}
                 @Override public boolean onDoubleTap(MotionEvent e){restore();return true;}
-                @Override public void onLongPress(MotionEvent e){listener.toggle(id);}
             });
         label.setOnTouchListener((v,e)->gestures.onTouchEvent(e));
         label.setOnClickListener(v->numeric());
@@ -72,11 +71,11 @@ final class PrecisionControl extends LinearLayout {
     }
     private void restore(){listener.begin();listener.change(id,AdjustmentSpec.neutral(id));listener.end();}
     void bind(EditorDocument d){
-        binding=true;disabled=d.disabled[id];
+        binding=true;disabled=false;
         slider.setProgress(Math.round((d.values[id]-AdjustmentSpec.min(id))*1000));
         value.setText(AdjustmentSpec.format(id,d.values[id]));
-        label.setAlpha(disabled?.48f:1f);slider.setAlpha(disabled?.55f:1f);
-        reset.setAlpha(disabled?.6f:1f);
+        label.setAlpha(1f);slider.setAlpha(1f);
+        reset.setAlpha(1f);
         value.setContentDescription(AdjustmentSpec.NAMES[id]+": "+value.getText()+", toque para editar");
         binding=false;
     }
