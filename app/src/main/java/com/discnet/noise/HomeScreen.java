@@ -3,6 +3,8 @@ package com.discnet.noise;
 import android.content.Context;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.animation.ValueAnimator;
+import android.os.SystemClock;
 import android.view.*;
 import android.widget.*;
 
@@ -15,6 +17,9 @@ final class HomeScreen extends FrameLayout {
         super(c);
         onImport=importAction;onProjects=projectAction;onResume=resumeAction;
         setBackgroundColor(0xff0c0b10);
+        // Decorative animated stock-art: reusable radial shaders simulate
+        // defocused light smears and floating color clouds, no bitmaps/video.
+        addView(new StockAtmosphere(c),new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(24),dp(16),dp(24),dp(14));
@@ -76,7 +81,7 @@ final class HomeScreen extends FrameLayout {
         resume.setOnClickListener(v->onResume.run());
         TextView add=text("Importar imagem",16,0xff17121d);
         add.setTypeface(NoiseTypography.bold(c));
-        add.setGravity(Gravity.CENTER);add.setBackground(EditorTheme.buttonSurface(c,26,true));
+        add.setGravity(Gravity.CENTER);add.setBackground(EditorTheme.buttonSurface(c,11,true));
         add.setClickable(true);add.setFocusable(true);
         lower.addView(add,new LinearLayout.LayoutParams(-1,dp(54)));
         add.setOnClickListener(v->onImport.run());
@@ -105,6 +110,65 @@ final class HomeScreen extends FrameLayout {
         recent.setText(ready?"Seu último projeto está pronto para continuar.":"Importe uma imagem para começar.");
         resume.setText(ready?name+"   ›":"Nenhum projeto recente");
         resume.setEnabled(ready);resume.setTextColor(ready?EditorTheme.INK:EditorTheme.MUTED);
+    }
+    /** Ambient, blurred-looking abstract motion graphics behind home UI. */
+    private static final class StockAtmosphere extends View {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        private final Matrix transform=new Matrix();
+        private final RadialGradient[] lights={
+            new RadialGradient(0,0,1,
+                new int[]{0x827b58a6,0x32554074,0x0b2d203e,0x002d203e},
+                new float[]{0,.32f,.68f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,
+                new int[]{0x677f50d1,0x287e49a0,0x0843315d,0x0043315d},
+                new float[]{0,.28f,.70f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,
+                new int[]{0x647f617f,0x286e5473,0x0b3e344d,0x003e344d},
+                new float[]{0,.3f,.71f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,
+                new int[]{0x5b9f76b1,0x20835f8b,0x082d273e,0x002d273e},
+                new float[]{0,.27f,.66f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,
+                new int[]{0x285d5276,0x125a4269,0x00332249},
+                new float[]{0,.45f,1},Shader.TileMode.CLAMP)
+        };
+        private final float[] dx={.13f,.84f,.26f,.79f,.47f};
+        private final float[] dy={.27f,.18f,.61f,.69f,.49f};
+        private final float[] sx={.40f,.45f,.41f,.50f,.67f};
+        private final float[] sy={.23f,.27f,.28f,.20f,.18f};
+        private long begin;
+        StockAtmosphere(Context c){super(c);setClickable(false);setFocusable(false);}
+        @Override protected void onAttachedToWindow(){
+            super.onAttachedToWindow();begin=SystemClock.uptimeMillis();
+            postInvalidateOnAnimation();
+        }
+        @Override protected void onDetachedFromWindow(){
+            removeCallbacks(refresh);super.onDetachedFromWindow();
+        }
+        private final Runnable refresh=this::postInvalidateOnAnimation;
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);
+            float w=getWidth(),h=getHeight();
+            if(w<=0||h<=0)return;
+            boolean animate=ValueAnimator.areAnimatorsEnabled()&&isShown();
+            float time=animate?(SystemClock.uptimeMillis()-begin)/1000f:0f;
+            for(int i=0;i<lights.length;i++){
+                float t=time*(.16f+i*.034f)+i*1.31f;
+                float cx=w*(dx[i]+.052f*(float)Math.sin(t));
+                float cy=h*(dy[i]+.037f*(float)Math.cos(t*.78f));
+                float rx=w*sx[i],ry=h*sy[i];
+                transform.reset();transform.setScale(rx,ry);transform.postTranslate(cx,cy);
+                lights[i].setLocalMatrix(transform);
+                paint.setShader(lights[i]);
+                canvas.save();canvas.rotate((float)Math.sin(t*.53f)*17f,cx,cy);
+                canvas.drawOval(cx-rx,cy-ry,cx+rx,cy+ry,paint);
+                canvas.restore();
+            }
+            paint.setShader(null);
+            // Refresh at a restrained rate: lightweight ambient motion should
+            // not compete with GPU processing or interactive editor controls.
+            if(animate&&getWindowVisibility()==VISIBLE)postDelayed(refresh,40);
+        }
     }
     private static final class Sphere extends View {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
