@@ -56,11 +56,19 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private Uri latestPhoto;
     private float saturation=1f, temperature=0f, exposure=0f, digitalZoom=1f;
     private volatile int previewBufferWidth,previewBufferHeight,previewDisplayOrientation;
+    private volatile int deviceOrientationDegrees;
+    private final OrientationEventListener deviceOrientationListener;
 
     CameraScreen(Activity activity, Listener listener) {
         super(activity);
         this.activity=activity;
         this.listener=listener;
+        deviceOrientationListener=new OrientationEventListener(activity){
+            @Override public void onOrientationChanged(int orientation){
+                if(orientation!=ORIENTATION_UNKNOWN)
+                    deviceOrientationDegrees=nearestRightAngle(orientation);
+            }
+        };
         setBackgroundColor(0xff0c0b10);
         setFocusableInTouchMode(true);
 
@@ -170,30 +178,11 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         bottom.addView(edit,new LinearLayout.LayoutParams(dp(78),dp(48)));
         edit.setOnClickListener(v->{if(latestPhoto!=null)listener.edit(latestPhoto);});
         applyLiveAdjustments();
-        post(this::updateCameraLayout);
+        // No responsive landscape rearrangement: the camera remains portrait.
     }
 
-    @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
-        super.onSizeChanged(w,h,oldW,oldH);
-        post(this::updateCameraLayout);
-    }
-    /** A side-panel keeps the live viewfinder visible on landscape phones. */
-    private void updateCameraLayout(){
-        if(disposed||getWidth()<=0||getHeight()<=0)return;
-        boolean landscape=getWidth()>getHeight();
-        int desiredOrientation=landscape?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL;
-        if(cameraBody.getOrientation()!=desiredOrientation)
-            cameraBody.setOrientation(desiredOrientation);
-        if(landscape){
-            imageArea.setLayoutParams(new LinearLayout.LayoutParams(0,-1,1));
-            controlsScroll.setLayoutParams(new LinearLayout.LayoutParams(
-                Math.min(dp(255),Math.round(getWidth()*.43f)),-1));
-        }else{
-            imageArea.setLayoutParams(new LinearLayout.LayoutParams(-1,0,1));
-            controlsScroll.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));
-        }
-    }
-
+    // Keep the camera UI and preview at a fixed portrait size and position.
+    // The device orientation sensor changes only the saved photograph.
     private int dp(float d){return EditorTheme.dp(activity,d);}
     private TextView label(String value,int size,int color){
         TextView t=new TextView(activity);t.setText(value);t.setTextSize(size);t.setTextColor(color);
@@ -258,8 +247,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             int p=Math.round((digitalZoom-1f)*100);
             if(zoomBar.getProgress()!=p)zoomBar.setProgress(p);
         }
-        if(previewBufferWidth>0&&previewBufferHeight>0)
-            fitPreview(previewBufferWidth,previewBufferHeight,previewDisplayOrientation);
+        // Changing zoom changes only the framing rectangle, never the live feed.
     }
     static ColorMatrix colorAdjustments(float saturation,float temperature,float exposure){
         // Common transform shared by preview and captured JPEG.
@@ -291,12 +279,14 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     void start(){
         if(disposed)return;
         active=true;
+        if(deviceOrientationListener.canDetectOrientation())deviceOrientationListener.enable();
         if(activity.checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
             message("Autorize o uso da câmera para fotografar");return;
         }
         if(preview.isAvailable())openCamera();
     }
     void stop(){
+        deviceOrientationListener.disable();
         active=false;
         ++generation;
         if(cameraHandler!=null)cameraHandler.post(this::closeCamera);
@@ -422,7 +412,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         if(!active||disposed||capturing||!cameraReady||cameraHandler==null)return;
         final int width=Math.max(1,frameGuide.getWidth()),height=Math.max(1,frameGuide.getHeight());
         final int orientation=previewDisplayOrientation;
-        final float zoom=digitalZoom;
+        // The live feed is never zoomed. Focus coordinates must not shrink with the frame.
         final boolean front=preferredFacing==Camera.CameraInfo.CAMERA_FACING_FRONT;
         cameraHandler.post(()->{
             try{
@@ -435,8 +425,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     activity.runOnUiThread(()->message("Este aparelho mantém o foco automático contínuo"));
                     return;
                 }
-                float dx=((x/width)-.5f)*2000f/zoom;
-                float dy=((y/height)-.5f)*2000f/zoom;
+                float dx=((x/width)-.5f)*2000f;
+                float dy=((y/height)-.5f)*2000f;
                 double angle=Math.toRadians(-orientation);
                 float rx=(float)(dx*Math.cos(angle)-dy*Math.sin(angle));
                 float ry=(float)(dx*Math.sin(angle)+dy*Math.cos(angle));
@@ -460,10 +450,18 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             }
         });
     }
-    void orientationChanged(){
-        if(!active||disposed)return;
-        stop();
-        preview.postDelayed(()->{if(!disposed)start();},100);
+    /** Quantize accelerometer orientation without rotating any View. */
+    static int nearestRightAngle(int sensorDegrees){
+        if(sensorDegrees<0)return 0;
+        return (((sensorDegrees+45)/90)*90)%360;
+    }
+    /** Rotate the recorded photograph, not the camera interface. */
+    static Bitmap rotateForDevice(Bitmap source,int sensorDegrees){
+        int rotation=(360-nearestRightAngle(sensorDegrees))%360;
+        if(rotation==0)return source;
+        Matrix rotate=new Matrix();
+        rotate.setRotate(rotation);
+        return Bitmap.createBitmap(source,0,0,source.getWidth(),source.getHeight(),rotate,true);
     }
     private void closeCamera(){
         cameraReady=false;
@@ -491,8 +489,8 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         }
         capturing=true;shutter.setEnabled(false);
         final float sat=saturation,warm=temperature,ev=exposure;
-        final float zoom=digitalZoom;
         final RectF cropFrame=frameGuide.frame();
+        final int snapshotOrientation=deviceOrientationDegrees;
         final int frameWidth=frameGuide.getWidth(),frameHeight=frameGuide.getHeight();
         message("Capturando…");
         cameraHandler.post(()->{
@@ -500,9 +498,10 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                 if(camera==null)throw new IOException("Câmera desconectada");
                 Camera.Parameters parameters=camera.getParameters();
                 Camera.CameraInfo info=new Camera.CameraInfo();Camera.getCameraInfo(cameraId,info);
-                int degrees=rotationDegrees(activity.getWindowManager().getDefaultDisplay().getRotation());
-                int jpegRotation=info.facing==Camera.CameraInfo.CAMERA_FACING_FRONT?
-                    (info.orientation+degrees)%360:(info.orientation-degrees+360)%360;
+                // The UI/preview is locked to portrait. First encode a portrait
+                // JPEG so crop coordinates correspond to the visible guide.
+                // Only after cropping is the photo rotated for device posture.
+                int jpegRotation=info.orientation;
                 parameters.setRotation(jpegRotation);
                 camera.setParameters(parameters);
                 camera.takePicture(null,null,(bytes,device)->{
@@ -510,7 +509,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
                     if(disposed)return;
                     photos.execute(()->{
                         try{
-                            Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev,zoom,cropFrame,frameWidth,frameHeight);
+                            Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev,cropFrame,frameWidth,frameHeight,snapshotOrientation);
                             activity.runOnUiThread(()->{
                                 if(disposed)return;latestPhoto=uri;
                                 edit.setEnabled(true);edit.setAlpha(1f);
@@ -567,14 +566,15 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         return oriented;
     }
     private static Uri savePicture(Context c,byte[] jpeg,float saturation,float temperature,float exposure,
-                                   float zoom,RectF frame,int frameWidth,int frameHeight)throws Exception{
-        Bitmap decoded=null,cropped=null,filtered=null;Uri pending=null;File legacy=null;
+                                   RectF frame,int frameWidth,int frameHeight,int sensorOrientation)throws Exception{
+        Bitmap decoded=null,cropped=null,orientedCrop=null,filtered=null;Uri pending=null;File legacy=null;
         try{
             decoded=decodeAndOrient(jpeg);
             Rect rect=CameraFrameGuide.photoCrop(decoded.getWidth(),decoded.getHeight(),
-                frameWidth,frameHeight,frame,zoom);
+                frameWidth,frameHeight,frame);
             cropped=Bitmap.createBitmap(decoded,rect.left,rect.top,rect.width(),rect.height());
-            filtered=processPhoto(cropped,saturation,temperature,exposure);
+            orientedCrop=rotateForDevice(cropped,sensorOrientation);
+            filtered=processPhoto(orientedCrop,saturation,temperature,exposure);
             String name="Noise-Camera-"+new SimpleDateFormat("yyyyMMdd-HHmmss-SSS",Locale.US).format(new Date())+".jpg";
             Uri uri;
             if(Build.VERSION.SDK_INT>=29){
@@ -609,6 +609,7 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
             if(legacy!=null)legacy.delete();throw e;
         }finally{
             if(filtered!=null)filtered.recycle();
+            if(orientedCrop!=null&&orientedCrop!=cropped)orientedCrop.recycle();
             if(cropped!=null&&cropped!=decoded)cropped.recycle();
             if(decoded!=null)decoded.recycle();
         }

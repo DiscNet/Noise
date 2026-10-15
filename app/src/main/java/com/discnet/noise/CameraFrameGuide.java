@@ -42,7 +42,7 @@ final class CameraFrameGuide extends View {
     float zoom(){return zoom;}
     float ratio(){return ratio;}
     RectF frame(){
-        geometry(getWidth(),getHeight(),ratio,frame);
+        geometry(getWidth(),getHeight(),ratio,zoom,frame);
         return new RectF(frame);
     }
     static void geometry(int w,int h,float ratio,RectF out){
@@ -54,15 +54,24 @@ final class CameraFrameGuide extends View {
         float cx=w*.5f,cy=h*.5f;
         out.set(cx-width*.5f,cy-height*.5f,cx+width*.5f,cy+height*.5f);
     }
+    /** Shrink only the framing guide; the underlying TextureView does not scale. */
+    static void geometry(int w,int h,float ratio,float zoom,RectF out){
+        geometry(w,h,ratio,out);
+        if(out.isEmpty())return;
+        float scale=1f/Math.max(1f,Math.min(4f,zoom));
+        float cx=out.centerX(),cy=out.centerY();
+        float halfW=out.width()*scale*.5f,halfH=out.height()*scale*.5f;
+        out.set(cx-halfW,cy-halfH,cx+halfW,cy+halfH);
+    }
     /**
-     * Crop the oriented JPEG in exactly the region shown by the frame,
-     * accounting for the TextureView's center-cover transform and digital zoom.
+     * The preview never zooms. Only the centered viewfinder rectangle shrinks.
+     * Convert its on-screen bounds into pixels of the unchanged camera feed.
      */
-    static Rect photoCrop(int imageW,int imageH,int viewW,int viewH,RectF guide,float zoom){
+    static Rect photoCrop(int imageW,int imageH,int viewW,int viewH,RectF guide){
         if(imageW<1||imageH<1||viewW<1||viewH<1||guide.isEmpty())
             return new Rect(0,0,Math.max(1,imageW),Math.max(1,imageH));
         float cover=Math.max(viewW/(float)imageW,viewH/(float)imageH);
-        float scale=cover*Math.max(1f,zoom);
+        float scale=cover;
         int outW=Math.min(imageW,Math.max(1,Math.round(guide.width()/scale)));
         int outH=Math.min(imageH,Math.max(1,Math.round(guide.height()/scale)));
         float cx=imageW*.5f+(guide.centerX()-viewW*.5f)/scale;
@@ -73,7 +82,7 @@ final class CameraFrameGuide extends View {
     }
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);
-        geometry(getWidth(),getHeight(),ratio,frame);
+        geometry(getWidth(),getHeight(),ratio,zoom,frame);
         if(frame.isEmpty())return;
         paint.setColor(0x99000000);paint.setStyle(Paint.Style.FILL);
         canvas.drawRect(0,0,getWidth(),frame.top,paint);
