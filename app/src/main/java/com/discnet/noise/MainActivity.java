@@ -123,22 +123,43 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
-        // All of the image width is active, including its edges and the toolbar.
-        // The gesture also works over the small grip above the tool sheet,
-        // not just inside the previous narrow central preview rectangle.
-        float y0=appBackground.getPaddingTop()+workspace.getTop();
-        float y1=y0+editorStage.getBottom()+dp(74);
-        boolean nearSide=x<dp(46)||x>appBackground.getWidth()-dp(46);
-        float maxY=y0+workspace.getHeight()-dp(24);
-        return x>=0&&x<=appBackground.getWidth()
-            &&y>=y0&&((y<=y1)||(nearSide&&y<=maxY));
+        // Only the visible image preview can initiate navigation. Previously
+        // the whole workspace (including sliders, crop tools and sheet handle)
+        // was eligible, so editing a parameter could open an orbital menu.
+        // Global visible bounds also work after expanding/rotating the sheet.
+        if(editorStage.getVisibility()!=View.VISIBLE
+            ||editorStage.getHeight()<dp(80))return false;
+        android.graphics.Rect stageBounds=new android.graphics.Rect();
+        if(!editorStage.getGlobalVisibleRect(stageBounds))return false;
+        int[] rootPosition=new int[2];appBackground.getLocationOnScreen(rootPosition);
+        int screenX=Math.round(rootPosition[0]+x);
+        int screenY=Math.round(rootPosition[1]+y);
+        int inside=dp(8);
+        boolean inPreview=screenY>=stageBounds.top+inside
+            &&screenY<=stageBounds.bottom-inside
+            &&screenX>=stageBounds.left&&screenX<=stageBounds.right;
+        if(!inPreview)return false;
+        // In landscape the photo preview can sit to the left of the panel.
+        // Only physical sides of the actual image area may initiate the wheel.
+        int activation=Math.min(dp(60),Math.max(dp(40),stageBounds.width()/8));
+        boolean leftEdge=screenX<=stageBounds.left+activation;
+        boolean rightEdge=screenX>=stageBounds.right-activation;
+        return leftEdge||rightEdge;
     }
     private void closeOrbital(){
         if(orbital!=null){OrbitalSelector old=orbital;orbital=null;orbitalClosing=true;old.dismiss();}
     }
+    private boolean hasDismissingOverlay(){
+        for(int i=0;i<appBackground.getChildCount();i++){
+            View child=appBackground.getChildAt(i);
+            if(child instanceof OrbitalSelector)return true;
+        }
+        return false;
+    }
     private void showOrbital(boolean effects){showOrbital(effects,false);}
     private void showOrbital(boolean effects,boolean interactive){
         if(original==null){showGallery();return;}
+        if(orbitalClosing&&!hasDismissingOverlay())orbitalClosing=false;
         if(orbital!=null||orbitalClosing)return;
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
