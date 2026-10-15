@@ -455,6 +455,22 @@ public class NoiseSmokeTest extends Instrumentation {
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
+            stage("twelve original analog camera looks");
+            ArrayList<ProjectStore.Preset> builtinLooks=ProjectStore.builtins();
+            require(builtinLooks.size()>=17,"12 analog camera presets added without removing old presets");
+            require(builtinLooks.get(3).id.equals("builtin-neon"),
+                "Prior preset indices preserved for existing Neon tool");
+            java.util.HashSet<String> analogIds=new java.util.HashSet<>();
+            for(ProjectStore.Preset look:builtinLooks){
+                if(!look.id.startsWith("builtin-camera-"))continue;
+                require(analogIds.add(look.id),"Analog camera preset names/IDs must be unique");
+                require(look.document!=null,"Every analog look has an editable document");
+                require(look.document.same(EditorDocument.fromJson(look.document.toJson())),
+                    "Analog look survives JSON serialization");
+            }
+            require(analogIds.size()==12,"Twelve unique analog styles available");
+            require(ProjectVault.validId(ProjectStore.newId())&&!ProjectVault.validId("../bad"),
+                "Shared vault rejects invalid project document IDs");
             stage("document transactions and persistence");
             EditorDocument doc=new EditorDocument();EditHistory history=new EditHistory();history.begin(doc);
             for(int i=0;i<50;i++)doc.values[2]=i/100f;history.commit(doc);
@@ -527,7 +543,11 @@ public class NoiseSmokeTest extends Instrumentation {
             while((Boolean)field(activity,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(30);
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
-            for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());
+                require(panel.category==i,"Category "+i+" reachable");
+                require(findDescendant(panel,android.widget.Switch.class)==null,
+                    "No on/off switch is shown for category "+i);
+            }
             stage("panel resize is blocked when option disabled");
             runOnMainSync(()->{
                 activity.getSharedPreferences(SettingsScreen.PREFS,0).edit()
@@ -608,6 +628,8 @@ public class NoiseSmokeTest extends Instrumentation {
             long libraryDeadline=SystemClock.uptimeMillis()+12000;
             ProjectLibraryScreen library=(ProjectLibraryScreen)field(activity,"projectLibrary");
             require(library!=null,"Custom project library overlay opens");
+            require(field(library,"vaultButton") instanceof TextView,
+                "Shared-folder backup and restore available from project library");
             while(library.projectCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
                 SystemClock.sleep(90);
             require(library.projectCount()>0,"Imported project appears in custom library");
