@@ -1,49 +1,206 @@
-# Noise!
+<div align="center">
 
-Editor de imagens Android, offline, com interface nativa em Java e renderização **OpenGL ES 2.0**. Os ajustes são representados por uma receita editável; a imagem original é preservada no projeto.
+<img src=".github/assets/noise-hero.svg" alt="Noise! — editor de imagens para Android com edição GPU, dither e estética violeta" width="100%"/>
 
-> **Versão 1.14:** redesign do editor em validação. O APK só é distribuído depois do build e dos testes instrumentados aprovados. [Versão publicada](https://github.com/DiscNet/Noise/releases/latest) · [Trabalho da 1.14](https://github.com/DiscNet/Noise/pull/13).
+<br/>
 
-## Editor
+**Uma imagem. Mil possibilidades.**
 
-O cabeçalho compacto concentra voltar, desfazer, refazer, exportar e menu secundário. A prévia mantém proporção, suporta zoom por pinça, arraste após ampliar, comparação com o original ao pressionar e tela cheia. Em retrato, o painel de ajustes pode ser expandido ou recolhido pela alça; em paisagem, fica ao lado da imagem.
+Editor de imagens para Android com **ajustes em tempo real**, efeitos experimentais, **Dither**, **ASCII** e uma interface de edição com **rodas orbitais**.
 
-As sete categorias, acessíveis por navegação horizontal, são **Luz, Cor, Detalhes, Efeitos, Dither, ASCII e Ferramentas**. Cada categoria mostra apenas seus controles pertinentes; o estado é preservado ao alternar de ferramenta. Os valores podem ser digitados; toque duplo no nome restaura o valor neutro, e pressão longa alterna o ajuste sem perder seu valor. Sliders atualizam o estado GPU durante o movimento e geram uma operação lógica de histórico por gesto.
+<br/>
 
-## Edição e efeitos
+<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/BAIXAR%20APK-V1.27-cba6f7?style=for-the-badge&logo=android&logoColor=17111f" alt="Baixar APK Noise! V1.27"/></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><img src="https://img.shields.io/badge/RELEASES-GitHub-282231?style=for-the-badge&logo=github&logoColor=ffffff" alt="Versões publicadas"/></a>
 
-- **Luz:** exposição, brilho, contraste, realces, sombras, brancos e pretos.
-- **Cor:** saturação, vibração, temperatura, tonalidade, matiz e inversão.
-- **Detalhes:** nitidez, textura, redução de ruído, granulação, tamanho e aspereza do grão, realce de bordas.
-- **Efeitos:** vinheta, fade, glow ajustável (intensidade/limiar/raio), aberração cromática, CRT, glitch, anéis e névoa.
-- **Dither:** Neon/Nonqual, Bayer 4×4, threshold, controles por algoritmo e opções de paleta (Nonqual azul, laranja e vermelho; preto e branco; RGB).
-- **ASCII:** caracteres renderizados como imagem exportável; densidade, brilho, contraste, limiar, espaçamento, tamanho, símbolos alternativos e modos monocromático, cores da foto ou Nonqual.
-- **Ferramentas:** recorte não destrutivo com alças, proporções livres e fixas, rotação, espelhamento, presets, projetos, copiar/colar ajustes e exportação.
+<br/><br/>
 
-O modelo de edição inclui **desfazer/refazer**, projetos locais e presets salvos com parâmetros reais. Projetos guardam uma cópia privada do arquivo de origem, estado de edição e histórico. Os presets podem ser criados, renomeados, excluídos e favoritados.
+<img src="https://img.shields.io/badge/Android-8.0%2B-8bd5ca?style=flat-square&logo=android&logoColor=101015" alt="Android 8.0 ou superior"/>
+<img src="https://img.shields.io/badge/Java-17-edb1d2?style=flat-square&logo=openjdk&logoColor=101015" alt="Java 17"/>
+<img src="https://img.shields.io/badge/GPU-OpenGL%20ES%202.0-b4befe?style=flat-square" alt="OpenGL ES 2.0"/>
+<img src="https://img.shields.io/badge/Offline-Sem%20internet-a6e3a1?style=flat-square" alt="Funciona offline"/>
+<a href="https://github.com/DiscNet/Noise/actions/workflows/android.yml"><img src="https://github.com/DiscNet/Noise/actions/workflows/android.yml/badge.svg?branch=main" alt="Build e testes Android"/></a>
 
-Os efeitos compatíveis com o fluxo atual usam shaders GPU; a prévia é limitada a uma textura reduzida para favorecer a fluidez e a exportação decodifica a imagem de origem separadamente. O teto atual de exportação é **4096 px no lado maior** ou o limite físico de textura, prevalecendo o menor.
+<br/>
 
-## Arquivos
+[**Explorar os efeitos**](#-laboratório-de-efeitos) · [**Navegação orbital**](#-navegação-orbital) · [**Como instalar**](#-instalação) · [**Código e build**](#-desenvolvimento)
 
-PNG com transparência quando aplicável ou JPEG com qualidade selecionável e fundo branco. O arquivo é publicado em **Pictures/Noise!** por MediaStore (Android 10+) ou na pasta pública correspondente em versões anteriores, preservando-o após desinstalação. Há opção de compartilhar pelo Android.
+</div>
 
-A galeria utiliza MediaStore, permite selecionar pastas/álbuns e consulta todas as imagens acessíveis no álbum. O seletor de fotos do sistema é uma alternativa de importação.
+---
 
-## Build e verificação
+## ✦ Um editor feito para experimentar
 
-Requisitos: **Java 17, Gradle 8.9, Android SDK 35**. Para compilar:
+O **Noise!** combina os ajustes essenciais de fotografia com ferramentas criativas e uma interface feita para aproveitar melhor o espaço do celular. O processamento utiliza **shaders na GPU**, enquanto as edições são armazenadas como parâmetros — a imagem original do projeto permanece intacta.
 
-```sh
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🎛️ Precisão na edição
+
+**Luz e cor** com visualização ao alterar o controle, valores ajustáveis, comparação com o original, histórico de desfazer/refazer e edição não destrutiva.
+
+</td>
+<td width="50%" valign="top">
+
+### ✨ Experimentação visual
+
+**Glow, ruído, Dither, CRT, Glitch, ASCII e mais** para criar texturas e estilos além dos filtros convencionais.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### ◌ Interface orbital
+
+Duas rodas laterais, rolagem com amortecimento, encaixe suave e transições de abertura e fechamento com **fade in/out**.
+
+</td>
+<td valign="top">
+
+### 📁 Tudo no dispositivo
+
+Galeria por álbuns, projetos locais, presets, recorte, exportação em **PNG/JPEG** e compartilhamento pelo Android — sem depender de conexão.
+
+</td>
+</tr>
+</table>
+
+## 🎨 Laboratório de efeitos
+
+<div align="center">
+<img src=".github/assets/noise-effects.svg" alt="Ilustração da identidade visual dos efeitos Dither Neon, ruído analógico e ajustes em tempo real" width="100%"/>
+<sub>Artes conceituais da identidade visual; não são capturas de tela do aplicativo.</sub>
+</div>
+
+<br/>
+
+| Módulo | Recursos |
+| :-- | :-- |
+| ☀️ **Luz** | Exposição, brilho, contraste, realces, **Brancos**, pretos e sombras |
+| 🎨 **Cor** | Saturação, vibração, temperatura, tonalidade, matiz e inversão |
+| 🔍 **Detalhes** | Nitidez, textura, ruído, granulação, aspereza e realce de bordas |
+| ✨ **Efeitos** | **Glow** com intensidade/limiar/raio, vinheta, Fade, CRT, Glitch, anéis, névoa e aberração cromática |
+| ▦ **Dither** | Neon/Nonqual, Bayer e Threshold; paletas coloridas, monocromáticas e RGB |
+| ▤ **ASCII** | Imagem formada por caracteres, com densidade, contraste, brilho, limiar, espaçamento e símbolos |
+| ✂️ **Ferramentas** | Recorte, rotação, espelhamento, presets, projetos e exportação |
+
+> **Mais controle, menos efeitos artificiais:** cada ajuste conserva seus próprios parâmetros. Glow e Brancos usam curvas de processamento desenvolvidas para responder também em imagens com luminosidades diferentes.
+
+## ◉ Navegação orbital
+
+<div align="center">
+
+<img src=".github/assets/noise-orbit.svg" alt="Ilustração de dois menus circulares: Efeitos à esquerda e Ferramentas à direita" width="100%"/>
+
+<sub>Representação gráfica das rodas, ilustrativa e não uma captura real.</sub>
+
+</div>
+
+<br/>
+
+A navegação foi pensada para não atrapalhar o manuseio da imagem:
+
+| Gesto | Resultado |
+| :-- | :-- |
+| **Deslizar da borda esquerda → direita** | Abre **Efeitos**, em roda do lado esquerdo |
+| **Deslizar da borda direita → esquerda** | Abre **Ferramentas**, em roda do lado direito |
+| **Arrastar verticalmente na roda** | Gira entre as opções com rolagem amortecida |
+| **Fechar o menu** | Menu e fundo desaparecem com **fade out** |
+
+As rodas descrevem arcos circulares espelhados. A abertura tem animação própria — **não acompanha rigidamente o dedo** — e o editor escurece gradualmente com um gradiente suave.
+
+## 📷 Fluxo de edição
+
+1. **Importe uma foto** pela galeria interna, por uma pasta/álbum ou pelo seletor do sistema.
+2. **Ajuste a imagem** nos controles de luz, cor e detalhes, acompanhando a prévia.
+3. **Explore os efeitos** nas rodas laterais e combine Dither, Glow, ASCII e outros estilos.
+4. **Compare e refine** com o original, desfaça/refaça e salve seu projeto ou preset.
+5. **Exporte e compartilhe** em PNG ou JPEG; o arquivo é salvo em `Pictures/Noise!`.
+
+## 📦 Instalação
+
+<div align="center">
+
+<a href="https://github.com/DiscNet/Noise/releases/download/build-119/Noise.V1.27.apk"><img src="https://img.shields.io/badge/⬇%20Download-Noise.V1.27.apk-BBA4E8?style=for-the-badge&logo=android&logoColor=21162b" alt="Download do APK da versão 1.27"/></a>
+
+</div>
+
+Acesse a [**última release publicada**](https://github.com/DiscNet/Noise/releases/latest), baixe o arquivo **`Noise.V1.27.apk`** da V1.27 e abra-o no Android para instalar. Caso necessário, autorize a instalação a partir do aplicativo usado para abrir o APK.
+
+- **Sistema mínimo:** Android 8.0 (API 26).
+- **Primeira abertura:** o Noise! solicita acesso às fotos; se você não conceder, ainda poderá usar o seletor de imagens do sistema.
+- **Armazenamento:** as fotos exportadas permanecem em **`Pictures/Noise!`** mesmo após desinstalar o app.
+
+> **Nota:** projetos e presets são mantidos no armazenamento privado do aplicativo e podem ser removidos ao desinstalá-lo. Faça a exportação das imagens que deseja guardar.
+
+## ⚙️ Desenvolvimento
+
+O Noise! é escrito em **Java**, com componentes Android e renderização **OpenGL ES 2.0**. Os efeitos são executados por shaders GLSL; a prévia e a exportação usam a mesma base de ajustes.
+
+| Camada | Tecnologia |
+| :-- | :-- |
+| Interface | Android View System · Java |
+| Renderização | OpenGL ES 2.0 · GLSL |
+| Imagens e galeria | Bitmap · MediaStore |
+| Build | Gradle 8.9 · Java 17 · Android SDK 35 |
+| Verificação | GitHub Actions · testes instrumentados em emulador Android |
+
+Para compilar localmente, instale o **JDK 17**, o **Android SDK 35** e o **Gradle 8.9**:
+
+```bash
 gradle --no-daemon assembleDebug assembleDebugAndroidTest
 ```
 
-O fluxo em `.github/workflows/android.yml` compila, inicia um emulador Android API 30 e executa verificações instrumentadas dos shaders, estados, efeitos, galeria, importação, recorte, histórico, presets e exportação. Um resultado verde exige também `NOISE_SMOKE_OK` nos logs. Apenas o fluxo de `push` em `main`, após a verificação, cria uma release versionada.
+O APK de debug será gerado em `app/build/outputs/apk/debug/app-debug.apk`. O workflow de CI executa os testes instrumentados e publica o instalador nas [Releases](https://github.com/DiscNet/Noise/releases) após uma compilação válida na branch `main`.
 
-Cobertura, evidências e limitações: [Auditoria](docs/AUDIT-1.14.md) · [Validação](docs/VALIDATION.md).
+<details>
+<summary><b>🗂️ Estrutura do projeto</b></summary>
 
-## Limitações conhecidas
+```text
+app/src/main/java/com/discnet/noise/
+├── MainActivity.java          # Navegação e ciclo de vida
+├── OrbitalSelector.java       # Rodas laterais e animações
+├── SwipeNavigationHost.java   # Reconhecimento dos gestos nas bordas
+├── EditorPanel.java           # Controles de ajustes
+├── EditState.java             # Estado enviado à GPU
+├── GlPipeline.java            # Pipeline OpenGL
+├── GalleryScreen.java         # Fotos e álbuns
+└── ExportManager.java         # Arquivos exportados
 
-Edição por máscaras, curvas RGB, dithering por difusão de erro (Floyd–Steinberg e Atkinson) e exportação sem limite de tamanho **não estão implementados**. O preview e a exportação podem diferir em detalhes dependentes da resolução, apesar de compartilharem os mesmos parâmetros. Projetos ficam no armazenamento privado do app; ao desinstalá-lo, **projetos e presets locais são removidos**, mas os arquivos exportados em Pictures/Noise! permanecem.
+app/src/main/assets/
+├── editor.frag                # Efeitos e renderização final
+└── tone.frag                  # Ajustes de cor e luz
 
-Referências conceituais: [Lightroom Mobile](https://helpx.adobe.com/lightroom/mobile/get-started/gesture-controls-in-lightroom-for-mobile.html) · [Photopea](https://www.photopea.com/learn/workspace).
+.github/assets/               # Identidade visual do README
+.github/workflows/android.yml # Build, validação e publicação
+```
+
+</details>
+
+<details>
+<summary><b>🧪 Testes e limitações</b></summary>
+
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.27](docs/RELEASE-1.27.md).
+
+**Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
+
+</details>
+
+---
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/NOISE!-CREATE%20WITHOUT%20LIMITS-2A1C37?style=for-the-badge&labelColor=CBA6F7&color=231A2D" alt="Noise! — Create without limits"/>
+
+<br/><br/>
+
+**Experimente. Ajuste. Transforme.**
+
+[**Baixar Noise!**](https://github.com/DiscNet/Noise/releases/latest) · [**Reportar um problema**](https://github.com/DiscNet/Noise/issues) · [**Notas da versão**](docs/RELEASE-1.27.md)
+
+<sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
+
+</div>
