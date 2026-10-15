@@ -80,6 +80,45 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(current!=previous,"Home gradient must advance animation frames");
             }
             if(targeted){
+                stage("Camera: focus touch, framed aspect ratio, capture crop and zoom");
+                RectF square=new RectF(),portrait=new RectF(),wide=new RectF();
+                CameraFrameGuide.geometry(720,1100,1f,square);
+                CameraFrameGuide.geometry(720,1100,4f/3f,portrait);
+                CameraFrameGuide.geometry(720,1100,16f/9f,wide);
+                require(Math.abs(square.width()-square.height())<=1f,"Square format must be square");
+                require(Math.abs(portrait.height()/portrait.width()-4f/3f)<.02f,
+                    "4:3 photo framing must rotate with portrait phone");
+                require(Math.abs(wide.height()/wide.width()-16f/9f)<.02f,
+                    "16:9 portrait framing must be tall");
+                RectF landscape=new RectF();
+                CameraFrameGuide.geometry(1100,720,16f/9f,landscape);
+                require(Math.abs(landscape.width()/landscape.height()-16f/9f)<.02f,
+                    "16:9 frame rotates with device landscape orientation");
+                Rect crop1=CameraFrameGuide.photoCrop(3000,4000,720,1100,square,1f);
+                Rect crop2=CameraFrameGuide.photoCrop(3000,4000,720,1100,square,2f);
+                require(Math.abs(crop1.width()-crop1.height())<=2,
+                    "Saved 1:1 JPEG matches the central square guide");
+                require(crop2.width()<crop1.width()*.55f
+                    &&crop2.height()<crop1.height()*.55f,
+                    "2x zoom crops a meaningfully smaller area of the final image");
+                require(crop1.left>=0&&crop1.top>=0&&crop1.right<=3000&&crop1.bottom<=4000,
+                    "Crop bounds stay within the oriented camera JPEG");
+                final int[] taps={0};
+                final CameraFrameGuide[] guide={null};
+                runOnMainSync(()->{
+                    guide[0]=new CameraFrameGuide(activity,new CameraFrameGuide.Gestures(){
+                        @Override public void focus(float x,float y){taps[0]++;}
+                        @Override public void zoom(float factor){}
+                    });
+                    guide[0].layout(0,0,720,1100);
+                    long time=SystemClock.uptimeMillis();
+                    MotionEvent down=MotionEvent.obtain(time,time,MotionEvent.ACTION_DOWN,345,510,0);
+                    MotionEvent up=MotionEvent.obtain(time,time+90,MotionEvent.ACTION_UP,345,510,0);
+                    guide[0].onTouchEvent(down);
+                    guide[0].onTouchEvent(up);
+                    down.recycle();up.recycle();
+                });
+                require(taps[0]==1,"Tapping the camera viewfinder triggers focus, never the media picker");
                 stage("Camera: saturation, temperature and exposure use real pixels");
                 Bitmap cameraPlate=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
                 cameraPlate.eraseColor(Color.rgb(90,120,165));
