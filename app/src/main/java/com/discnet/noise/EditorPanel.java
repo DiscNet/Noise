@@ -16,6 +16,18 @@ final class EditorPanel extends LinearLayout {
     private final PrecisionControl[] rows=new PrecisionControl[AdjustmentSpec.COUNT];
     int category,effect;
     private final boolean[] advancedExpanded={false,false,false};
+    private boolean resizeEnabled;
+    void panelResizeEnabled(boolean enabled){
+        resizeEnabled=enabled;
+        updateHandle();
+    }
+    private void updateHandle(){
+        handle.setText("━   "+AdjustmentSpec.CATEGORIES[category]+(resizeEnabled?
+            "   ·   arraste para ajustar":"   ·   painel fixo"));
+        handle.setContentDescription(resizeEnabled?
+            "Arraste para redimensionar o painel":
+            "Painel fixo. Ative o redimensionamento nas configurações.");
+    }
     EditorPanel(Context c,Host host){super(c);this.host=host;setOrientation(VERTICAL);setBackground(EditorTheme.surface(c,28));
         handle=new TextView(c);handle.setTypeface(NoiseTypography.medium(c));handle.setTextColor(EditorTheme.MUTED);handle.setTextSize(12);handle.setGravity(Gravity.CENTER);handle.setContentDescription("Arraste para ampliar ou recolher o painel. Toque para alternar tamanho.");handle.setFocusable(true);addView(handle,new LayoutParams(-1,dp(48)));
         scroll=new ScrollView(c);scroll.setFillViewport(false);scroll.setClipToPadding(false);
@@ -65,7 +77,7 @@ final class EditorPanel extends LinearLayout {
     void bind(int id){rows[id].bind(host.document());}
     void rebuild(){
         int scrollY=scroll.getScrollY();
-        controls.removeAllViews();handle.setText("━   "+AdjustmentSpec.CATEGORIES[category]+"   ·   deslize para expandir");EditorDocument d=host.document();
+        controls.removeAllViews();updateHandle();EditorDocument d=host.document();
         String name=category==3?AdjustmentSpec.EFFECTS[effect]:AdjustmentSpec.CATEGORIES[category];
         String description=category==0?"Iluminação e contraste":category==1?"Cores e tons":
             category==2?"Textura e definição":category==3?"Efeitos ajustáveis e combináveis":
