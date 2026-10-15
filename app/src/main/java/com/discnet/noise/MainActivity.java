@@ -39,6 +39,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
     private CameraScreen cameraScreen;
+    private int orientationBeforeCamera=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private HomeScreen homeScreen;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
@@ -311,7 +312,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showCamera(){
         if(cameraScreen!=null)return;
         closeOrbital();closeSettings();closeGallery();closeHome();
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        orientationBeforeCamera=getRequestedOrientation();
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         cameraScreen=new CameraScreen(this,new CameraScreen.Listener(){
             @Override public void close(){closeCamera();showHome();}
             @Override public void edit(Uri uri){closeCamera();load(uri);}
@@ -326,7 +328,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(cameraScreen==null)return;
         CameraScreen screen=cameraScreen;cameraScreen=null;
         screen.dispose();appBackground.removeView(screen);
-        if(!isFinishing())setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        if(!isFinishing())setRequestedOrientation(orientationBeforeCamera);
     }
     private void showGallery(){if(galleryScreen==null){galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){public void onPhoto(Uri uri){load(uri);}public void onSystemGallery(){systemPicker();}public void onGrantPermission(){grantGalleryPermission();}public void onClose(){closeGallery();if(original==null)showHome();}public void onProjects(){closeGallery();showProjects();}});appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));}closeHome();galleryScreen.setVisibility(View.VISIBLE);galleryScreen.bringToFront();galleryScreen.refresh(hasGalleryPermission());}
     private void closeGallery(){if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);}
@@ -545,7 +547,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override public void onConfigurationChanged(Configuration configuration){
         super.onConfigurationChanged(configuration);
-        if(cameraScreen!=null)cameraScreen.orientationChanged();
+        // Portrait camera stays in place. Sensor orientation is read separately
+        // by CameraScreen and applied only to the captured JPEG.
     }
     @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
     @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
