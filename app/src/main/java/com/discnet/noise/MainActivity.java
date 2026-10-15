@@ -309,7 +309,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     void load(Uri uri){saveProject(false);int token=loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);loading=true;status.setText("Abrindo imagem…");updateActions();
         importTask=files.submit(()->{String id=ProjectStore.newId();try{File path=store.importOriginal(uri,id);ImageSource decoded=ImageSource.open(path,Math.min(maxTexture,1600));if(Thread.currentThread().isInterrupted()){decoded.preview.recycle();store.delete(id);return;}
             String name="Foto "+new SimpleDateFormat("dd/MM HH:mm",Locale.getDefault()).format(new Date());store.save(id,name,new EditorDocument(),new JSONObject());
-            runOnUiThread(()->{if(destroyed||token!=loads.get()){decoded.preview.recycle();return;}projectId=id;projectName=name;document=new EditorDocument();history.clear();setSource(decoded);saveProject(false);});
+            runOnUiThread(()->{if(destroyed||token!=loads.get()){decoded.preview.recycle();return;}projectId=id;projectName=name;document=new EditorDocument();history.clear();setSource(decoded);saveProject(false);askProjectVaultOnFirstImport();});
         }catch(Exception|OutOfMemoryError e){try{store.delete(id);}catch(Exception ignored){}loadFailed(token,"Não foi possível abrir. Confira o formato e o espaço disponível.");}});
     }
     private void loadFailed(int token,String msg){runOnUiThread(()->{if(!destroyed&&token==loads.get()){loading=false;updateActions();status.setText(msg);toast(msg);}});}
@@ -366,6 +366,18 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         screen.bringToFront();
         refreshProjectLibrary();
+    }
+    private void askProjectVaultOnFirstImport(){
+        if(vault.attached())return;
+        android.content.SharedPreferences preferences=getPreferences(0);
+        if(preferences.getBoolean("project_vault_setup_asked",false))return;
+        preferences.edit().putBoolean("project_vault_setup_asked",true).apply();
+        // First imported photo is safe in private storage before Android asks
+        // for an independent shared location that survives uninstall.
+        appBackground.postDelayed(()->{
+            if(!destroyed&&!isFinishing()&&projectId!=null
+                &&settingsScreen==null&&projectLibrary==null)chooseProjectVault();
+        },650);
     }
     /** Android's SAF picker is necessary: after uninstall the old grant is lost.
      * Re-select the SAME parent folder to recover its Noise! Projects data.
