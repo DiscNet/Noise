@@ -36,6 +36,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorWorkspace workspace;
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
+    private CameraScreen cameraScreen;
     private HomeScreen homeScreen;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
@@ -49,7 +50,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private TextView status,empty,compareLabel;
     private boolean loading,exporting,destroyed,comparing,orbitalClosing;
     private int maxTexture=4096;
-    private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74,VAULT_REQUEST=82;
+    private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74,VAULT_REQUEST=82,CAMERA_PERMISSION=83;
+    static final int CAMERA_STORAGE_PERMISSION=84;
     private int dp(float n){return EditorTheme.dp(this,n);}
     private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setTypeface(NoiseTypography.regular(this));v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView button(String t,boolean primary){TextView v=text(t,14,primary?0xff19121f:EditorTheme.INK);v.setGravity(Gravity.CENTER);EditorTheme.button(v,primary);v.setMinHeight(dp(48));v.setFocusable(true);return v;}
@@ -138,6 +140,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             ||workspace==null||cropEditor!=null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
+        if(cameraScreen!=null)return false;
         if(projectLibrary!=null||presetLibrary!=null||settingsScreen!=null)return false;
         int[] rootPosition=new int[2];
         appBackground.getLocationOnScreen(rootPosition);
@@ -212,7 +215,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showHome(){
         closeOrbital();
         if(homeScreen==null){
-            homeScreen=new HomeScreen(this,this::showGallery,this::showProjects,
+            homeScreen=new HomeScreen(this,this::showGallery,this::showCamera,this::showProjects,
                 this::showSettings,()->{
                 String id=getPreferences(0).getString("lastProject",null);
                 if(id!=null)loadProject(id,false);else showGallery();
@@ -281,7 +284,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         case "Meus projetos":showProjects();break;
         case "Neon":mutate(()->document.copyLook(ProjectStore.builtins().get(3).document));break;
     }}
-    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showGallery();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
+    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Câmera","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showGallery();break;case "Câmera":showCamera();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
     private void showCrop(){if(original==null||loading)return;if(cropEditor!=null)return;
         cropEditor=new CropEditor(this,original,document,sourceWidth(),sourceHeight(),new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
     private void closeCrop(){if(cropEditor!=null){appBackground.removeView(cropEditor);cropEditor=null;}}
@@ -302,6 +305,24 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             requestPermissions(new String[]{Build.VERSION.SDK_INT>=33
                 ?Manifest.permission.READ_MEDIA_IMAGES:Manifest.permission.READ_EXTERNAL_STORAGE},
                 GALLERY_PERMISSION);
+    }
+    private void showCamera(){
+        if(cameraScreen!=null)return;
+        closeOrbital();closeSettings();closeGallery();closeHome();
+        cameraScreen=new CameraScreen(this,new CameraScreen.Listener(){
+            @Override public void close(){closeCamera();showHome();}
+            @Override public void edit(Uri uri){closeCamera();load(uri);}
+        });
+        appBackground.addView(cameraScreen,new FrameLayout.LayoutParams(-1,-1));
+        cameraScreen.bringToFront();
+        if(checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)
+            cameraScreen.start();
+        else requestPermissions(new String[]{Manifest.permission.CAMERA},CAMERA_PERMISSION);
+    }
+    private void closeCamera(){
+        if(cameraScreen==null)return;
+        CameraScreen screen=cameraScreen;cameraScreen=null;
+        screen.dispose();appBackground.removeView(screen);
     }
     private void showGallery(){if(galleryScreen==null){galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){public void onPhoto(Uri uri){load(uri);}public void onSystemGallery(){systemPicker();}public void onGrantPermission(){grantGalleryPermission();}public void onClose(){closeGallery();if(original==null)showHome();}public void onProjects(){closeGallery();showProjects();}});appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));}closeHome();galleryScreen.setVisibility(View.VISIBLE);galleryScreen.bringToFront();galleryScreen.refresh(hasGalleryPermission());}
     private void closeGallery(){if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);}
@@ -497,9 +518,15 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==1)load(data.getData());
         else if(request==VAULT_REQUEST)connectProjectVault(data.getData());
     }
-    @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
+    @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==CAMERA_PERMISSION){
+            if(cameraScreen!=null){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)cameraScreen.start();else toast("Acesso à câmera não autorizado");}
+            return;
+        }
+        if(request==CAMERA_STORAGE_PERMISSION){if(grants.length==0||grants[0]!=PackageManager.PERMISSION_GRANTED)toast("Permissão de armazenamento necessária para salvar fotos");return;}
+        if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(cameraScreen!=null){closeCamera();showHome();return;}
         if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
         if(projectLibrary!=null){if(!projectLibrary.dismissModal())closeProjectLibrary();return;}
@@ -512,9 +539,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(workspace.isFullscreen()){workspace.fullscreen(false);return;}
         showHome();
     }
-    @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());}
-    @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;closeSettings();
+    @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
+    @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
+    @Override protected void onDestroy(){destroyed=true;closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
         closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }
