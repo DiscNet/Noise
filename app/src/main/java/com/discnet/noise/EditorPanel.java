@@ -17,21 +17,40 @@ final class EditorPanel extends LinearLayout {
     int category,effect;
     EditorPanel(Context c,Host host){super(c);this.host=host;setOrientation(VERTICAL);setBackground(EditorTheme.surface(c,28));
         handle=new TextView(c);handle.setTypeface(NoiseTypography.medium(c));handle.setTextColor(EditorTheme.MUTED);handle.setTextSize(12);handle.setGravity(Gravity.CENTER);handle.setContentDescription("Arraste para ampliar ou recolher o painel. Toque para alternar tamanho.");handle.setFocusable(true);addView(handle,new LayoutParams(-1,dp(48)));
-        scroll=new ScrollView(c);scroll.setFillViewport(false);scroll.setClipToPadding(false);addView(scroll,new LayoutParams(-1,0,1));
-        controls=new LinearLayout(c);controls.setPadding(dp(12),0,dp(12),dp(16));controls.setOrientation(VERTICAL);scroll.addView(controls);
+        scroll=new ScrollView(c);scroll.setFillViewport(false);scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(false);scroll.setSmoothScrollingEnabled(true);
+        scroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        addView(scroll,new LayoutParams(-1,0,1));
+        controls=new LinearLayout(c);controls.setPadding(dp(12),0,dp(12),dp(18));controls.setOrientation(VERTICAL);scroll.addView(controls);
         for(int i=0;i<rows.length;i++)rows[i]=new PrecisionControl(c,i,host);
     }
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
-    void select(int group){category=group;rebuild();scroll.scrollTo(0,0);}
+    void select(int group){boolean switched=category!=group;category=group;rebuild();if(switched)scroll.scrollTo(0,0);}
     void bind(int id){rows[id].bind(host.document());}
     void rebuild(){
+        int scrollY=scroll.getScrollY();
         controls.removeAllViews();handle.setText("━   "+AdjustmentSpec.CATEGORIES[category]+"   ·   deslize para expandir");EditorDocument d=host.document();
-        if(category<3){for(int i:AdjustmentSpec.BASIC[category])add(i);
+        String name=category==3?AdjustmentSpec.EFFECTS[effect]:AdjustmentSpec.CATEGORIES[category];
+        String description=category==0?"Iluminação e contraste":category==1?"Cores e tons":
+            category==2?"Textura e definição":category==3?"Efeitos ajustáveis e combináveis":
+            category==4?"Padrões e paletas":category==5?"Arte em caracteres":"Transformação e projetos";
+        LinearLayout heading=new LinearLayout(getContext());heading.setOrientation(VERTICAL);
+        heading.setPadding(dp(10),dp(1),dp(10),dp(12));
+        TextView head=new TextView(getContext());head.setText(name);head.setTextColor(EditorTheme.INK);
+        head.setTypeface(NoiseTypography.bold(getContext()));head.setTextSize(21);
+        heading.addView(head,new LayoutParams(-1,dp(32)));
+        TextView sub=new TextView(getContext());sub.setText(description);sub.setTextColor(EditorTheme.MUTED);
+        sub.setTypeface(NoiseTypography.regular(getContext()));sub.setTextSize(12);
+        heading.addView(sub,new LayoutParams(-1,dp(20)));
+        controls.addView(heading,new LayoutParams(-1,-2));
+        if(category<3){
+            int[] ids=AdjustmentSpec.BASIC[category];
+            for(int i=0;i<ids.length;i++){if(i==4&&ids.length>5)groupTitle("Avançados");add(ids[i]);}
             if(category==1)toggle("Inverter cores",d.invert,checked->change(()->d.invert=checked));
             if(category==2)toggle("Grão colorido",d.grainColored,checked->change(()->d.grainColored=checked));
         }else if(category==3){
             TextView gestureHint=new TextView(getContext());
-            gestureHint.setText("←  Arraste para a esquerda para abrir a roda de efeitos");
+            gestureHint.setText("Borda esquerda → deslize para abrir a roda de efeitos");
             gestureHint.setTextSize(12);
             gestureHint.setTextColor(EditorTheme.MUTED);
             gestureHint.setTypeface(NoiseTypography.medium(getContext()));
@@ -52,11 +71,23 @@ final class EditorPanel extends LinearLayout {
             for(int i=44;i<50;i++)add(i);
             toggle("Símbolos alternativos",d.asciiSymbols,v->change(()->d.asciiSymbols=v));
         }else{
-            for(String a:new String[]{"Recortar","Girar 90°","Espelhar horizontal","Espelhar vertical","Redimensionar / exportar","Presets","Copiar ajustes","Colar ajustes","Salvar projeto","Meus projetos"})button(a,()->host.action(a));
+            groupTitle("Transformar");
+            for(String a:new String[]{"Recortar","Redimensionar","Girar 90°","Espelhar horizontal","Espelhar vertical"})button(a,()->host.action(a));
+            groupTitle("Arquivo");
+            button("Redimensionar / exportar",()->host.action("Redimensionar / exportar"));
+            groupTitle("Biblioteca");
+            for(String a:new String[]{"Presets","Copiar ajustes","Colar ajustes","Salvar projeto","Meus projetos"})button(a,()->host.action(a));
         }
+        scroll.post(()->scroll.scrollTo(0,Math.max(0,scrollY)));
         if(category<6){TextView hint=new TextView(getContext());hint.setText("Toque no valor para digitar · dois toques no nome restauram · segure para pausar");hint.setTextSize(11);hint.setTextColor(EditorTheme.MUTED);hint.setPadding(dp(4),dp(12),dp(4),0);controls.addView(hint,new LayoutParams(-1,-2));}
     }
-    private void add(int id){PrecisionControl row=rows[id];if(row.getParent()!=null)((ViewGroup)row.getParent()).removeView(row);row.bind(host.document());controls.addView(row,new LayoutParams(-1,-2));}
+    private void groupTitle(String title){TextView label=new TextView(getContext());label.setText(title.toUpperCase(java.util.Locale.getDefault()));
+        label.setTextSize(10.5f);label.setLetterSpacing(.1f);label.setTextColor(EditorTheme.MUTED);
+        label.setTypeface(NoiseTypography.medium(getContext()));label.setPadding(dp(8),dp(12),0,dp(8));
+        controls.addView(label,new LayoutParams(-1,-2));}
+    private void add(int id){PrecisionControl row=rows[id];
+        if(row.getParent()!=null)((ViewGroup)row.getParent()).removeView(row);
+        row.bind(host.document());LayoutParams p=new LayoutParams(-1,-2);p.bottomMargin=dp(8);controls.addView(row,p);}
     private void change(Runnable r){host.begin();r.run();host.updated();host.end();}
     private void effectSwitch(EditorDocument d,int id,String name){
         toggle(name,!d.disabled[id]&&d.values[id]>0,enabled->change(()->{d.disabled[id]=!enabled;if(enabled&&d.values[id]==0)d.values[id]=id==9||id==26||id==32||id==38?1:.5f;bind(id);}));
