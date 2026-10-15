@@ -3,6 +3,7 @@ package com.discnet.noise;
 import android.content.Context;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.animation.ValueAnimator;
 import android.view.*;
 import android.view.animation.PathInterpolator;
 import android.widget.*;
@@ -33,7 +34,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private final LinearLayout content;
     private final TextView headerTitle,headerSubtitle;
     private final OrbitStage orbit;
-    private final TextView continueButton;
+    private final TextView continueButton,favorite;
     private final Selection callback;
     private final String[] names;
     private final int[] symbols;
@@ -76,6 +77,23 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         column.addView(header,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout heading=new LinearLayout(c);heading.setOrientation(LinearLayout.VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        favorite=label(c,"☆",29,EditorTheme.LIME);
+        favorite.setGravity(Gravity.CENTER);favorite.setContentDescription("Marcar favorito");
+        favorite.setFocusable(true);
+        header.addView(favorite,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        favorite.setOnClickListener(v->toggleFavorite());
+        favorite.setOnLongClickListener(v->{
+            PopupMenu popup=new PopupMenu(c,favorite);
+            boolean any=false;
+            for(int i=0;i<this.names.length;i++)if(isFavorite(i)){
+                final int index=i;popup.getMenu().add(this.names[i]).setOnMenuItemClickListener(item->{
+                    orbit.goTo(index);return true;
+                });any=true;
+            }
+            if(any)popup.show();
+            else favorite.setContentDescription("Nenhum favorito. Toque para favoritar a seleção.");
+            return true;
+        });
         headerTitle=label(c,title,30,EditorTheme.INK);
         headerTitle.setTypeface(NoiseTypography.bold(c));
         headerTitle.setLetterSpacing(-.035f);headerTitle.setMaxLines(2);
@@ -99,7 +117,28 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
         continueButton.setOnClickListener(v->commit());
-        orbit.onSelection=()->continueButton.setText("Selecionar "+this.names[orbit.selected()]);
+        orbit.onSelection=()->{
+            continueButton.setText("Selecionar "+this.names[orbit.selected()]);
+            updateFavorite();
+        };
+        updateFavorite();
+    }
+    private String favoriteKey(int index){return "orbital_fav_"+(effectsMode?"effect_":"tool_")+index;}
+    private boolean isFavorite(int index){
+        return getContext().getSharedPreferences("noise_favorites",Context.MODE_PRIVATE)
+            .getBoolean(favoriteKey(index),false);
+    }
+    private void updateFavorite(){
+        if(favorite==null||orbit==null)return;
+        favorite.setText(isFavorite(orbit.selected())?"★":"☆");
+        favorite.setContentDescription(isFavorite(orbit.selected())?"Remover dos favoritos":"Adicionar aos favoritos");
+    }
+    private void toggleFavorite(){
+        int index=orbit.selected();boolean next=!isFavorite(index);
+        getContext().getSharedPreferences("noise_favorites",Context.MODE_PRIVATE)
+            .edit().putBoolean(favoriteKey(index),next).apply();
+        favorite.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        updateFavorite();
     }
     private int dp(float value){return EditorTheme.dp(getContext(),value);}
     private static TextView label(Context c,String value,int size,int color){
@@ -121,6 +160,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         updateDock(getWidth());
         orbit.updateItemOrientation();
         orbit.render();
+        updateFavorite();
     }
     private void updateDock(int availableWidth){
         int screenWidth=availableWidth>0?availableWidth:getResources().getDisplayMetrics().widthPixels;
@@ -197,6 +237,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         targetScrim=0f;
         targetFeather=0f;
         targetScale=.985f;
+        if(!ValueAnimator.areAnimatorsEnabled()){state=MenuState.CLOSED;removeFromParent();return;}
         requestMotion();
     }
     /**
@@ -215,6 +256,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         content.setAlpha(0f);
         content.setScaleX(.985f);content.setScaleY(.985f);
         scrim.setAlpha(0f);edgeFeather.setAlpha(0f);
+        if(!ValueAnimator.areAnimatorsEnabled()){
+            targetOpen();stopTracking();
+            content.setTranslationX(0);content.setAlpha(1);content.setScaleX(1);content.setScaleY(1);
+            scrim.setAlpha(targetScrim);edgeFeather.setAlpha(targetFeather);
+            state=MenuState.OPEN;return;
+        }
         targetOpen();
     }
     @Override public void doFrame(long frameTimeNanos){
@@ -337,6 +384,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private static final float STEP=.29f;
         private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint light=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private RadialGradient halo;
         private final LinearLayout[] rows=new LinearLayout[names.length];
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
@@ -403,6 +451,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Stable radius preserves the round profile on narrow phones
             // without throwing most of the outer rim beyond the display.
             radius=Math.max(dp(175),Math.min(dp(235),w*.68f));
+            halo=new RadialGradient(arcX(0f),arcY(0f),dp(96),
+                new int[]{0x30d8b4f8,0x11b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP);
             render();
         }
         private float arcX(float theta){
@@ -439,8 +489,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
             float x=arcX(0),y=arcY(0);
             light.setStyle(Paint.Style.FILL);
-            light.setShader(new RadialGradient(x,y,dp(96),
-                new int[]{0x3bd8b4f8,0x14b58bcf,0x00b58bcf},null,Shader.TileMode.CLAMP));
+            light.setShader(halo);
             canvas.drawCircle(x,y,dp(96),light);
             light.setShader(null);light.setColor(EditorTheme.LIME);
             float markerX=x+(effectsMode?dp(40):-dp(40));
