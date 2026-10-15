@@ -111,87 +111,152 @@ final class HomeScreen extends FrameLayout {
         resume.setText(ready?name+"   ›":"Nenhum projeto recente");
         resume.setEnabled(ready);resume.setTextColor(ready?EditorTheme.INK:EditorTheme.MUTED);
     }
-    /** Ambient, blurred-looking abstract motion graphics behind home UI. */
+    /** Time-driven atmospheric composition. Animators resume when Home reappears. */
     private static final class StockAtmosphere extends View {
-        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-        private final Matrix transform=new Matrix();
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Matrix matrix=new Matrix();
         private final RadialGradient[] lights={
-            new RadialGradient(0,0,1,
-                new int[]{0x827b58a6,0x32554074,0x0b2d203e,0x002d203e},
-                new float[]{0,.32f,.68f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,
-                new int[]{0x677f50d1,0x287e49a0,0x0843315d,0x0043315d},
-                new float[]{0,.28f,.70f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,
-                new int[]{0x647f617f,0x286e5473,0x0b3e344d,0x003e344d},
-                new float[]{0,.3f,.71f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,
-                new int[]{0x5b9f76b1,0x20835f8b,0x082d273e,0x002d273e},
-                new float[]{0,.27f,.66f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,
-                new int[]{0x285d5276,0x125a4269,0x00332249},
-                new float[]{0,.45f,1},Shader.TileMode.CLAMP)
+            new RadialGradient(0,0,1,new int[]{0xa37c4ead,0x67563885,0x16302049,0x00302049},
+                new float[]{0,.32f,.71f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,new int[]{0xa37c52d9,0x5e7841a5,0x18392b62,0x00392b62},
+                new float[]{0,.30f,.71f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,new int[]{0x818c6da1,0x487b5f90,0x133d314c,0x003d314c},
+                new float[]{0,.28f,.72f,1},Shader.TileMode.CLAMP),
+            new RadialGradient(0,0,1,new int[]{0x938c56bd,0x506c4591,0x152c233d,0x002c233d},
+                new float[]{0,.31f,.70f,1},Shader.TileMode.CLAMP)
         };
-        private final float[] dx={.13f,.84f,.26f,.79f,.47f};
-        private final float[] dy={.27f,.18f,.61f,.69f,.49f};
-        private final float[] sx={.40f,.45f,.41f,.50f,.67f};
-        private final float[] sy={.23f,.27f,.28f,.20f,.18f};
-        private long begin;
+        private final float[] dx={.10f,.83f,.21f,.84f};
+        private final float[] dy={.22f,.23f,.72f,.72f};
+        private final float[] sx={.49f,.46f,.40f,.50f};
+        private final float[] sy={.24f,.31f,.28f,.29f};
+        private ValueAnimator animator;
+        private float phase;
         StockAtmosphere(Context c){super(c);setClickable(false);setFocusable(false);}
+        @Override public void onVisibilityAggregated(boolean visible){
+            super.onVisibilityAggregated(visible);
+            if(visible)resumeMotion();else pauseMotion();
+        }
         @Override protected void onAttachedToWindow(){
-            super.onAttachedToWindow();begin=SystemClock.uptimeMillis();
-            postInvalidateOnAnimation();
+            super.onAttachedToWindow();if(isShown())resumeMotion();
         }
         @Override protected void onDetachedFromWindow(){
-            removeCallbacks(refresh);super.onDetachedFromWindow();
+            pauseMotion();super.onDetachedFromWindow();
         }
-        private final Runnable refresh=this::postInvalidateOnAnimation;
+        private void resumeMotion(){
+            if(!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
+            if(animator==null){
+                animator=ValueAnimator.ofFloat(0f,1f);
+                animator.setDuration(18000);
+                animator.setRepeatCount(ValueAnimator.INFINITE);
+                animator.setInterpolator(new android.view.animation.LinearInterpolator());
+                animator.addUpdateListener(a->{
+                    phase=(Float)a.getAnimatedValue();postInvalidateOnAnimation();
+                });
+            }
+            if(!animator.isStarted())animator.start();
+            else if(animator.isPaused())animator.resume();
+        }
+        private void pauseMotion(){if(animator!=null&&animator.isStarted())animator.pause();}
+        float phase(){return phase;}
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);
             float w=getWidth(),h=getHeight();
             if(w<=0||h<=0)return;
-            boolean animate=ValueAnimator.areAnimatorsEnabled()&&isShown();
-            float time=animate?(SystemClock.uptimeMillis()-begin)/1000f:0f;
             for(int i=0;i<lights.length;i++){
-                float t=time*(.16f+i*.034f)+i*1.31f;
-                float cx=w*(dx[i]+.052f*(float)Math.sin(t));
-                float cy=h*(dy[i]+.037f*(float)Math.cos(t*.78f));
+                float t=phase*6.2831853f*(1+i*.13f)+i*1.6f;
+                float cx=w*(dx[i]+.105f*(float)Math.sin(t));
+                float cy=h*(dy[i]+.077f*(float)Math.cos(t*.87f));
                 float rx=w*sx[i],ry=h*sy[i];
-                transform.reset();transform.setScale(rx,ry);transform.postTranslate(cx,cy);
-                lights[i].setLocalMatrix(transform);
-                paint.setShader(lights[i]);
-                canvas.save();canvas.rotate((float)Math.sin(t*.53f)*17f,cx,cy);
+                matrix.reset();matrix.setScale(rx,ry);matrix.postTranslate(cx,cy);
+                lights[i].setLocalMatrix(matrix);paint.setShader(lights[i]);
+                canvas.save();canvas.rotate((float)Math.sin(t*.83f)*22f,cx,cy);
                 canvas.drawOval(cx-rx,cy-ry,cx+rx,cy+ry,paint);
                 canvas.restore();
             }
             paint.setShader(null);
-            // Refresh at a restrained rate: lightweight ambient motion should
-            // not compete with GPU processing or interactive editor controls.
-            if(animate&&getWindowVisibility()==VISIBLE){
-                removeCallbacks(refresh);
-                postDelayed(refresh,40);
-            }
         }
     }
     private static final class Sphere extends View {
-        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        Sphere(Context c){super(c);}
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private RadialGradient sphereShader,aura;
+        private ValueAnimator animator;
+        private float phase,radius;
+        Sphere(Context c){super(c);setLayerType(View.LAYER_TYPE_HARDWARE,null);}
+        @Override public void onVisibilityAggregated(boolean visible){
+            super.onVisibilityAggregated(visible);
+            if(visible)resumeMotion();else pauseMotion();
+        }
+        @Override protected void onAttachedToWindow(){
+            super.onAttachedToWindow();if(isShown())resumeMotion();
+        }
+        @Override protected void onDetachedFromWindow(){pauseMotion();super.onDetachedFromWindow();}
+        private void resumeMotion(){
+            if(!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
+            if(animator==null){
+                animator=ValueAnimator.ofFloat(0f,1f);
+                animator.setDuration(13500);
+                animator.setRepeatCount(ValueAnimator.INFINITE);
+                animator.setInterpolator(new android.view.animation.LinearInterpolator());
+                animator.addUpdateListener(a->{phase=(Float)a.getAnimatedValue();postInvalidateOnAnimation();});
+            }
+            if(!animator.isStarted())animator.start();
+            else if(animator.isPaused())animator.resume();
+        }
+        private void pauseMotion(){if(animator!=null&&animator.isStarted())animator.pause();}
+        float phase(){return phase;}
+        @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
+            super.onSizeChanged(w,h,oldW,oldH);
+            float d=getResources().getDisplayMetrics().density;
+            radius=Math.min(Math.min(w*.40f,h*.39f),190*d);
+            float cx=w*.5f,cy=h*.5f;
+            if(radius>0){
+                sphereShader=new RadialGradient(cx-radius*.25f,cy-radius*.36f,
+                    radius*1.68f,new int[]{0xff82769a,0xff443753,0xff17101e,0xff080711},
+                    new float[]{0,.33f,.71f,1},Shader.TileMode.CLAMP);
+                aura=new RadialGradient(cx,cy,radius*1.32f,
+                    new int[]{0x4db17bed,0x239766cd,0x00452c79},
+                    new float[]{0,.56f,1},Shader.TileMode.CLAMP);
+            }
+        }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);
-            float cx=getWidth()/2f,cy=getHeight()/2f;
-            float density=getResources().getDisplayMetrics().density;
-            float r=Math.min(Math.min(getWidth()*.45f,getHeight()*.44f),210*density);
-            if(r<=0)return;
-            p.setStyle(Paint.Style.FILL);
-            p.setShader(new RadialGradient(cx-r*.3f,cy-r*.55f,r*1.5f,
-                new int[]{0xff595063,0xff2c2838,0xff15141b},
-                new float[]{0f,.48f,1f},Shader.TileMode.CLAMP));
-            canvas.drawCircle(cx,cy,r,p);
-            p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.2f*density);
-            p.setColor(0x88998eac);canvas.drawCircle(cx,cy,r-.5f*density,p);
-            p.setStrokeWidth(4f*density);p.setColor(0x247f6e9b);
-            canvas.drawArc(cx-r,cy-r,cx+r,cy+r,205,148,false,p);
-            p.setStyle(Paint.Style.FILL);
+            float cx=getWidth()*.5f,cy=getHeight()*.5f,r=radius;
+            if(r<=0||sphereShader==null)return;
+            float angle=phase*360f;
+            paint.setStyle(Paint.Style.FILL);paint.setShader(aura);
+            canvas.drawCircle(cx,cy,r*1.32f,paint);
+            paint.setShader(sphereShader);
+            canvas.drawCircle(cx,cy,r,paint);paint.setShader(null);
+            // Kinetic double-orbit contour and travelling luminous nodes.
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeWidth(Math.max(1f,r*.008f));
+            paint.setColor(0xa6dac3f2);canvas.drawCircle(cx,cy,r*.992f,paint);
+            paint.setColor(0x62a38cd1);canvas.drawCircle(cx,cy,r*.83f,paint);
+            paint.setColor(0x40dfbfff);canvas.drawCircle(cx,cy,r*.67f,paint);
+            paint.setStrokeWidth(Math.max(2f,r*.022f));paint.setColor(0xa8d4a2ff);
+            canvas.drawArc(cx-r*.995f,cy-r*.995f,cx+r*.995f,cy+r*.995f,
+                angle,61,false,paint);
+            paint.setColor(0x8096b6ff);paint.setStrokeWidth(Math.max(1f,r*.012f));
+            canvas.drawArc(cx-r*.83f,cy-r*.83f,cx+r*.83f,cy+r*.83f,
+                -angle*.67f,107,false,paint);
+            paint.setColor(0xa8e3b8f5);paint.setStrokeWidth(Math.max(1f,r*.016f));
+            canvas.drawArc(cx-r*.67f,cy-r*.67f,cx+r*.67f,cy+r*.67f,
+                angle*.39f+90,37,false,paint);
+            paint.setStyle(Paint.Style.FILL);
+            for(int i=0;i<12;i++){
+                double t=Math.toRadians(angle*.18f+i*30);
+                float px=cx+(float)Math.cos(t)*r*.97f;
+                float py=cy+(float)Math.sin(t)*r*.97f;
+                paint.setColor(i%3==0?0xd7e5c3ff:0x668e74b0);
+                canvas.drawCircle(px,py,Math.max(1.2f,r*(i%3==0?.014f:.007f)),paint);
+            }
+            for(int i=0;i<3;i++){
+                double t=Math.toRadians(angle*(i%2==0?1.0f:-.63f)+i*114);
+                float rr=r*(i==0?.83f:i==1?.67f:.99f);
+                float px=cx+(float)Math.cos(t)*rr,py=cy+(float)Math.sin(t)*rr;
+                paint.setColor(i==0?0xffe7d1ff:0xffa8b1fa);
+                canvas.drawCircle(px,py,r*.023f,paint);
+            }
         }
     }
 }
