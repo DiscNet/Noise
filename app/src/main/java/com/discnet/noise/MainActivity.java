@@ -36,6 +36,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
     private HomeScreen homeScreen;
+    private ProjectLibraryScreen projectLibrary;
     private OrbitalSelector orbital;
     private CropEditor cropEditor;
     private LinearLayout topBar;
@@ -123,6 +124,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
+        if(projectLibrary!=null)return false;
         // Only the visible image preview can initiate navigation. Previously
         // the whole workspace (including sliders, crop tools and sheet handle)
         // was eligible, so editing a parameter could open an orbital menu.
@@ -277,7 +279,62 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void saveProject(boolean explicit){if(projectId==null||original==null){if(explicit)toast("Abra uma foto para criar um projeto");return;}final String id=projectId,name=projectName;final EditorDocument snapshot=document.copy();final JSONObject h;try{h=history.toJson();}catch(JSONException e){return;}
         files.execute(()->{try{store.save(id,name,snapshot,h);if(explicit)runOnUiThread(()->toast("Projeto salvo no aparelho"));}catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível salvar o projeto. Verifique o espaço.");});}});
     }
-    private void showProjects(){files.execute(()->{ArrayList<ProjectStore.Project> projects=store.list();runOnUiThread(()->{if(destroyed)return;if(projects.isEmpty()){toast("Abra uma imagem para criar seu primeiro projeto");return;}String[] names=new String[projects.size()];for(int i=0;i<names.length;i++)names[i]=projects.get(i).name;new AlertDialog.Builder(this).setTitle("Projetos no aparelho").setItems(names,(dlg,n)->{ProjectStore.Project p=projects.get(n);new AlertDialog.Builder(this).setTitle(p.name).setItems(new String[]{"Abrir","Renomear","Excluir"},(dialog,which)->{if(which==0){saveProject(false);loadProject(p.id,false);}else if(which==1)askName("Nome do projeto",p.name,name->{files.execute(()->{try{store.save(p.id,name,p.document,p.history);runOnUiThread(()->{if(p.id.equals(projectId))projectName=name;});}catch(Exception e){runOnUiThread(()->toast("Não foi possível renomear"));}});});else new AlertDialog.Builder(this).setMessage("Excluir o projeto e sua cópia privada do original?").setNegativeButton("Cancelar",null).setPositiveButton("Excluir",(v,w)->{if(p.id.equals(projectId))projectId=null;files.execute(()->{try{store.delete(p.id);}catch(Exception e){runOnUiThread(()->toast("Não foi possível excluir"));}});}).show();}).show();}).setNegativeButton("Fechar",null).show();});});}
+    private void showProjects(){
+        if(projectLibrary!=null)return;
+        final ProjectLibraryScreen screen=new ProjectLibraryScreen(this,new ProjectLibraryScreen.Listener(){
+            @Override public void close(){closeProjectLibrary();}
+            @Override public void create(){closeProjectLibrary();showGallery();}
+            @Override public void open(ProjectStore.Project project){
+                closeProjectLibrary();
+                saveProject(false);
+                loadProject(project.id,false);
+            }
+            @Override public void rename(ProjectStore.Project project,String name){
+                files.execute(()->{
+                    try{
+                        ProjectStore.Project current=store.read(project.id);
+                        store.save(project.id,name,current.document,
+                            current.history==null?new JSONObject():current.history);
+                        runOnUiThread(()->{if(destroyed)return;
+                            if(project.id.equals(projectId))projectName=name;
+                            refreshProjectLibrary();
+                        });
+                    }catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível renomear o projeto");});}
+                });
+            }
+            @Override public void delete(ProjectStore.Project project){
+                files.execute(()->{
+                    try{
+                        store.delete(project.id);
+                        runOnUiThread(()->{if(destroyed)return;
+                            if(project.id.equals(projectId))projectId=null;
+                            refreshProjectLibrary();
+                        });
+                    }catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível excluir o projeto");});}
+                });
+            }
+        });
+        projectLibrary=screen;
+        appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
+        screen.bringToFront();
+        refreshProjectLibrary();
+    }
+    private void refreshProjectLibrary(){
+        if(projectLibrary==null)return;
+        final ProjectLibraryScreen target=projectLibrary;
+        target.showLoading();
+        // Serialized after any pending saveProject(...) task.
+        files.execute(()->{
+            ArrayList<ProjectStore.Project> projects=store.list();
+            runOnUiThread(()->{if(!destroyed&&projectLibrary==target)
+                target.setProjects(projects);});
+        });
+    }
+    private void closeProjectLibrary(){
+        if(projectLibrary==null)return;
+        ProjectLibraryScreen screen=projectLibrary;projectLibrary=null;
+        appBackground.removeView(screen);screen.dispose();
+    }
     private interface Named{void set(String name);}
     private void askName(String title,String initial,Named callback){EditText input=new EditText(this);input.setSingleLine(true);input.setText(initial);input.setSelectAllOnFocus(true);input.setPadding(dp(24),dp(12),dp(24),dp(12));AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(w->{String name=input.getText().toString().trim();if(name.isEmpty()||name.length()>60){input.setError("Use de 1 a 60 caracteres");return;}callback.set(name);d.dismiss();}));d.show();}
     private void showPresets(){if(original==null){toast("Abra uma imagem para visualizar presets");return;}files.execute(()->{ArrayList<ProjectStore.Preset> all=ProjectStore.builtins();all.addAll(store.presets());runOnUiThread(()->{if(!destroyed)new PresetDialog(this,store,original,document,all,new PresetDialog.Listener(){public void apply(EditorDocument look){mutate(()->document.copyLook(look));}public void save(){askName("Novo preset","Meu estilo",name->{ProjectStore.Preset p=new ProjectStore.Preset(ProjectStore.newId(),name,document.copy());files.execute(()->{try{store.savePreset(p);runOnUiThread(()->toast("Preset salvo"));}catch(Exception e){runOnUiThread(()->toast("Falha ao salvar preset"));}});});}}).show();});});}
@@ -309,6 +366,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(projectLibrary!=null){if(!projectLibrary.dismissModal())closeProjectLibrary();return;}
         if(cropEditor!=null){closeCrop();return;}
         if(orbital!=null&&orbital.getParent()!=null){closeOrbital();return;}
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE){super.onBackPressed();return;}
@@ -320,5 +378,5 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());}
     @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
+    @Override protected void onDestroy(){destroyed=true;closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }
