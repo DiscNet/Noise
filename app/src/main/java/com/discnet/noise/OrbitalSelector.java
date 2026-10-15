@@ -20,6 +20,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private float swipeStartX,swipeStartY;
     private boolean horizontal;
     private boolean dismissed;
+    private boolean closing;
     private final Runnable closeWatchdog=()->{
         // A paused frame callback must never leave an invisible interception
         // layer over the editor after the wheel has been dismissed.
@@ -30,7 +31,6 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     private long lastMotionFrame;
     private float targetX,targetAlpha,targetScale=1f,targetScrim,targetFeather;
     private float horizontalVelocity;
-    private boolean closing;
     enum MenuState { CLOSED, OPENING, OPEN, CLOSING }
     private MenuState state=MenuState.CLOSED;
     MenuState menuState(){return state;}
