@@ -58,6 +58,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         appBackground=new SwipeNavigationHost(this,new SwipeNavigationHost.Handler(){
             @Override public boolean allow(float x,float y){return canSwipeForTools(x,y);}
             @Override public void start(boolean effects){showOrbital(effects,true);}
+            @Override public void progress(float fraction){
+                if(orbital!=null)orbital.setReveal(fraction);
+            }
              @Override public void finish(boolean open){
                 if(orbital==null)return;
                 OrbitalSelector active=orbital;
@@ -121,7 +124,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override public void openEffects(){showOrbital(true);}
     private boolean canSwipeForTools(float x,float y){
-        if(original==null||loading||orbital!=null||orbitalClosing||cropEditor!=null||preview==null
+        if(original==null||loading||orbital!=null||cropEditor!=null||preview==null
             ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
@@ -162,8 +165,17 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showOrbital(boolean effects){showOrbital(effects,false);}
     private void showOrbital(boolean effects,boolean interactive){
         if(original==null){showGallery();return;}
-        if(orbitalClosing&&!hasDismissingOverlay())orbitalClosing=false;
-        if(orbital!=null||orbitalClosing)return;
+        if(orbital!=null)return;
+        // A closing wheel must never lock the editor after a category change.
+        // If the user starts another edge gesture, interrupt the previous
+        // fade and replace it; the old overlay cannot steal new touches.
+        for(int i=appBackground.getChildCount()-1;i>=0;i--){
+            View child=appBackground.getChildAt(i);
+            if(child instanceof OrbitalSelector){
+                appBackground.removeView(child);
+            }
+        }
+        orbitalClosing=false;
         String[] labels=effects?AdjustmentSpec.EFFECTS:AdjustmentSpec.CATEGORIES;
         int[] symbols=effects?new int[]{15,12,10,16,32,38,26,17}:new int[]{0,1,7,10,9,24,32};
         OrbitalSelector wheel=new OrbitalSelector(this,
@@ -184,7 +196,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         orbital=wheel;
         wheel.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
             @Override public void onViewAttachedToWindow(View v){}
-            @Override public void onViewDetachedFromWindow(View v){orbitalClosing=false;}
+            @Override public void onViewDetachedFromWindow(View v){
+                if(orbital==v)orbital=null;
+                orbitalClosing=hasDismissingOverlay();
+            }
         });
         wheel.setMode(effects);
         // A visible wheel never opens another wheel. Rightward drag closes.
