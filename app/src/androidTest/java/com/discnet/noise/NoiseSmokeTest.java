@@ -56,6 +56,24 @@ public class NoiseSmokeTest extends Instrumentation {
                 int c = source.getPixel(x, y); closeColor(neutral.getPixel(x,y), c, "Neutral/orientation");
                 if (Color.alpha(c) > 0) closeColor(inverted.getPixel(x,y), (c & 0xff000000) | ((~c) & 0xffffff), "Invert");
             }
+            stage("settings: opt-in panel resize and independent custom page");
+            java.lang.reflect.Method showSettings=MainActivity.class.getDeclaredMethod("showSettings");
+            showSettings.setAccessible(true);
+            runOnMainSync(()->{
+                try{showSettings.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            SettingsScreen settings=(SettingsScreen)field(activity,"settingsScreen");
+            require(settings!=null,"Settings accessible from the app");
+            TextView settingToggle=(TextView)field(settings,"toggle");
+            boolean initial=SettingsScreen.resizePanelEnabled(activity);
+            runOnMainSync(()->settingToggle.performClick());
+            require(SettingsScreen.resizePanelEnabled(activity)!=initial,
+                "Preference toggles and persists to device preferences");
+            runOnMainSync(()->settingToggle.performClick());
+            require(SettingsScreen.resizePanelEnabled(activity)==initial,
+                "Settings can be restored");
+            runOnMainSync(activity::onBackPressed);
+            require(field(activity,"settingsScreen")==null,"Settings closes with Android Back");
             stage("Whites slider GPU response");
             Bitmap whitesSource=Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888);
             whitesSource.eraseColor(0xffb8b8b8);
@@ -510,6 +528,62 @@ public class NoiseSmokeTest extends Instrumentation {
             require(field(activity,"original")!=null,"Import decoded source");EditorSurface surface=(EditorSurface)field(activity,"preview");EditorWorkspace workspace=(EditorWorkspace)field(activity,"workspace");EditorPanel panel=(EditorPanel)field(activity,"panel");
             TextView[] tabs=(TextView[])field(activity,"tabs");require(tabs.length==7,"Seven requested categories");
             for(int i=0;i<7;i++){final int n=i;runOnMainSync(()->tabs[n].performClick());require(panel.category==i,"Category "+i+" reachable");}
+            stage("panel resize is blocked when option disabled");
+            runOnMainSync(()->{
+                activity.getSharedPreferences(SettingsScreen.PREFS,0).edit()
+                    .putBoolean(SettingsScreen.RESIZE_PANEL,false).apply();
+                workspace.setSheetResizeEnabled(false);
+                panel.panelResizeEnabled(false);
+            });
+            int panelBefore=workspace.sheetHeight();
+            runOnMainSync(()->{workspace.resizeSheet(panelBefore+EditorTheme.dp(activity,120));
+                workspace.cycleSheet();});
+            require(workspace.sheetHeight()==panelBefore,
+                "Resizing panel is impossible while the setting is off");
+            runOnMainSync(()->{
+                try{showSettings.invoke(activity);}catch(Exception e){throw new RuntimeException(e);}
+            });
+            SettingsScreen enableSettings=(SettingsScreen)field(activity,"settingsScreen");
+            runOnMainSync(()->((TextView)fieldUnchecked(enableSettings,"toggle")).performClick());
+            require(workspace.isSheetResizeEnabled(),"Setting enables panel resizing immediately");
+            runOnMainSync(()->workspace.resizeSheet(panelBefore+EditorTheme.dp(activity,70)));
+            waitForIdleSync();
+            require(workspace.sheetHeight()!=panelBefore,"Enabled panel permits resizing");
+            runOnMainSync(()->{
+                ((TextView)fieldUnchecked(enableSettings,"toggle")).performClick();
+                activity.onBackPressed();
+            });
+            stage("gestures do not steal HSL curves or color-wheel drags");
+            runOnMainSync(()->panel.select(1));waitForIdleSync();
+            ColorCurveControl curve=(ColorCurveControl)findDescendant(panel,ColorCurveControl.class);
+            ColorWheelControl wheel=(ColorWheelControl)findDescendant(panel,ColorWheelControl.class);
+            require(curve!=null&&wheel!=null,"All custom color editors are present");
+            runOnMainSync(()->ensureVisible(panel.scroll,curve));
+            waitForIdleSync();
+            android.graphics.Rect colorRect=new android.graphics.Rect();
+            require(curve.getGlobalVisibleRect(colorRect)&&colorRect.height()>EditorTheme.dp(activity,32),
+                "Curve is fully available for direct editing");
+            require(panel.isOverColorEditor(colorRect.centerX(),colorRect.centerY()),
+                "Curve hit bounds take priority over orbital swipes");
+            int[] hostXY=new int[2];appBackgroundLocation(activity,hostXY);
+            FrameLayout rootGesture=(FrameLayout)field(activity,"appBackground");
+            float cx=colorRect.centerX()-hostXY[0],cy=colorRect.centerY()-hostXY[1];
+            long touchTime=SystemClock.uptimeMillis();
+            runOnMainSync(()->{
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime,
+                    MotionEvent.ACTION_DOWN,cx,cy,0));
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime+70,
+                    MotionEvent.ACTION_MOVE,cx+EditorTheme.dp(activity,100),cy,0));
+                rootGesture.dispatchTouchEvent(MotionEvent.obtain(touchTime,touchTime+110,
+                    MotionEvent.ACTION_UP,cx+EditorTheme.dp(activity,100),cy,0));
+            });
+            require(field(activity,"orbital")==null,
+                "Dragging inside a color curve never opens an orbital menu");
+            runOnMainSync(()->ensureVisible(panel.scroll,wheel));waitForIdleSync();
+            require(wheel.getGlobalVisibleRect(colorRect)&&colorRect.height()>EditorTheme.dp(activity,24),
+                "Color wheel visible in panel");
+            require(panel.isOverColorEditor(colorRect.centerX(),colorRect.centerY()),
+                "Color wheel hit bounds take priority over orbital swipes");
             stage("V1.28 resize dialog precision and context panel");
             runOnMainSync(()->tabs[0].performClick());waitForIdleSync();
             saveScreenshot("noise-panel.png");
@@ -839,6 +913,30 @@ public class NoiseSmokeTest extends Instrumentation {
         } catch (Throwable error) {
             StringWriter stack = new StringWriter(); error.printStackTrace(new PrintWriter(stack)); result.putString("stream", "NOISE_SMOKE_FAILED\n" + stack); finish(Activity.RESULT_CANCELED, result);
         }
+    }
+    private Object fieldUnchecked(Object object,String key){
+        try{return field(object,key);}catch(Exception e){throw new RuntimeException(e);}
+    }
+    private View findDescendant(View root,Class<?> type){
+        if(type.isInstance(root))return root;
+        if(root instanceof ViewGroup){
+            ViewGroup g=(ViewGroup)root;
+            for(int i=0;i<g.getChildCount();i++){
+                View v=findDescendant(g.getChildAt(i),type);
+                if(v!=null)return v;
+            }
+        }
+        return null;
+    }
+    private void ensureVisible(ScrollView scroller,View child){
+        int[] y=new int[2],origin=new int[2];
+        child.getLocationOnScreen(y);scroller.getLocationOnScreen(origin);
+        int scrollBy=y[1]-origin[1]-EditorTheme.dp(scroller.getContext(),45);
+        scroller.scrollBy(0,scrollBy);
+    }
+    private void appBackgroundLocation(MainActivity activity,int[] out){
+        try{((View)field(activity,"appBackground")).getLocationOnScreen(out);}
+        catch(Exception e){throw new RuntimeException(e);}
     }
     private void saveScreenshot(String name)throws Exception{
         Bitmap shot=getUiAutomation().takeScreenshot();require(shot!=null,"Screenshot");try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getFilesDir(),name))){shot.compress(Bitmap.CompressFormat.PNG,100,out);}shot.recycle();
