@@ -39,6 +39,13 @@ public class NoiseSmokeTest extends Instrumentation {
             require(home.getChildAt(0).getClass().getSimpleName().equals("StockAtmosphere"),
                 "Home renders ambient blurred stock-art behind its content");
             saveScreenshot("noise-home.png");
+            View atmosphere=home.getChildAt(0);
+            if(android.animation.ValueAnimator.areAnimatorsEnabled()){
+                float previous=(Float)field(atmosphere,"phase");
+                SystemClock.sleep(115);
+                float current=(Float)field(atmosphere,"phase");
+                require(current!=previous,"Home gradient must advance animation frames");
+            }
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
             int[] colors = {0xff103050, 0xffff0000, 0xff00ff00, 0xff0000ff, 0xff404040, 0xff808080, 0xffcccccc, 0xffffffff, 0xff000000, 0x804080c0, 0x00000000, 0xffb88060};
@@ -113,6 +120,60 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Original compare bypasses Glow");
             baseline.recycle();midBright.recycle();glowing.recycle();
             maxThreshold.recycle();bypassGlow.recycle();lowKey.recycle();
+
+            stage("GPU three wheels, color curves, blend, HDR and real denoise");
+            Bitmap colorPlate=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888);
+            for(int y=0;y<96;y++)for(int x=0;x<96;x++){
+                int red=35+x*2,green=25+y*2,blue=40+(x+y)/2;
+                colorPlate.setPixel(x,y,Color.rgb(Math.min(255,red),Math.min(255,green),Math.min(255,blue)));
+            }
+            EditorDocument colorDefault=new EditorDocument();
+            Bitmap colorBase=GpuExporter.render(getTargetContext(),colorPlate,colorDefault.gpu(false));
+            EditorDocument colored=colorDefault.copy();
+            colored.colorWheels[0]=.9f;colored.colorWheels[3]=-.8f;
+            colored.colorCurves[0]=.8f;colored.colorCurves[7]=-.9f;
+            colored.colorCurves[15]=.7f;
+            Bitmap colorNew=GpuExporter.render(getTargetContext(),colorPlate,colored.gpu(false));
+            int changedColor=0;
+            for(int y=8;y<88;y+=3)for(int x=8;x<88;x+=3)
+                if(colorBase.getPixel(x,y)!=colorNew.getPixel(x,y))changedColor++;
+            require(changedColor>300,"Three color wheels and Hue/Saturation curves change GPU pixels");
+            EditorDocument colorRoundtrip=EditorDocument.fromJson(colored.toJson());
+            require(colored.same(colorRoundtrip),"Curve and wheel edits survive project JSON round trip");
+            EditorDocument blendTest=colored.copy();blendTest.blendMode=1;
+            Bitmap multiply=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            require(multiply.getPixel(40,40)!=colorNew.getPixel(40,40),
+                "Multiply is an actual graded image blend mode");
+            blendTest.blendMode=2;
+            Bitmap screen=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            require(screen.getPixel(40,40)!=multiply.getPixel(40,40),
+                "Screen differs from Multiply");
+            blendTest.values[64]=0f;
+            Bitmap blendOff=GpuExporter.render(getTargetContext(),colorPlate,blendTest.gpu(false));
+            closeColor(blendOff.getPixel(40,40),colorPlate.getPixel(40,40),
+                "Zero grading opacity preserves the original pixels");
+            EditorDocument hdrDoc=colorDefault.copy();hdrDoc.values[60]=.9f;hdrDoc.values[61]=.8f;
+            Bitmap hdrOutput=GpuExporter.render(getTargetContext(),colorPlate,hdrDoc.gpu(false));
+            require(hdrOutput.getPixel(40,40)!=colorBase.getPixel(40,40),
+                "HDR range and microcontrast must affect actual pixels");
+            Bitmap rawNoise=Bitmap.createBitmap(48,48,Bitmap.Config.ARGB_8888);
+            for(int y=0;y<48;y++)for(int x=0;x<48;x++){
+                int v=(((x*17+y*23)%7)<3)?153:103;
+                rawNoise.setPixel(x,y,Color.rgb(v,v,v));
+            }
+            EditorDocument noiseDoc=new EditorDocument();
+            noiseDoc.values[62]=1f;noiseDoc.values[63]=.3f;
+            Bitmap filtered=GpuExporter.render(getTargetContext(),rawNoise,noiseDoc.gpu(false));
+            Bitmap noisy=GpuExporter.render(getTargetContext(),rawNoise,colorDefault.gpu(false));
+            int noiseChanged=0;
+            for(int y=4;y<44;y++)for(int x=4;x<44;x++)
+                if(filtered.getPixel(x,y)!=noisy.getPixel(x,y))noiseChanged++;
+            require(noiseChanged>800,"Reduction of noise must visibly change noisy pixels");
+            Bitmap originalGrade=GpuExporter.render(getTargetContext(),colorPlate,colored.gpu(true));
+            closeColor(originalGrade.getPixel(40,40),colorPlate.getPixel(40,40),
+                "Original comparison bypasses all color grades");
+            for(Bitmap tmp:new Bitmap[]{colorBase,colorNew,multiply,screen,blendOff,hdrOutput,
+                filtered,noisy,originalGrade,colorPlate,rawNoise})tmp.recycle();
 
             ByteArrayOutputStream bytes = new ByteArrayOutputStream(); inverted.compress(Bitmap.CompressFormat.PNG, 100, bytes);
             byte[] png = bytes.toByteArray(); Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
