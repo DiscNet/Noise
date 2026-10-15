@@ -124,33 +124,25 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override public void openEffects(){showOrbital(true);}
     private boolean canSwipeForTools(float x,float y){
-        if(original==null||loading||orbital!=null||cropEditor!=null||preview==null
-            ||preview.isZoomed()||workspace==null||workspace.isFullscreen())return false;
+        // Physical edges are checked by SwipeNavigationHost. Horizontal
+        // navigation may start anywhere in the editor EXCEPT actual editable
+        // slider hit areas. Moving between tabs never disables this gate.
+        if(original==null||loading||orbital!=null||preview==null
+            ||workspace==null||cropEditor!=null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
         if(projectLibrary!=null||presetLibrary!=null)return false;
-        // Only the visible image preview can initiate navigation. Previously
-        // the whole workspace (including sliders, crop tools and sheet handle)
-        // was eligible, so editing a parameter could open an orbital menu.
-        // Global visible bounds also work after expanding/rotating the sheet.
-        if(editorStage.getVisibility()!=View.VISIBLE
-            ||editorStage.getHeight()<dp(80))return false;
-        android.graphics.Rect stageBounds=new android.graphics.Rect();
-        if(!editorStage.getGlobalVisibleRect(stageBounds))return false;
-        int[] rootPosition=new int[2];appBackground.getLocationOnScreen(rootPosition);
+        int[] rootPosition=new int[2];
+        appBackground.getLocationOnScreen(rootPosition);
         int screenX=Math.round(rootPosition[0]+x);
         int screenY=Math.round(rootPosition[1]+y);
-        int inside=dp(8);
-        boolean inPreview=screenY>=stageBounds.top+inside
-            &&screenY<=stageBounds.bottom-inside
-            &&screenX>=stageBounds.left&&screenX<=stageBounds.right;
-        if(!inPreview)return false;
-        // In landscape the photo preview can sit to the left of the panel.
-        // Only physical sides of the actual image area may initiate the wheel.
-        int activation=Math.min(dp(60),Math.max(dp(40),stageBounds.width()/8));
-        boolean leftEdge=screenX<=stageBounds.left+activation;
-        boolean rightEdge=screenX>=stageBounds.right-activation;
-        return leftEdge||rightEdge;
+        if(panel!=null&&panel.isOverAdjustmentBar(screenX,screenY))return false;
+        // Check all four screen extents; system bars have been excluded from
+        // the root by WindowInsets padding.
+        return x>=appBackground.getPaddingLeft()
+            &&x<=appBackground.getWidth()-appBackground.getPaddingRight()
+            &&y>=appBackground.getPaddingTop()
+            &&y<=appBackground.getHeight()-appBackground.getPaddingBottom();
     }
     private void closeOrbital(){
         if(orbital!=null){OrbitalSelector old=orbital;orbital=null;orbitalClosing=true;old.dismiss();}
