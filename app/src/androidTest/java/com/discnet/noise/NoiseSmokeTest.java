@@ -16,7 +16,12 @@ import android.database.Cursor;
 
 /** Runs on a real Android emulator, including the production GLES shader and export path. */
 public class NoiseSmokeTest extends Instrumentation {
-    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
+    private boolean targeted;
+    @Override public void onCreate(Bundle args) {
+        super.onCreate(args);
+        targeted=args!=null&&"targeted".equals(args.getString("noise_test_mode"));
+        start();
+    }
     private void require(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     private Object field(Object object, String name) throws Exception { Field f = object.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(object); }
     private void closeColor(int actual, int expected, String name) {
@@ -46,6 +51,41 @@ public class NoiseSmokeTest extends Instrumentation {
                 SystemClock.sleep(115);
                 float current=(Float)field(atmosphere,"phase");
                 require(current!=previous,"Home gradient must advance animation frames");
+            }
+            if(targeted){
+                // Fast regression gate for pull requests. Full GPU/control
+                // exhaustive suite remains available without -e noise_test_mode.
+                stage("V1.30.2 targeted presets + circle + GPU");
+                ArrayList<ProjectStore.Preset> cameraLooks=ProjectStore.builtins();
+                int count=0;ProjectStore.Preset rich=null;
+                for(ProjectStore.Preset p:cameraLooks){
+                    if(!p.id.startsWith("builtin-camera-"))continue;
+                    count++;
+                    for(int n:new int[]{7,14,54,65})
+                        require(p.document.values[n]==0f,
+                            p.name+" has generated noise at control "+n);
+                    if(p.id.equals("builtin-camera-copper-rich"))rich=p;
+                }
+                require(count==13&&rich!=null,"Thirteen noise-free analog presets");
+                require(rich.document.values[66]>.90f&&rich.document.values[67]>.70f,
+                    "Rich warm color response and halation remain active");
+                require(rich.document.same(EditorDocument.fromJson(rich.document.toJson())),
+                    "Preset JSON preserves existing projects");
+                // Actual GPU image comparison at a small resolution prevents
+                // an accidental no-op preset while keeping CI < emulator limit.
+                Bitmap photo=Bitmap.createBitmap(12,12,Bitmap.Config.ARGB_8888);
+                for(int y=0;y<12;y++)for(int x=0;x<12;x++)
+                    photo.setPixel(x,y,Color.rgb(70+x*10,40+y*8,96+x*3));
+                Bitmap styled=GpuExporter.render(getTargetContext(),photo,rich.document.gpu(false));
+                Bitmap baseline=GpuExporter.render(getTargetContext(),photo,new EditorDocument().gpu(false));
+                int diff=0;
+                for(int y=0;y<12;y++)for(int x=0;x<12;x++)
+                    if(styled.getPixel(x,y)!=baseline.getPixel(x,y))diff++;
+                require(diff>70,"Grain-free retro film still changes real GPU pixels");
+                photo.recycle();styled.recycle();baseline.recycle();
+                result.putString("stream","NOISE_SMOKE_OK: V1.30.2 targeted GPU and noise-free presets\n");
+                finish(Activity.RESULT_OK,result);
+                return;
             }
             stage("shader checks");
             Bitmap source = Bitmap.createBitmap(4, 3, Bitmap.Config.ARGB_8888);
