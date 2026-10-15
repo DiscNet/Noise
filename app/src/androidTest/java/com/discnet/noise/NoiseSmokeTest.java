@@ -462,6 +462,8 @@ public class NoiseSmokeTest extends Instrumentation {
                 if(id>=44&&id<50)lo.asciiEnabled=true;
                 if(id==55||id==56)lo.values[54]=1;
                 if(id==57||id==58)lo.values[10]=1;
+                if(id==63)lo.values[62]=1f; // edge preservation needs active denoise
+                if(id==64)lo.values[60]=.8f; // blend opacity needs an altered grade
                 EditorDocument hi=lo.copy();// Hue is periodic: -180° and +180° are visually identical.
                 lo.values[id]=id==8?-.5f:AdjustmentSpec.min(id);
                 hi.values[id]=id==8?.5f:AdjustmentSpec.max(id);
