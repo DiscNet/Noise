@@ -456,9 +456,9 @@ public class NoiseSmokeTest extends Instrumentation {
             luminous.recycle(); plainFx.recycle(); effectsImage.recycle();
             neutral.recycle(); inverted.recycle(); source.recycle();
 
-            stage("twelve original analog camera looks");
+            stage("rich film stocks and thirteen analog camera looks");
             ArrayList<ProjectStore.Preset> builtinLooks=ProjectStore.builtins();
-            require(builtinLooks.size()>=17,"12 analog camera presets added without removing old presets");
+            require(builtinLooks.size()>=18,"13 analog camera presets added without removing old presets");
             require(builtinLooks.get(3).id.equals("builtin-neon"),
                 "Prior preset indices preserved for existing Neon tool");
             java.util.HashSet<String> analogIds=new java.util.HashSet<>();
@@ -469,7 +469,14 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(look.document.same(EditorDocument.fromJson(look.document.toJson())),
                     "Analog look survives JSON serialization");
             }
-            require(analogIds.size()==12,"Twelve unique analog styles available");
+            require(analogIds.size()==13,"Thirteen unique analog styles available");
+            ProjectStore.Preset copper=null;
+            for(ProjectStore.Preset look:builtinLooks)
+                if(look.id.equals("builtin-camera-copper-rich"))copper=look;
+            require(copper!=null&&copper.document.values[65]>.80f
+                &&copper.document.values[66]>.90f
+                &&copper.document.values[67]>.70f,
+                "Rich copper film includes organic grain, warm response and halation");
             require(ProjectVault.validId(ProjectStore.newId())&&!ProjectVault.validId("../bad"),
                 "Shared vault rejects invalid project document IDs");
             stage("document transactions and persistence");
@@ -490,6 +497,19 @@ public class NoiseSmokeTest extends Instrumentation {
             Bitmap controlsSource=scene();
             Bitmap controlsFixture=Bitmap.createScaledBitmap(controlsSource,128,96,true);
             controlsSource.recycle();
+            stage("film stock changes real pixels and compares with bypass");
+            EditorDocument richFilm=copper.document.copy();
+            Bitmap analog=GpuExporter.render(getTargetContext(),controlsFixture,richFilm.gpu(false));
+            Bitmap clean=GpuExporter.render(getTargetContext(),controlsFixture,new EditorDocument().gpu(false));
+            Bitmap bypassFilm=GpuExporter.render(getTargetContext(),controlsFixture,richFilm.gpu(true));
+            int analogChanged=0;
+            for(int y=6;y<90;y+=2)for(int x=6;x<122;x+=2){
+                if(analog.getPixel(x,y)!=clean.getPixel(x,y))analogChanged++;
+                closeColor(bypassFilm.getPixel(x,y),controlsFixture.getPixel(x,y),
+                    "Original bypasses film emulsion");
+            }
+            require(analogChanged>1200,"Film emulsion should be visibly different across image pixels");
+            analog.recycle();clean.recycle();bypassFilm.recycle();
             for(int id=0;id<AdjustmentSpec.COUNT;id++){
                 EditorDocument lo=new EditorDocument();
                 if(id>=20&&id<26)lo.values[9]=1;
@@ -666,6 +686,9 @@ public class NoiseSmokeTest extends Instrumentation {
                 +hitIcons[activeIndex].getHeight()*.5f;
             require(orbital.orbitalHitIndex(ix,iy)==activeIndex,
                 "Hit-test identifies exact icon center with transformed coordinates");
+            require(hitIcons[activeIndex].getBackground().getClass()
+                .getSimpleName().equals("IconGlowFrame"),
+                "Selected orbital icon has a custom white-glow outline");
             float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
             long time=SystemClock.uptimeMillis();
             runOnMainSync(()->{
