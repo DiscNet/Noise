@@ -192,27 +192,28 @@ final class HomeScreen extends FrameLayout {
             float w=getWidth(),h=getHeight();
             if(w<=0||h<=0)return;
             for(int i=0;i<lights.length;i++){
-                float t=phase*6.2831853f*(1+i*.13f)+i*1.6f;
+                float t=phase*6.2831853f+i*1.6f;
                 float cx=w*(dx[i]+.105f*(float)Math.sin(t));
-                float cy=h*(dy[i]+.077f*(float)Math.cos(t*.87f));
+                float cy=h*(dy[i]+.077f*(float)Math.cos(t*2f+i*.4f));
                 float rx=w*sx[i],ry=h*sy[i];
                 matrix.reset();matrix.setScale(rx,ry);matrix.postTranslate(cx,cy);
                 lights[i].setLocalMatrix(matrix);paint.setShader(lights[i]);
-                canvas.save();canvas.rotate((float)Math.sin(t*.83f)*22f,cx,cy);
+                canvas.save();canvas.rotate((float)Math.sin(t+i*.31f)*22f,cx,cy);
                 canvas.drawOval(cx-rx,cy-ry,cx+rx,cy+ry,paint);
                 canvas.restore();
             }
             paint.setShader(null);
         }
     }
-    /** One diffuse, slowly shifting surface; no rings, strokes or orbiting dots. */
+    /** A softly lit circular surface with one continuous rim and restrained motion. */
     private static final class Sphere extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Matrix lightMatrix=new Matrix();
         private final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private RadialGradient base,atmosphere,highlight,coolShade;
+        private RadialGradient base,atmosphere,highlight,reflectedLight;
+        private SweepGradient rim;
         private ValueAnimator animator;
-        private float phase,radius;
+        private float phase,radius,rimWidth;
         Sphere(Context c){super(c);setLayerType(View.LAYER_TYPE_HARDWARE,null);}
         @Override public void onVisibilityAggregated(boolean visible){
             super.onVisibilityAggregated(visible);
@@ -228,7 +229,7 @@ final class HomeScreen extends FrameLayout {
             if(!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
             if(animator==null){
                 animator=ValueAnimator.ofFloat(0f,1f);
-                animator.setDuration(11000);
+                animator.setDuration(14000);
                 animator.setRepeatCount(ValueAnimator.INFINITE);
                 animator.setInterpolator(new android.view.animation.LinearInterpolator());
                 animator.addUpdateListener(a->{phase=(Float)a.getAnimatedValue();
@@ -245,52 +246,65 @@ final class HomeScreen extends FrameLayout {
             radius=Math.min(Math.min(w*.40f,h*.40f),188*density);
             if(radius<=0)return;
             float x=w*.5f,y=h*.5f,r=radius;
-            base=new RadialGradient(x-r*.20f,y-r*.37f,r*1.68f,
-                new int[]{0xff756684,0xff382e45,0xff17131e,0xff0a0910},
-                new float[]{0f,.37f,.72f,1f},Shader.TileMode.CLAMP);
-            atmosphere=new RadialGradient(x,y,r*1.52f,
-                new int[]{0x4d9d6bc9,0x24815ab7,0x006d48aa},
-                new float[]{0f,.57f,1f},Shader.TileMode.CLAMP);
-            highlight=new RadialGradient(x-r*.31f,y-r*.26f,r*1.15f,
-                new int[]{0x86c0a1ee,0x49a78ad7,0x007558b8},
-                new float[]{0f,.39f,1f},Shader.TileMode.CLAMP);
-            coolShade=new RadialGradient(x+r*.37f,y+r*.42f,r*.93f,
-                new int[]{0x556d699c,0x20615c82,0x00615c82},
-                new float[]{0f,.51f,1f},Shader.TileMode.CLAMP);
+            rimWidth=Math.max(density*.9f,r*.008f);
+            base=new RadialGradient(x-r*.25f,y-r*.43f,r*1.72f,
+                new int[]{0xff896c9b,0xff483254,0xff211729,0xff100d17},
+                new float[]{0f,.36f,.74f,1f},Shader.TileMode.CLAMP);
+            // Concentrate the glow at the silhouette instead of washing out
+            // the entire area around the circle. Cached shaders avoid blur work.
+            atmosphere=new RadialGradient(x,y,r*1.25f,
+                new int[]{0x00855ebf,0x00855ebf,0x609a60df,0x28855ebf,0x00855ebf},
+                new float[]{0f,.66f,.80f,.89f,1f},Shader.TileMode.CLAMP);
+            highlight=new RadialGradient(x-r*.42f,y-r*.40f,r*1.12f,
+                new int[]{0x9ddfc4ff,0x4ab294dc,0x008767ba},
+                new float[]{0f,.38f,1f},Shader.TileMode.CLAMP);
+            reflectedLight=new RadialGradient(x+r*.43f,y+r*.46f,r*.97f,
+                new int[]{0x65b77ea7,0x286e548c,0x006e548c},
+                new float[]{0f,.42f,1f},Shader.TileMode.CLAMP);
+            rim=new SweepGradient(x,y,
+                new int[]{0xffab85d1,0xff9c77c1,0xffdfb5d5,0xfff0e2ff,0xffab85d1},
+                new float[]{0f,.27f,.48f,.68f,1f});
         }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);
             float x=getWidth()*.5f,y=getHeight()*.5f,r=radius;
             if(base==null||r<=0)return;
             float t=phase*6.2831853f;
+            float breath=.5f-.5f*(float)Math.cos(t);
             paint.setStyle(Paint.Style.FILL);
             paint.setShader(atmosphere);
-            canvas.drawCircle(x,y,r*1.48f,paint);
+            paint.setAlpha(202+(int)(28*breath));
+            canvas.drawCircle(x,y,r*1.25f,paint);
             paint.setShader(base);
+            paint.setAlpha(255);
             canvas.drawCircle(x,y,r,paint);
             canvas.save();
             canvas.clipPath(circleClip(x,y,r));
-            float dx=(float)Math.sin(t)*r*.14f,dy=(float)Math.cos(t*.81f)*r*.12f;
+            // Whole-period motion makes the loop seamless. The surface moves
+            // gently while the circle and its text remain completely steady.
+            float dx=(float)Math.sin(t)*r*.08f,dy=(float)Math.cos(t)*r*.06f;
             lightMatrix.reset();lightMatrix.setTranslate(dx,dy);
             highlight.setLocalMatrix(lightMatrix);
             paint.setShader(highlight);
-            paint.setAlpha(190+(int)(55*(.5f+.5f*Math.sin(t))));
+            paint.setAlpha(198+(int)(22*breath));
             canvas.drawCircle(x,y,r,paint);
             lightMatrix.reset();lightMatrix.setTranslate(-dx*.62f,dy*.66f);
-            coolShade.setLocalMatrix(lightMatrix);
-            paint.setShader(coolShade);
-            paint.setAlpha(175);
+            reflectedLight.setLocalMatrix(lightMatrix);
+            paint.setShader(reflectedLight);
+            paint.setAlpha(154+(int)(16*breath));
             canvas.drawCircle(x,y,r,paint);
             canvas.restore();
             paint.setShader(null);paint.setAlpha(255);
-            // The Home centerpiece is once again a true CIRCLE. Just one
-            // continuous light rim, without segmented, dashed or inner lines.
+            // One thin, continuous border; the soft halo is drawn behind it.
             contour.setStyle(Paint.Style.STROKE);
             contour.setPathEffect(null);
-            contour.setColor(0x277957c8);contour.setStrokeWidth(Math.max(2f,r*.032f));
+            lightMatrix.reset();lightMatrix.setRotate((float)Math.sin(t)*7f,x,y);
+            rim.setLocalMatrix(lightMatrix);
+            contour.setShader(rim);
+            contour.setAlpha(230+(int)(12*breath));
+            contour.setStrokeWidth(rimWidth);
             canvas.drawCircle(x,y,r,contour);
-            contour.setColor(0xc7e9dfff);contour.setStrokeWidth(Math.max(1f,r*.010f));
-            canvas.drawCircle(x,y,r,contour);
+            contour.setShader(null);contour.setAlpha(255);
             contour.setStyle(Paint.Style.FILL);
         }
         private Path circleClip(float x,float y,float r){

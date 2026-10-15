@@ -134,7 +134,7 @@ Acesse a [**última release publicada**](https://github.com/DiscNet/Noise/releas
 - **Primeira abertura:** o Noise! solicita acesso às fotos; se você não conceder, ainda poderá usar o seletor de imagens do sistema.
 - **Armazenamento:** as fotos exportadas permanecem em **`Pictures/Noise!`** mesmo após desinstalar o app.
 
-> **Nota:** projetos e presets são mantidos no armazenamento privado do aplicativo e podem ser removidos ao desinstalá-lo. Faça a exportação das imagens que deseja guardar.
+> **Nota:** imagens exportadas permanecem em `Pictures/Noise!`. Para preservar projetos após desinstalar, use **Meus projetos → Proteger projetos após desinstalar** e vincule uma pasta pública; depois de reinstalar, escolha novamente a mesma pasta. Consulte o [guia de atualizações](docs/APK-UPDATES.md) antes de migrar de uma instalação com assinatura diferente.
 
 ## ⚙️ Desenvolvimento
 
@@ -185,7 +185,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.27](docs/RELEASE-1.27.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.30.3](docs/RELEASE-1.30.3.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -201,7 +201,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.27.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.30.3.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
