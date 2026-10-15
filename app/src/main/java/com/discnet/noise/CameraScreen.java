@@ -37,6 +37,9 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
     private final Listener listener;
     private final TextureView preview;
     private final CameraFrameGuide frameGuide;
+    private final LinearLayout cameraBody;
+    private final FrameLayout imageArea;
+    private final ScrollView controlsScroll;
     private SeekBar zoomBar;
     private TextView zoomValue;
     private final ArrayList<TextView> ratioButtons=new ArrayList<>();
@@ -78,9 +81,12 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         header.addView(switchLens,new LinearLayout.LayoutParams(dp(82),dp(44)));
         switchLens.setOnClickListener(v->switchCamera());
 
-        FrameLayout imageArea=new FrameLayout(activity);
+        cameraBody=new LinearLayout(activity);
+        cameraBody.setOrientation(LinearLayout.VERTICAL);
+        page.addView(cameraBody,new LinearLayout.LayoutParams(-1,0,1));
+        imageArea=new FrameLayout(activity);
         imageArea.setBackgroundColor(Color.BLACK);
-        page.addView(imageArea,new LinearLayout.LayoutParams(-1,0,1));
+        cameraBody.addView(imageArea,new LinearLayout.LayoutParams(-1,0,1));
         preview=new TextureView(activity);
         preview.setSurfaceTextureListener(this);
         // TextureView's hardware layer paint is composited by the GPU.
@@ -109,11 +115,15 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         status.setPadding(dp(12),dp(10),dp(12),dp(10));
         imageArea.addView(status,msg);
 
+        controlsScroll=new ScrollView(activity);
+        controlsScroll.setFillViewport(false);
+        controlsScroll.setVerticalScrollBarEnabled(false);
+        cameraBody.addView(controlsScroll,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout controls=new LinearLayout(activity);
         controls.setOrientation(LinearLayout.VERTICAL);
         controls.setPadding(dp(18),dp(12),dp(18),dp(12));
         controls.setBackgroundColor(0xff17161d);
-        page.addView(controls,new LinearLayout.LayoutParams(-1,-2));
+        controlsScroll.addView(controls,new ScrollView.LayoutParams(-1,-2));
 
         addSlider(controls,"Saturação","0%","200%",100, progress->{
             saturation=progress/100f;applyLiveAdjustments();
@@ -160,6 +170,28 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         bottom.addView(edit,new LinearLayout.LayoutParams(dp(78),dp(48)));
         edit.setOnClickListener(v->{if(latestPhoto!=null)listener.edit(latestPhoto);});
         applyLiveAdjustments();
+        post(this::updateCameraLayout);
+    }
+
+    @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
+        super.onSizeChanged(w,h,oldW,oldH);
+        post(this::updateCameraLayout);
+    }
+    /** A side-panel keeps the live viewfinder visible on landscape phones. */
+    private void updateCameraLayout(){
+        if(disposed||getWidth()<=0||getHeight()<=0)return;
+        boolean landscape=getWidth()>getHeight();
+        int desiredOrientation=landscape?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL;
+        if(cameraBody.getOrientation()!=desiredOrientation)
+            cameraBody.setOrientation(desiredOrientation);
+        if(landscape){
+            imageArea.setLayoutParams(new LinearLayout.LayoutParams(0,-1,1));
+            controlsScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                Math.min(dp(255),Math.round(getWidth()*.43f)),-1));
+        }else{
+            imageArea.setLayoutParams(new LinearLayout.LayoutParams(-1,0,1));
+            controlsScroll.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));
+        }
     }
 
     private int dp(float d){return EditorTheme.dp(activity,d);}
