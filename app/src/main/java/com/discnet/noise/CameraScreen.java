@@ -620,6 +620,12 @@ final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextu
         if(previewBufferWidth>0&&previewBufferHeight>0)
             fitPreview(previewBufferWidth,previewBufferHeight,previewDisplayOrientation);
     }
-    @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture texture){stop();return true;}
+    @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture texture){
+        // A rotation may replace TextureView's SurfaceTexture. Release that
+        // camera connection but preserve the requested active camera session.
+        ++generation;cameraReady=false;
+        if(cameraHandler!=null)cameraHandler.post(this::closeCamera);
+        return true;
+    }
     @Override public void onSurfaceTextureUpdated(SurfaceTexture texture){}
 }
