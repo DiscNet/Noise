@@ -117,9 +117,22 @@ final class PresetDialog extends FrameLayout {
     }
     private void reload(){
         cards.removeAllViews();
-        boolean listedCameras=false;
+        boolean listedCameras=false,listedCustom=false,listedStyles=false;
         for(int i=0;i<presets.size();i++){
             final int index=i;ProjectStore.Preset p=presets.get(i);
+            if(!p.id.startsWith("builtin")&&!listedCustom){
+                listedCustom=true;
+                TextView category=text("MEUS PRESETS",12,true);
+                category.setTextColor(OrbitalMaterial.WHITE);
+                cards.addView(category,new LinearLayout.LayoutParams(-1,dp(37)));
+            }
+            if(p.id.startsWith("builtin")&&!p.id.startsWith("builtin-camera-")
+                &&!listedStyles){
+                listedStyles=true;
+                TextView category=text("ESTILOS",12,true);
+                category.setTextColor(OrbitalMaterial.WHITE);
+                cards.addView(category,new LinearLayout.LayoutParams(-1,dp(37)));
+            }
             if(p.id.startsWith("builtin-camera-")&&!listedCameras){
                 listedCameras=true;
                 TextView category=text("CÂMERAS & FILMES",12,true);
@@ -162,8 +175,8 @@ final class PresetDialog extends FrameLayout {
                 try{
                     if(closed)return;
                     EditorDocument d=base.copy();d.copyLook(p.document);
-                    int w=336,h=Math.max(1,Math.round(w/d.aspect(original.getWidth(),original.getHeight())));
-                    if(h>336){w=Math.max(1,Math.round(w*336f/h));h=336;}
+                    int w=240,h=Math.max(1,Math.round(w/d.aspect(original.getWidth(),original.getHeight())));
+                    if(h>240){w=Math.max(1,Math.round(w*240f/h));h=240;}
                     b=GpuExporter.render(activity.getApplicationContext(),original,d.gpu(false),w,h);
                     Bitmap ready=b;
                     ui.post(()->{
@@ -253,6 +266,15 @@ final class PresetDialog extends FrameLayout {
     }
     private void manage(ProjectStore.Preset p){
         LinearLayout sheet=modal("Gerenciar preset",p.name);
+        addButton(sheet,"Substituir pelos ajustes atuais",false,()->{
+            p.document=base.copy();
+            persist(p);
+            selection=-1;
+            preview.setImageBitmap(original);
+            apply.setEnabled(false);
+            apply.setAlpha(.55f);
+            reload();
+        });
         addButton(sheet,"Renomear",false,()->editName(p));
         addButton(sheet,p.favorite?"Remover favorito":"Marcar favorito",false,()->{
             p.favorite=!p.favorite;persist(p);
