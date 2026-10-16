@@ -1,6 +1,6 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.discnet.noise'; compileSdk 35
- defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 40; versionName '1.32.1'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
+ defaultConfig { applicationId 'com.discnet.noise'; minSdk 26; targetSdk 35; versionCode 41; versionName '1.33.0'; testInstrumentationRunner 'com.discnet.noise.NoiseSmokeTest' }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
@@ -29,4 +29,16 @@ if (noiseKeyPath) {
 android.buildTypes.release {
     debuggable = false
     minifyEnabled = false
+}
+
+// CameraX owns camera lifecycle, tap-focus and full-resolution still capture.
+// PreviewView is kept in COMPATIBLE mode for GPU color processing.
+dependencies {
+    def camerax = '1.4.2'
+    implementation "androidx.camera:camera-core:$camerax"
+    implementation "androidx.camera:camera-camera2:$camerax"
+    implementation "androidx.camera:camera-lifecycle:$camerax"
+    implementation "androidx.camera:camera-view:$camerax"
+    implementation 'androidx.lifecycle:lifecycle-runtime:2.8.7'
+    implementation 'androidx.core:core:1.15.0'
 }
