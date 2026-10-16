@@ -119,8 +119,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         continueButton=label(c,"Selecionar "+names[orbit.selected()],16,EditorTheme.INK);
         continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
-        continueButton.setBackground(new TexturedGlass(c,null,continueButton,8,
-            0xff31283a,.22f));
+        GradientDrawable selectSurface=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{0xff423648,0xff2a2731});
+        selectSurface.setCornerRadius(dp(7));
+        selectSurface.setStroke(Math.max(1,dp(1)),0x7ab6a4c0);
+        continueButton.setBackground(selectSurface);
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
         continueButton.setOnClickListener(v->commit());
@@ -414,10 +418,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     }
 
     /**
-     * One foreground ring only on the icon physically aligned with the orbit.
-     * All other icons use an unoutlined graphite backing. The selected rim
-     * briefly deforms into an asymmetric fluid membrane, then settles; the
-     * drawable is reused across frames and respects reduced-motion settings.
+     * Drawable reused for each wheel icon. Both the selected hairline and
+     * icon material opacity vary continuously with the fractional wheel offset.
+     * There is no instant background replacement when the rounded index flips.
      */
     private static final class IconGlowFrame extends android.graphics.drawable.Drawable {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -425,11 +428,21 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final float scale;
         private final boolean active;
         private float liquid=1f;
+        private float strength;
         IconGlowFrame(Context c,boolean active){
-            this.active=active;scale=c.getResources().getDisplayMetrics().density;
+            this.active=active;
+            scale=c.getResources().getDisplayMetrics().density;
         }
-        boolean outlined(){return active;}
+        boolean outlined(){return active&&strength>=.97f;}
+        float strength(){return strength;}
         float liquidProgress(){return liquid;}
+        void setStrength(float value){
+            float next=Math.max(0f,Math.min(1f,value));
+            if(Math.abs(next-strength)>.003f){
+                strength=next;
+                invalidateSelf();
+            }
+        }
         void setLiquid(float progress){
             liquid=Math.max(0f,Math.min(1f,progress));
             invalidateSelf();
@@ -442,22 +455,18 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             float radius=scale*19f;
             p.setShader(null);
             p.setStyle(Paint.Style.FILL);
-            p.setColor(active?0xffb899d0:0x80302a39);
-            if(!active){
-                canvas.drawRoundRect(l,t,right,bottom,radius,radius,p);
-                return; // IMPORTANT: inactive icons never draw a ring.
-            }
+            p.setColor(0x93302c37);
+            canvas.drawRoundRect(l,t,right,bottom,radius,radius,p);
+            if(!active||strength<=.001f)return;
             float cx=(l+right)*.5f,cy=(t+bottom)*.5f;
             float w=(right-l)*.5f,h=(bottom-t)*.5f;
-            // At rest this remains a precise rounded selection frame.
-            // Halfway through the transition, asymmetric bezier bulges create
-            // the liquid snap without attaching glow to neighboring icons.
+            // Subtle Bézier meniscus during the final settle.
             float pulse=(float)Math.sin(Math.PI*liquid);
-            float wave=scale*2.7f*pulse; // restrained meniscus instead of a hard pop
+            float wave=scale*2.5f*pulse;
             path.reset();
             path.moveTo(cx,cy-h-wave*.65f);
-            path.cubicTo(cx+w*.60f,cy-h-wave*.50f,
-                cx+w+wave*.20f,cy-h*.68f,cx+w,cy);
+            path.cubicTo(cx+w*.60f,cy-h-wave*.5f,
+                cx+w+wave*.2f,cy-h*.68f,cx+w,cy);
             path.cubicTo(cx+w-wave*.04f,cy+h*.65f,
                 cx+w*.53f,cy+h+wave*.40f,cx,cy+h+wave*.28f);
             path.cubicTo(cx-w*.65f,cy+h+wave*.30f,
@@ -465,23 +474,22 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             path.cubicTo(cx-w-wave*.18f,cy-h*.69f,
                 cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
             path.close();
-            p.setStyle(Paint.Style.FILL);
-            p.setColor(0xff8c789d);
+            // Premultiplied alpha: a neighboring icon gains its highlight
+            // as it approaches center, while the previous fades out.
+            p.setColor(Color.argb(Math.round(145f*strength),116,102,140));
             canvas.drawPath(path,p);
-            // The white hairline is drawn ONCE, on this aligned icon only.
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(scale*1.3f);
-            p.setColor(Color.argb(Math.round(237f*(.24f+.76f*liquid)),
-                252,248,255));
+            p.setStrokeWidth(scale*1.2f);
+            p.setColor(Color.argb(Math.round(237f*strength),
+                250,245,252));
             canvas.drawPath(path,p);
-            // A restrained inner glint follows the deformation.
-            p.setStrokeWidth(scale*.8f);
-            p.setColor(0x65ffffff);
+            p.setStrokeWidth(scale*.75f);
+            p.setColor(Color.argb(Math.round(90f*strength),255,255,255));
             canvas.drawArc(l+scale*6,t+scale*6,right-scale*6,bottom-scale*6,
-                201,110,false,p);
+                203,105,false,p);
             p.setStyle(Paint.Style.FILL);
         }
-        @Override public void setAlpha(int a){p.setAlpha(a);invalidateSelf();}
+        @Override public void setAlpha(int alpha){p.setAlpha(alpha);invalidateSelf();}
         @Override public void setColorFilter(android.graphics.ColorFilter filter){
             p.setColorFilter(filter);invalidateSelf();
         }
@@ -498,10 +506,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
         private final IconGlowFrame[] idleFrames=new IconGlowFrame[names.length];
+        private final IconGlowFrame[] focusFrames=new IconGlowFrame[names.length];
         private IconGlowFrame focusedFrame;
-        private ValueAnimator liquidAnimator;
         private int framedIndex=-1;
-        private int lastFocusedIndex=-1;
         private VelocityTracker velocity;
         private float angularVelocity;
         private boolean settling;
@@ -529,6 +536,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 icon.setPadding(dp(20),dp(20),dp(20),dp(20));
                 captions[i]=text;icons[i]=icon;
                 idleFrames[i]=new IconGlowFrame(context,false);
+                focusFrames[i]=new IconGlowFrame(context,true);
                 icon.setBackground(idleFrames[i]);
                 icon.setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],EditorTheme.INK));
                 // Insert after setMode so tools put the icon first (left),
@@ -635,11 +643,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 highlighted=active;
                 for(int i=0;i<names.length;i++){
                     boolean on=i==active;
-                    captions[i].setTextColor(on?EditorTheme.INK:EditorTheme.MUTED);
-                    captions[i].setTypeface(on?NoiseTypography.bold(getContext()):NoiseTypography.medium(getContext()));
-                    // Do not outline the rounded-nearest item while it is
-                    // still traveling between positions. The ring is managed
-                    // separately by updateAlignedFrame().
+                    // Label color and icon material interpolate with offset
+                    // below. No sudden typeface/paint swap at the halfway mark.
                     rows[i].setContentDescription(names[i]+(on?", selecionado":"")+". Toque para selecionar.");
                 }
                 if(onSelection!=null)onSelection.run();
@@ -658,7 +663,15 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 float x=arcX(theta)-(effectsMode?dp(32):dp(176));
                 float y=arcY(theta)-dp(32);
                 row.setTranslationX(x);row.setTranslationY(y);
-                float emphasis=Math.max(0,1-Math.min(1,distance));
+                float proximity=Math.max(0f,1f-Math.min(1f,distance));
+                float emphasis=proximity*proximity*(3f-2f*proximity);
+                // Crossfade labels and icons continuously rather than switching
+                // styles at selected()'s midpoint.
+                captions[i].setTextColor(Color.rgb(
+                    Math.round(142+(242-142)*emphasis),
+                    Math.round(139+(237-139)*emphasis),
+                    Math.round(151+(247-151)*emphasis)));
+                icons[i].setImageAlpha(Math.round(192+63*emphasis));
                 float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.32f));
                 float topBottom=Math.min(y,getHeight()-y-dp(64));
                 float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(72)));
@@ -674,53 +687,33 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
             invalidate();
         }
-        /** Only an item at the physical center receives a white outline. */
+        /** At rest only the exactly centered icon has a full white rim.
+         *  In motion the source fades out as the receiver fades in.
+         */
         private int alignedIndex(){
-            int n=selected();
-            return Math.abs(offset-n)<=.10f?n:-1;
+            int nearest=selected();
+            return Math.abs(offset-nearest)<=.10f?nearest:-1;
         }
         private void cancelLiquid(){
-            if(liquidAnimator!=null){
-                liquidAnimator.cancel();
-                liquidAnimator=null;
-            }
+            // No independent animator to cancel: material and metaball follow
+            // the same continuous wheel coordinate.
+        }
+        private static float fadeStrength(float distance){
+            float t=Math.max(0f,Math.min(1f,1f-distance));
+            return t*t*(3f-2f*t);
         }
         private void updateAlignedFrame(){
-            int aligned=alignedIndex();
-            if(aligned==framedIndex)return;
-            int old=framedIndex;
-            cancelLiquid();
-            if(old>=0){
-                icons[old].setBackground(idleFrames[old]);
-                icons[old].setImageDrawable(new IconArt(
-                    symbols[Math.min(old,symbols.length-1)],EditorTheme.INK));
+            framedIndex=alignedIndex();
+            focusedFrame=framedIndex>=0?focusFrames[framedIndex]:null;
+            for(int i=0;i<icons.length;i++){
+                float intensity=fadeStrength(Math.abs(i-offset));
+                IconGlowFrame desired=intensity>.003f?focusFrames[i]:idleFrames[i];
+                if(icons[i].getBackground()!=desired)icons[i].setBackground(desired);
+                focusFrames[i].setStrength(intensity);
+                // Keep geometry attached to wheel movement rather than
+                // restarting a 455ms animator at each snapped icon.
+                focusFrames[i].setLiquid(1f);
             }
-            framedIndex=aligned;
-            focusedFrame=null;
-            if(aligned<0)return;
-            focusedFrame=new IconGlowFrame(getContext(),true);
-            icons[aligned].setBackground(focusedFrame);
-            icons[aligned].setImageDrawable(new IconArt(
-                symbols[Math.min(aligned,symbols.length-1)],0xff24182d));
-            boolean first=lastFocusedIndex<0;
-            lastFocusedIndex=aligned;
-            if(first){
-                focusedFrame.setLiquid(1f); // no gratuitous startup animation
-                return;
-            }
-            if(!ValueAnimator.areAnimatorsEnabled()){
-                focusedFrame.setLiquid(1f);
-                return;
-            }
-            final IconGlowFrame frame=focusedFrame;
-            liquidAnimator=ValueAnimator.ofFloat(0f,1f);
-            liquidAnimator.setDuration(455);
-            liquidAnimator.setInterpolator(new PathInterpolator(.19f,.76f,.28f,1f));
-            liquidAnimator.addUpdateListener(a->{
-                if(framedIndex==aligned && icons[aligned].getBackground()==frame)
-                    frame.setLiquid((Float)a.getAnimatedValue());
-            });
-            liquidAnimator.start();
         }
         private void cancelMotion(){
             if(rotationalFrameScheduled){
@@ -747,7 +740,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Analytic critically-damped spring, smooth in both drag and
             // coast-to-item phases. Unlike an interpolator reset at ACTION_UP,
             // it preserves angular velocity across the transition.
-            float omega=settling?9.6f:13.2f; // smooth 400-500ms settling without oscillation
+            float omega=settling?8.1f:10.6f; // viscous, velocity-continuous settling
             float displacement=offset-targetOffset;
             float carry=angularVelocity+omega*displacement;
             float decay=(float)Math.exp(-omega*dt);
