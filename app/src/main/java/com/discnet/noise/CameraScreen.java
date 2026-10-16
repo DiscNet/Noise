@@ -70,8 +70,10 @@ final class CameraScreen extends FrameLayout {
     private boolean nativeEv;
     private float residualExposure;
     private String resolution="MAX";
-    private static final float[] RATIOS={1f,4f/3f,3f/4f,16f/9f,9f/16f,3f/2f,3f/4f};
-    private static final String[] RATIO_NAMES={"1:1","4:3","3:4","16:9","9:16","3:2","NATIVO"};
+    // The camera UI remains portrait. 4:3 becomes landscape 4:3 automatically
+    // when the phone is held sideways; do not duplicate 3:4 or 9:16 entries.
+    private static final float[] RATIOS={0f,1f,3f/4f,9f/16f,2f/3f};
+    private static final String[] RATIO_NAMES={"TELA","1:1","4:3","16:9","3:2"};
 
     CameraScreen(Activity context,Listener listener){
         super(context);
@@ -108,7 +110,7 @@ final class CameraScreen extends FrameLayout {
             @Override public void zoom(float factor){setToolValue(Tool.ZOOM,zoom*factor,true);}
         });
         cameraPanel.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
-        frameGuide.exactAspect(1f);
+        frameGuide.fitToPreview();
         frameGuide.grid(showGrid);
 
         LinearLayout top=new LinearLayout(context);
@@ -130,7 +132,7 @@ final class CameraScreen extends FrameLayout {
         timerP.leftMargin=dp(3);top.addView(timerButton,timerP);
         timerButton.setContentDescription("Temporizador de captura");
         timerButton.setOnClickListener(v->cycleTimer());
-        ratioButton=chip("1:1",46);
+        ratioButton=chip("TELA",46);
         LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(46),dp(38));
         ratioP.leftMargin=dp(3);top.addView(ratioButton,ratioP);
         ratioButton.setOnClickListener(v->showRatios(ratioButton));
@@ -238,7 +240,8 @@ final class CameraScreen extends FrameLayout {
                 flashButton.setVisibility(flash?View.VISIBLE:View.GONE);
                 nativeEv=ev;resolution=resolutionLabel;
                 nativeAspect=aspect;maxFrameZoom=zoomLimit;
-                if(ratioIndex==RATIOS.length-1)frameGuide.exactAspect(nativeAspect);
+                // TELA is always the entire live view; no extra crop margin at 1x.
+                if(ratioIndex==0)frameGuide.fitToPreview();
                 if(zoom>maxFrameZoom)setToolValue(Tool.ZOOM,maxFrameZoom,true);
                 if(selected==Tool.ZOOM)selectTool(Tool.ZOOM);
                 residualExposure=exposure-engine.setExposureEv(exposure);
@@ -410,6 +413,12 @@ final class CameraScreen extends FrameLayout {
         timerSeconds=seconds[(current+1)%seconds.length];
         timerButton.setText(timerSeconds+"s");
     }
+    private void applySelectedRatio(){
+        // Since the UI is portrait-locked, each named ratio uses the portrait
+        // equivalent. Rotating the phone rotates only the exported JPEG.
+        if(ratioIndex==0)frameGuide.fitToPreview();
+        else frameGuide.exactAspect(RATIOS[ratioIndex]);
+    }
     /** Select any aspect ratio in one tap rather than seven sequential toggles. */
     private void showRatios(View anchor){
         PopupMenu menu=new PopupMenu(activity,anchor);
@@ -422,7 +431,7 @@ final class CameraScreen extends FrameLayout {
         menu.setOnMenuItemClickListener(item->{
             ratioIndex=item.getItemId();
             ratioButton.setText(RATIO_NAMES[ratioIndex]);
-            frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+            applySelectedRatio();
             return true;
         });
         menu.show();
@@ -430,7 +439,7 @@ final class CameraScreen extends FrameLayout {
     private void cycleRatio(){
         ratioIndex=(ratioIndex+1)%RATIOS.length;
         ratioButton.setText(RATIO_NAMES[ratioIndex]);
-        frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+        applySelectedRatio();
     }
     private void scheduleShot(){
         if(!active||disposed||capturing)return;
@@ -530,7 +539,10 @@ final class CameraScreen extends FrameLayout {
         return (((orientation+45)/90)*90)%360;
     }
     static Bitmap rotateForDevice(Bitmap source,int degrees){
-        int rotation=(360-nearestRightAngle(degrees))%360;
+        // Android OrientationEventListener increases clockwise from portrait.
+        // Use the same direction for export; reversing it flipped landscape
+        // photographs upside down on 90/270-degree device rotations.
+        int rotation=nearestRightAngle(degrees);
         if(rotation==0)return source;
         Matrix matrix=new Matrix();matrix.setRotate(rotation);
         return Bitmap.createBitmap(source,0,0,source.getWidth(),source.getHeight(),matrix,true);
