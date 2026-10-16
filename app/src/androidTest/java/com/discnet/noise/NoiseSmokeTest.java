@@ -127,6 +127,60 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Turning the phone saves landscape photo while the camera UI remains portrait");
                 if(landscapePhoto!=portraitPhoto)landscapePhoto.recycle();
                 portraitPhoto.recycle();
+                stage("V1.34.1: full-frame 1x, adaptive ratios and responsive ruler");
+                RectF screenFrame=new RectF(),screenZoom=new RectF();
+                CameraFrameGuide.geometryExact(720,1100,720f/1100f,1f,0,0,screenFrame);
+                CameraFrameGuide.geometryExact(720,1100,720f/1100f,2f,0,0,screenZoom);
+                require(Math.abs(screenFrame.left)<.01f&&Math.abs(screenFrame.top)<.01f
+                    &&Math.abs(screenFrame.right-720)<.01f
+                    &&Math.abs(screenFrame.bottom-1100)<.01f,
+                    "TELA at 1x covers the entire viewfinder with no permanent margin");
+                require(Math.abs(screenZoom.width()*2-screenFrame.width())<.1f
+                    &&Math.abs(screenZoom.height()*2-screenFrame.height())<.1f,
+                    "Zoom shrinks the frame, leaving live preview dimensions unchanged");
+                Rect wholeVisible=CameraFrameGuide.photoCrop(3000,4000,720,1100,screenFrame);
+                Rect halfVisible=CameraFrameGuide.photoCrop(3000,4000,720,1100,screenZoom);
+                require(Math.abs(wholeVisible.width()-halfVisible.width()*2)<=2
+                    &&Math.abs(wholeVisible.height()-halfVisible.height()*2)<=2,
+                    "The JPEG crop is driven by the visible frame, not preview digital zoom");
+                final CameraFrameGuide[] fullGuide={null};
+                runOnMainSync(()->{
+                    fullGuide[0]=new CameraFrameGuide(activity,new CameraFrameGuide.Gestures(){
+                        @Override public void focus(float x,float y){}
+                        @Override public void zoom(float factor){}
+                    });
+                    fullGuide[0].layout(0,0,720,1100);
+                    fullGuide[0].fitToPreview();
+                });
+                require(fullGuide[0].isFitToPreview()
+                    &&Math.abs(fullGuide[0].frame().width()-720)<.01f
+                    &&Math.abs(fullGuide[0].frame().height()-1100)<.01f,
+                    "Default camera framing fills the entire preview at 1x");
+                Bitmap direction=Bitmap.createBitmap(2,3,Bitmap.Config.ARGB_8888);
+                direction.eraseColor(Color.BLUE);
+                direction.setPixel(0,0,Color.RED);
+                Bitmap clockwise=CameraScreen.rotateForDevice(direction,90);
+                Bitmap counterclockwise=CameraScreen.rotateForDevice(direction,270);
+                require(clockwise.getWidth()==3&&clockwise.getHeight()==2
+                    &&clockwise.getPixel(2,0)==Color.RED,
+                    "Clockwise phone orientation keeps the landscape photo right-side up");
+                require(counterclockwise.getWidth()==3&&counterclockwise.getHeight()==2
+                    &&counterclockwise.getPixel(0,1)==Color.RED,
+                    "Opposite landscape orientation uses the opposite photo rotation");
+                clockwise.recycle();counterclockwise.recycle();direction.recycle();
+                final CameraRuler[] softRuler={null};
+                runOnMainSync(()->{
+                    softRuler[0]=new CameraRuler(activity);
+                    softRuler[0].configure(0,2,.05f,1,1);
+                    softRuler[0].layout(0,0,720,100);
+                    long t=SystemClock.uptimeMillis();
+                    MotionEvent down=MotionEvent.obtain(t,t,MotionEvent.ACTION_DOWN,360,55,0);
+                    MotionEvent move=MotionEvent.obtain(t,t+120,MotionEvent.ACTION_MOVE,325,55,0);
+                    softRuler[0].onTouchEvent(down);softRuler[0].onTouchEvent(move);
+                    down.recycle();move.recycle();
+                });
+                require(softRuler[0].value()>=1.15f,
+                    "Ruler changes several precision steps with a light 35px drag");
                 stage("V1.33: movable frame and capture geometry");
                 RectF selectedFrame=new RectF();
                 CameraFrameGuide.geometryExact(720,1100,3f/4f,2f,100f,-85f,selectedFrame);
@@ -212,6 +266,10 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(((LinearLayout)field(cameraUi[0],"cameraBody")).getOrientation()
                         ==LinearLayout.VERTICAL,
                     "Camera controls and viewfinder never rotate or rearrange to landscape");
+                require(((CameraFrameGuide)field(cameraUi[0],"frameGuide")).isFitToPreview(),
+                    "Live camera opens in full-screen TELA framing rather than cropped square");
+                require(((TextView)field(cameraUi[0],"ratioButton")).getText().toString().equals("TELA"),
+                    "Aspect menu defaults to automatic screen geometry");
                 require(((java.util.ArrayList<?>)field(cameraUi[0],"toolButtons")).size()>=6,
                     "Camera includes real circular tool selectors");
                 require(field(cameraUi[0],"ruler") instanceof CameraRuler,
