@@ -2,631 +2,513 @@ package com.discnet.noise;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
-import android.hardware.Camera;
-import android.media.ExifInterface;
-import android.media.MediaScannerConnection;
+import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.*;
-import android.provider.MediaStore;
 import android.view.*;
 import android.widget.*;
-import java.io.*;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import androidx.camera.core.ImageCapture;
+import androidx.camera.view.PreviewView;
+import java.util.Locale;
+import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Camera-first Noise workspace. Preview and saved JPEG use the same ColorMatrix,
- * applied to a hardware TextureView layer and to full-resolution pixels.
- * No third-party camera SDK, network access, or per-frame Bitmap allocations.
+ * Noise camera studio. All buttons are functional, the live preview never
+ * zooms, and the photo is made from CameraX's full-resolution JPEG.
  */
-@SuppressWarnings("deprecation")
-final class CameraScreen extends FrameLayout implements TextureView.SurfaceTextureListener {
+final class CameraScreen extends FrameLayout {
     interface Listener {
         void close();
         void edit(Uri photo);
+        default void gallery(){}
     }
-
+    private enum Tool {
+        ZOOM("Zoom","◎",1f,4f,.05f,1f),
+        EV("Exposição","☼",-2f,2f,.05f,0f),
+        SATURATION("Saturação","◉",0f,2f,.025f,1f),
+        WARMTH("Temperatura","◐",-1f,1f,.025f,0f),
+        HUE("Matiz","◈",-180f,180f,2f,0f),
+        CONTRAST("Contraste","◕",.5f,1.5f,.025f,1f);
+        final String name,symbol;
+        final float min,max,step,neutral;
+        Tool(String name,String symbol,float min,float max,float step,float neutral){
+            this.name=name;this.symbol=symbol;this.min=min;this.max=max;this.step=step;this.neutral=neutral;
+        }
+    }
     private final Activity activity;
     private final Listener listener;
-    private final TextureView preview;
+    private final PreviewView preview;
     private final CameraFrameGuide frameGuide;
+    private NoiseCameraX engine;
+    private final CameraRuler ruler;
     private final LinearLayout cameraBody;
-    private final FrameLayout imageArea;
-    private final ScrollView controlsScroll;
-    private EditorTheme.Slider zoomBar;
-    private TextView zoomValue;
-    private final ArrayList<TextView> ratioButtons=new ArrayList<>();
-    private final TextView status, shutter, edit, switchLens;
-    private final ExecutorService photos = Executors.newSingleThreadExecutor();
-    private HandlerThread cameraThread;
-    private Handler cameraHandler;
-    private Camera camera;
-    private int cameraId=-1;
-    private int preferredFacing=Camera.CameraInfo.CAMERA_FACING_BACK;
-    private volatile int generation=0;
-    private volatile boolean active,disposed,cameraReady;
-    private boolean capturing;
-    private Uri latestPhoto;
-    private float saturation=1f, temperature=0f, exposure=0f, digitalZoom=1f;
-    private volatile int previewBufferWidth,previewBufferHeight,previewDisplayOrientation;
-    private volatile int deviceOrientationDegrees;
+    private final TextView valueLabel,titleLabel,status,flashButton,timerButton,ratioButton;
+    private final ImageView lastThumbnail;
+    private final TextView editButton;
+    private final FrameLayout shutterButton;
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private final ExecutorService pictures=Executors.newSingleThreadExecutor();
     private final OrientationEventListener deviceOrientationListener;
+    private final ArrayList<TextView> toolButtons=new ArrayList<>();
+    private Tool selected=Tool.ZOOM;
+    private volatile boolean disposed,active,capturing;
+    private Uri latestPhoto;
+    private float zoom=1f,saturation=1f,temperature=0f,exposure=0f,hue=0f,contrast=1f,sharpness=0f,alignment=0f;
+    private int deviceOrientationDegrees,timerSeconds,ratioIndex=0,flashIndex=0;
+    private float nativeAspect=.75f,maxFrameZoom=4f;
+    private int jpegQuality=98;
+    private boolean showGrid=true;
+    private boolean nativeEv;
+    private float residualExposure;
+    private String resolution="MAX";
+    private static final float[] RATIOS={1f,4f/3f,3f/4f,16f/9f,9f/16f,3f/2f,3f/4f};
+    private static final String[] RATIO_NAMES={"1:1","4:3","3:4","16:9","9:16","3:2","NATIVO"};
 
-    CameraScreen(Activity activity, Listener listener) {
-        super(activity);
-        this.activity=activity;
-        this.listener=listener;
-        deviceOrientationListener=new OrientationEventListener(activity){
+    CameraScreen(Activity context,Listener listener){
+        super(context);
+        this.activity=context;this.listener=listener;
+        setBackgroundColor(0xff0b0a0e);
+        jpegQuality=context.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).getInt("jpeg_quality",98);
+        showGrid=context.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).getBoolean("show_grid",true);
+        setFocusableInTouchMode(true);
+        deviceOrientationListener=new OrientationEventListener(context,SensorManager.SENSOR_DELAY_UI){
             @Override public void onOrientationChanged(int orientation){
-                if(orientation!=ORIENTATION_UNKNOWN)
-                    deviceOrientationDegrees=nearestRightAngle(orientation);
+                if(orientation!=ORIENTATION_UNKNOWN)deviceOrientationDegrees=nearestRightAngle(orientation);
             }
         };
-        setBackgroundColor(0xff0c0b10);
-        setFocusableInTouchMode(true);
-
-        LinearLayout page=new LinearLayout(activity);
-        page.setOrientation(LinearLayout.VERTICAL);
-        addView(page,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout header=new LinearLayout(activity);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16),dp(5),dp(16),dp(5));
-        page.addView(header,new LinearLayout.LayoutParams(-1,dp(62)));
-        TextView close=action("Fechar",false);
-        header.addView(close,new LinearLayout.LayoutParams(dp(82),dp(44)));
-        close.setOnClickListener(v->listener.close());
-        TextView title=label("Câmera",20,EditorTheme.INK);
-        title.setTypeface(NoiseTypography.bold(activity));title.setGravity(Gravity.CENTER);
-        header.addView(title,new LinearLayout.LayoutParams(0,-1,1));
-        switchLens=action("Virar",false);
-        header.addView(switchLens,new LinearLayout.LayoutParams(dp(82),dp(44)));
-        switchLens.setOnClickListener(v->switchCamera());
-
-        cameraBody=new LinearLayout(activity);
+        cameraBody=new LinearLayout(context);
         cameraBody.setOrientation(LinearLayout.VERTICAL);
-        page.addView(cameraBody,new LinearLayout.LayoutParams(-1,0,1));
-        imageArea=new FrameLayout(activity);
-        imageArea.setBackgroundColor(Color.BLACK);
-        cameraBody.addView(imageArea,new LinearLayout.LayoutParams(-1,0,1));
-        preview=new TextureView(activity);
-        preview.setSurfaceTextureListener(this);
-        // TextureView's hardware layer paint is composited by the GPU.
-        // It changes the displayed camera frame without copying pixels to the CPU.
-        preview.setLayerType(View.LAYER_TYPE_HARDWARE,null);
-        imageArea.addView(preview,new FrameLayout.LayoutParams(-1,-1));
-        frameGuide=new CameraFrameGuide(activity,new CameraFrameGuide.Gestures(){
-            @Override public void focus(float x,float y){tapToFocus(x,y);}
-            @Override public void zoom(float factor){setZoom(digitalZoom*factor);}
+        cameraBody.setPadding(dp(10),dp(5),dp(10),dp(4));
+        addView(cameraBody,new FrameLayout.LayoutParams(-1,-1));
+
+        FrameLayout cameraPanel=new FrameLayout(context);
+        GradientDrawable cameraCorner=new GradientDrawable();
+        cameraCorner.setColor(0xff121014);cameraCorner.setCornerRadius(dp(19));
+        cameraPanel.setBackground(cameraCorner);
+        cameraPanel.setClipToOutline(true);
+        cameraBody.addView(cameraPanel,new LinearLayout.LayoutParams(-1,0,1));
+        preview=new PreviewView(context);
+        preview.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        preview.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        cameraPanel.addView(preview,new FrameLayout.LayoutParams(-1,-1));
+        frameGuide=new CameraFrameGuide(context,new CameraFrameGuide.Gestures(){
+            @Override public void focus(float x,float y){
+                engine.focus(x,y);
+                status.setText("Ajustando foco…");
+            }
+            @Override public void zoom(float factor){setToolValue(Tool.ZOOM,zoom*factor,true);}
         });
-        imageArea.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout ratios=new LinearLayout(activity);
-        ratios.setPadding(dp(12),dp(12),dp(12),dp(8));
-        ratios.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams ratioParams=new FrameLayout.LayoutParams(-1,dp(60),Gravity.TOP);
-        imageArea.addView(ratios,ratioParams);
-        addRatio(ratios,"1:1",1f);
-        addRatio(ratios,"4:3",4f/3f);
-        addRatio(ratios,"16:9",16f/9f);
-        setRatio(1f);
-        status=label("Conectando à câmera…",13,0xffded8e6);
+        cameraPanel.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
+        frameGuide.exactAspect(1f);
+        frameGuide.grid(showGrid);
+
+        LinearLayout top=new LinearLayout(context);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setPadding(dp(8),dp(6),dp(8),dp(6));
+        FrameLayout.LayoutParams topPosition=new FrameLayout.LayoutParams(-1,dp(62),Gravity.TOP);
+        cameraPanel.addView(top,topPosition);
+        TextView back=chip("‹",40);
+        back.setContentDescription("Fechar câmera");
+        top.addView(back,new LinearLayout.LayoutParams(dp(40),dp(44)));
+        back.setOnClickListener(v->listener.close());
+        addSpace(top);
+        flashButton=chip("Off",65);
+        top.addView(flashButton,new LinearLayout.LayoutParams(dp(65),dp(40)));
+        flashButton.setContentDescription("Flash desligado");
+        flashButton.setOnClickListener(v->cycleFlash());
+        timerButton=chip("0s",40);
+        LinearLayout.LayoutParams timerP=new LinearLayout.LayoutParams(dp(40),dp(40));
+        timerP.leftMargin=dp(5);top.addView(timerButton,timerP);
+        timerButton.setContentDescription("Temporizador de captura");
+        timerButton.setOnClickListener(v->cycleTimer());
+        ratioButton=chip("1:1",50);
+        LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(50),dp(40));
+        ratioP.leftMargin=dp(5);top.addView(ratioButton,ratioP);
+        ratioButton.setOnClickListener(v->cycleRatio());
+        TextView flip=chip("⇄",40);
+        LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(40),dp(40));
+        flipP.leftMargin=dp(5);top.addView(flip,flipP);
+        flip.setContentDescription("Alternar câmera frontal e traseira");
+        flip.setOnClickListener(v->{if(!capturing)engine.flip();});
+        TextView options=chip("⋯",34);
+        LinearLayout.LayoutParams optionsP=new LinearLayout.LayoutParams(dp(34),dp(40));
+        optionsP.leftMargin=dp(4);top.addView(options,optionsP);
+        options.setContentDescription("Configurações da câmera");
+        options.setOnClickListener(v->showCameraOptions(options));
+
+        status=label("Preparando câmera…",11,0xffeae5ee);
         status.setGravity(Gravity.CENTER);
-        status.setBackground(EditorTheme.panel(activity,0xd01b1721,0,12,0));
-        FrameLayout.LayoutParams msg=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
-        msg.setMargins(dp(14),0,dp(14),dp(12));
-        status.setPadding(dp(12),dp(10),dp(12),dp(10));
-        imageArea.addView(status,msg);
+        status.setMaxLines(2);
+        status.setPadding(dp(10),dp(7),dp(10),dp(7));
+        status.setBackground(EditorTheme.panel(context,0xaa16151c,0,12,0));
+        FrameLayout.LayoutParams toastPosition=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);
+        toastPosition.bottomMargin=dp(9);
+        cameraPanel.addView(status,toastPosition);
 
-        controlsScroll=new ScrollView(activity);
-        controlsScroll.setFillViewport(false);
-        controlsScroll.setVerticalScrollBarEnabled(false);
-        cameraBody.addView(controlsScroll,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout controls=new LinearLayout(activity);
-        controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setPadding(dp(18),dp(12),dp(18),dp(12));
-        controls.setBackgroundColor(0xff17161d);
-        controlsScroll.addView(controls,new ScrollView.LayoutParams(-1,-2));
+        LinearLayout lower=new LinearLayout(context);
+        lower.setOrientation(LinearLayout.VERTICAL);
+        lower.setPadding(dp(4),dp(8),dp(4),0);
+        cameraBody.addView(lower,new LinearLayout.LayoutParams(-1,-2));
 
-        addSlider(controls,"Saturação","0%","200%",100, progress->{
-            saturation=progress/100f;applyLiveAdjustments();
-        });
-        addSlider(controls,"Temperatura","Frio","Quente",100, progress->{
-            temperature=(progress-100)/100f;applyLiveAdjustments();
-        });
-        addSlider(controls,"Exposição","−2 EV","+2 EV",100, progress->{
-            exposure=(progress-100)/50f;applyLiveAdjustments();
-        });
-        LinearLayout zoomRow=new LinearLayout(activity);zoomRow.setGravity(Gravity.CENTER_VERTICAL);
-        controls.addView(zoomRow,new LinearLayout.LayoutParams(-1,dp(26)));
-        TextView zoomTitle=label("Zoom / enquadramento",13,EditorTheme.INK);
-        zoomRow.addView(zoomTitle,new LinearLayout.LayoutParams(0,-2,1));
-        zoomValue=label("1.0×",13,EditorTheme.LIME);
-        zoomValue.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        zoomRow.addView(zoomValue,new LinearLayout.LayoutParams(dp(65),-2));
-        zoomBar=new EditorTheme.Slider(activity,EditorTheme.LIME);
-        zoomBar.setMax(300);zoomBar.setProgress(0);zoomBar.neutral(0);
-        zoomBar.setContentDescription("Zoom digital de 1 a 4 vezes. A moldura indica a foto final");
-        controls.addView(zoomBar,new LinearLayout.LayoutParams(-1,dp(36)));
-        zoomBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            @Override public void onProgressChanged(SeekBar bar,int progress,boolean user){
-                setZoom(1f+progress/100f);
-            }
-            @Override public void onStartTrackingTouch(SeekBar bar){}
-            @Override public void onStopTrackingTouch(SeekBar bar){}
-        });
-
-        LinearLayout bottom=new LinearLayout(activity);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.setPadding(dp(14),dp(4),dp(14),dp(4));
-        page.addView(bottom,new LinearLayout.LayoutParams(-1,dp(78)));
-        TextView reset=action("Zerar",false);
-        bottom.addView(reset,new LinearLayout.LayoutParams(dp(78),dp(48)));
-        reset.setOnClickListener(v->resetAdjustments());
-        shutter=action("●  Capturar",true);
-        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(54),1);sp.setMargins(dp(8),0,dp(8),0);
-        bottom.addView(shutter,sp);
-        shutter.setContentDescription("Capturar foto com os ajustes ao vivo");
-        shutter.setOnClickListener(v->takePhoto());
-        edit=action("Editar",false);
-        edit.setEnabled(false);edit.setAlpha(.40f);
-        bottom.addView(edit,new LinearLayout.LayoutParams(dp(78),dp(48)));
-        edit.setOnClickListener(v->{if(latestPhoto!=null)listener.edit(latestPhoto);});
-        applyLiveAdjustments();
-        // No responsive landscape rearrangement: the camera remains portrait.
-    }
-
-    // Keep the camera UI and preview at a fixed portrait size and position.
-    // The device orientation sensor changes only the saved photograph.
-    private int dp(float d){return EditorTheme.dp(activity,d);}
-    private TextView label(String value,int size,int color){
-        TextView t=new TextView(activity);t.setText(value);t.setTextSize(size);t.setTextColor(color);
-        t.setTypeface(NoiseTypography.regular(activity));return t;
-    }
-    private TextView action(String value,boolean primary){
-        TextView t=label(value,14,primary?0xff18121d:EditorTheme.INK);
-        t.setGravity(Gravity.CENTER);t.setTypeface(NoiseTypography.bold(activity));
-        EditorTheme.button(t,primary);t.setFocusable(true);return t;
-    }
-
-    private final ArrayList<SeekBar> bars=new ArrayList<>();
-    private interface SliderListener {void change(int progress);}
-    private void addSlider(LinearLayout parent,String name,String minimum,String maximum,int neutral,SliderListener listener) {
-        LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
-        parent.addView(row,new LinearLayout.LayoutParams(-1,dp(27)));
-        TextView title=label(name,13,EditorTheme.INK);
-        row.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        TextView value=label(name.equals("Saturação")?"100%":name.equals("Temperatura")?"Neutro":"0.00 EV",12,EditorTheme.MUTED);
-        value.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
-        row.addView(value,new LinearLayout.LayoutParams(dp(94),-2));
-        EditorTheme.Slider bar=new EditorTheme.Slider(activity,EditorTheme.LIME);
-        bar.setMax(200);bar.setProgress(neutral);bar.neutral(100);
-        bar.setContentDescription("Ajustar "+name);
-        parent.addView(bar,new LinearLayout.LayoutParams(-1,dp(36)));
-        bars.add(bar);
-        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            @Override public void onProgressChanged(SeekBar b,int progress,boolean fromUser){
-                if(name.equals("Saturação"))value.setText(progress+"%");
-                else if(name.equals("Temperatura"))value.setText(progress==100?"Neutro":
-                    (progress<100?"Frio ":"Quente ")+Math.abs(progress-100)+"%");
-                else value.setText(String.format(Locale.getDefault(),"%+.2f EV",(progress-100)/50f));
-                listener.change(progress);
-            }
-            @Override public void onStartTrackingTouch(SeekBar b){}
-            @Override public void onStopTrackingTouch(SeekBar b){}
-        });
-    }
-    private void resetAdjustments(){for(SeekBar b:bars)b.setProgress(100);setZoom(1f);}
-    private void addRatio(LinearLayout row,String text,float ratio){
-        TextView chip=action(text,false);
-        chip.setTag(ratio);
-        chip.setContentDescription("Proporção da fotografia "+text);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(40),1);
-        lp.setMargins(dp(3),0,dp(3),0);
-        row.addView(chip,lp);ratioButtons.add(chip);
-        chip.setOnClickListener(v->setRatio(ratio));
-    }
-    private void setRatio(float ratio){
-        frameGuide.ratio(ratio);
-        for(TextView chip:ratioButtons){
-            boolean selected=Math.abs((Float)chip.getTag()-ratio)<.01f;
-            chip.setTextColor(selected?0xff18121d:EditorTheme.INK);
-            EditorTheme.button(chip,selected);
+        HorizontalScrollView tools=new HorizontalScrollView(context);
+        tools.setHorizontalScrollBarEnabled(false);
+        tools.setFillViewport(false);
+        lower.addView(tools,new LinearLayout.LayoutParams(-1,dp(62)));
+        LinearLayout row=new LinearLayout(context);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(6),0,dp(6),0);
+        tools.addView(row);
+        for(Tool tool:Tool.values()){
+            TextView icon=toolIcon(tool);
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(49),dp(49));
+            lp.setMargins(dp(5),0,dp(5),0);
+            row.addView(icon,lp);
+            icon.setOnClickListener(v->selectTool(tool));
+            toolButtons.add(icon);
         }
+        LinearLayout names=new LinearLayout(context);
+        names.setGravity(Gravity.CENTER_VERTICAL);
+        lower.addView(names,new LinearLayout.LayoutParams(-1,dp(25)));
+        titleLabel=label("Zoom",13,0xffeee9f3);
+        titleLabel.setTypeface(NoiseTypography.bold(context));
+        names.addView(titleLabel,new LinearLayout.LayoutParams(0,-1,1));
+        valueLabel=label("1.00×",14,EditorTheme.LIME);
+        valueLabel.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        names.addView(valueLabel,new LinearLayout.LayoutParams(dp(112),-1));
+        ruler=new CameraRuler(context);
+        ruler.listen(value->setToolValue(selected,value,false));
+        lower.addView(ruler,new LinearLayout.LayoutParams(-1,dp(81)));
+
+        LinearLayout actions=new LinearLayout(context);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(dp(4),dp(5),dp(4),0);
+        lower.addView(actions,new LinearLayout.LayoutParams(-1,dp(77)));
+
+        FrameLayout galleryArea=new FrameLayout(context);
+        actions.addView(galleryArea,new LinearLayout.LayoutParams(0,dp(53),1));
+        TextView gallery=sideButton("Galeria");
+        gallery.setContentDescription("Abrir galeria do Noise");
+        galleryArea.addView(gallery,new FrameLayout.LayoutParams(-1,-1));
+        lastThumbnail=new ImageView(context);
+        lastThumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        lastThumbnail.setBackground(EditorTheme.buttonSurface(context,8,false));
+        FrameLayout.LayoutParams thumbPosition=new FrameLayout.LayoutParams(
+            dp(39),dp(39),Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        thumbPosition.leftMargin=dp(4);
+        galleryArea.addView(lastThumbnail,thumbPosition);
+        galleryArea.setClickable(true);galleryArea.setFocusable(true);
+        galleryArea.setContentDescription("Ver fotografias da galeria Noise");
+        galleryArea.setOnClickListener(v->listener.gallery());
+
+        shutterButton=new FrameLayout(context);
+        shutterButton.setContentDescription("Capturar fotografia");
+        shutterButton.setFocusable(true);shutterButton.setClickable(true);
+        FrameLayout.LayoutParams shutterInner=new FrameLayout.LayoutParams(dp(66),dp(66),Gravity.CENTER);
+        View shutterArt=new View(context);
+        GradientDrawable ring=new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setColor(0xfff4eff8);
+        ring.setStroke(dp(4),0xff8c8296);
+        shutterArt.setBackground(ring);
+        shutterButton.addView(shutterArt,shutterInner);
+        LinearLayout.LayoutParams mainButton=new LinearLayout.LayoutParams(dp(84),dp(76));
+        mainButton.setMargins(dp(2),0,dp(2),0);
+        actions.addView(shutterButton,mainButton);
+        shutterButton.setOnClickListener(v->scheduleShot());
+
+        editButton=sideButton("Editar");
+        editButton.setEnabled(false);editButton.setAlpha(.45f);
+        actions.addView(editButton,new LinearLayout.LayoutParams(0,dp(53),1));
+        editButton.setOnClickListener(v->{if(latestPhoto!=null)listener.edit(latestPhoto);});
+
+        editButton.setContentDescription("Abrir última fotografia no editor Noise");
+
+        engine=new NoiseCameraX(context,preview,new NoiseCameraX.Listener(){
+            @Override public void ready(boolean flash,boolean ev,String resolutionLabel,float aspect,float zoomLimit){
+                if(disposed)return;
+                flashButton.setVisibility(flash?View.VISIBLE:View.GONE);
+                nativeEv=ev;resolution=resolutionLabel;
+                nativeAspect=aspect;maxFrameZoom=zoomLimit;
+                if(ratioIndex==RATIOS.length-1)frameGuide.exactAspect(nativeAspect);
+                if(zoom>maxFrameZoom)setToolValue(Tool.ZOOM,maxFrameZoom,true);
+                if(selected==Tool.ZOOM)selectTool(Tool.ZOOM);
+                residualExposure=exposure-engine.setExposureEv(exposure);
+                applyPreview();
+                status.setText("Pronto · "+resolution);
+            }
+            @Override public void error(String message){
+                if(!disposed){status.setText(message);capturing=false;shutterButton.setEnabled(true);}
+            }
+            @Override public void jpeg(byte[] data,int cameraRotation){saveCapturedPhoto(data,cameraRotation);}
+        });
+        selectTool(Tool.ZOOM);
+        post(this::applyPreview);
     }
-    private void setZoom(float value){
-        digitalZoom=Math.max(1f,Math.min(4f,value));
-        frameGuide.zoom(digitalZoom);
-        if(zoomValue!=null)zoomValue.setText(String.format(Locale.getDefault(),"%.1f×",digitalZoom));
-        if(zoomBar!=null){
-            int p=Math.round((digitalZoom-1f)*100);
-            if(zoomBar.getProgress()!=p)zoomBar.setProgress(p);
+    private int dp(float px){return EditorTheme.dp(activity,px);}
+    private TextView label(String text,int size,int color){
+        TextView view=new TextView(activity);
+        view.setText(text);view.setTextColor(color);view.setTextSize(size);
+        view.setTypeface(NoiseTypography.regular(activity));
+        return view;
+    }
+    private void addSpace(LinearLayout row){
+        row.addView(new View(activity),new LinearLayout.LayoutParams(0,1,1));
+    }
+    private TextView chip(String text,int width){
+        TextView result=label(text,12,0xfff5f2f8);
+        result.setGravity(Gravity.CENTER);
+        result.setSingleLine();
+        result.setBackground(EditorTheme.panel(activity,0xbf1c1b23,0,18,0));
+        result.setFocusable(true);
+        return result;
+    }
+    private TextView sideButton(String text){
+        TextView button=label(text,13,EditorTheme.INK);
+        button.setGravity(Gravity.CENTER);
+        button.setBackground(EditorTheme.buttonSurface(activity,18,false));
+        button.setFocusable(true);
+        return button;
+    }
+    private TextView toolIcon(Tool tool){
+        TextView icon=label(tool.symbol,24,0xffb1a8b8);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(EditorTheme.panel(activity,0xff24212a,0,28,0xff45404b));
+        icon.setContentDescription(tool.name);
+        icon.setFocusable(true);
+        return icon;
+    }
+    private void selectTool(Tool tool){
+        selected=tool;
+        for(int i=0;i<toolButtons.size();i++){
+            TextView button=toolButtons.get(i);
+            boolean activeTool=Tool.values()[i]==tool;
+            button.setTextColor(activeTool?0xfff8f5fa:0xffb2a9b8);
+            GradientDrawable shape=new GradientDrawable();
+            shape.setShape(GradientDrawable.OVAL);
+            shape.setColor(activeTool?0xff352d3e:0xff211f28);
+            shape.setStroke(dp(activeTool?1.5f:1),
+                activeTool?0xffefe6f9:0xff37323c);
+            button.setBackground(shape);
+            button.setScaleX(activeTool?1.04f:1f);button.setScaleY(activeTool?1.04f:1f);
         }
-        // Changing zoom changes only the framing rectangle, never the live feed.
+        titleLabel.setText(tool.name);
+        ruler.configure(tool.min,tool==Tool.ZOOM?maxFrameZoom:tool.max,tool.step,toolValue(tool),tool.neutral);
+        displayToolValue();
     }
-    static ColorMatrix colorAdjustments(float saturation,float temperature,float exposure){
-        // Common transform shared by preview and captured JPEG.
-        float s=Math.max(0f,Math.min(2f,saturation));
-        float warmth=Math.max(-1f,Math.min(1f,temperature));
-        float gain=(float)Math.pow(2d,Math.max(-2f,Math.min(2f,exposure)));
-        ColorMatrix filter=new ColorMatrix();filter.setSaturation(s);
-        ColorMatrix tint=new ColorMatrix(new float[]{
-            1f+.16f*warmth,0,0,0,11f*warmth,
-            0,1f+.01f*warmth,0,0,0,
-            0,0,1f-.18f*warmth,0,-11f*warmth,
-            0,0,0,1,0
-        });
-        filter.postConcat(tint);
-        ColorMatrix brightness=new ColorMatrix(new float[]{
-            gain,0,0,0,0,0,gain,0,0,0,0,0,gain,0,0,0,0,0,1,0
-        });
-        filter.postConcat(brightness);
-        return filter;
+    private float toolValue(Tool tool){
+        switch(tool){
+            case ZOOM:return zoom;
+            case EV:return exposure;
+            case SATURATION:return saturation;
+            case WARMTH:return temperature;
+            case HUE:return hue;
+            case CONTRAST:return contrast;
+        }
+        return 0;
     }
-    private void applyLiveAdjustments(){
+    private void setToolValue(Tool tool,float value,boolean emitToRuler){
+        float upper=tool==Tool.ZOOM?maxFrameZoom:tool.max;
+        float clamped=Math.max(tool.min,Math.min(upper,value));
+        switch(tool){
+            case ZOOM:
+                zoom=clamped;frameGuide.zoom(zoom);break;
+            case EV:
+                exposure=clamped;
+                residualExposure=exposure-engine.setExposureEv(exposure);break;
+            case SATURATION:saturation=clamped;break;
+            case WARMTH:temperature=clamped;break;
+            case HUE:hue=clamped;break;
+            case CONTRAST:contrast=clamped;break;
+        }
+        if(selected==tool){
+            if(emitToRuler)ruler.setValue(clamped,false);
+            displayToolValue();
+        }
+        if(tool!=Tool.ZOOM)applyPreview();
+    }
+    private void displayToolValue(){
+        float v=toolValue(selected);
+        String text;
+        switch(selected){
+            case ZOOM:text=String.format(Locale.US,"%.2f×",v);break;
+            case EV:text=String.format(Locale.US,"%+.2f EV",v);break;
+            case SATURATION:text=String.format(Locale.US,"%.0f%%",v*100f);break;
+            case WARMTH:text=String.format(Locale.US,"%+.0f",v*100f);break;
+            case HUE:text=String.format(Locale.US,"%+.0f°",v);break;
+            default:text=String.format(Locale.US,"%.0f%%",v*100f);
+        }
+        valueLabel.setText(text);
+    }
+    private void applyPreview(){
         if(preview==null)return;
         Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-        paint.setColorFilter(new ColorMatrixColorFilter(colorAdjustments(saturation,temperature,exposure)));
-        preview.setLayerPaint(paint);
+        paint.setColorFilter(new ColorMatrixColorFilter(CameraPhotoPipeline.colors(
+            saturation,temperature,residualExposure,hue,contrast)));
+        preview.setLayerType(View.LAYER_TYPE_HARDWARE,paint);
         preview.invalidate();
     }
-    private void message(String value){if(!disposed)status.setText(value);}
+    private void showCameraOptions(View anchor){
+        PopupMenu menu=new PopupMenu(activity,anchor);
+        for(int quality:new int[]{95,98,100}){
+            menu.getMenu().add(1,quality,quality,"JPEG · qualidade "+quality+"%")
+                .setCheckable(true).setChecked(quality==jpegQuality);
+        }
+        menu.getMenu().setGroupCheckable(1,true,true);
+        menu.getMenu().add(2,1,110,showGrid?"Ocultar grade":"Exibir grade");
+        menu.getMenu().add(3,1,111,"Restaurar ajustes da câmera");
+        menu.setOnMenuItemClickListener(item->{
+            if(item.getGroupId()==1){
+                jpegQuality=item.getItemId();
+                activity.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).edit()
+                    .putInt("jpeg_quality",jpegQuality).apply();
+                status.setText("Qualidade de captura JPEG · "+jpegQuality+"%");
+                return true;
+            }
+            if(item.getGroupId()==2){
+                showGrid=!showGrid;
+                frameGuide.grid(showGrid);
+                activity.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).edit()
+                    .putBoolean("show_grid",showGrid).apply();
+                return true;
+            }
+            for(Tool tool:Tool.values())setToolValue(tool,tool.neutral,false);
+            frameGuide.centerFrame();
+            selectTool(selected);
+            status.setText("Ajustes redefinidos");
+            return true;
+        });
+        menu.show();
+    }
+    private void cycleFlash(){
+        if(!engine.hasFlash())return;
+        int[] modes={ImageCapture.FLASH_MODE_OFF,ImageCapture.FLASH_MODE_AUTO,ImageCapture.FLASH_MODE_ON};
+        flashIndex=(flashIndex+1)%modes.length;
+        engine.setFlash(modes[flashIndex]);
+        flashButton.setText(new String[]{"Off","Auto","On"}[flashIndex]);
+        flashButton.setContentDescription("Flash "+flashButton.getText());
+    }
+    private void cycleTimer(){
+        int[] seconds={0,3,5,10};
+        int current=0;
+        for(int i=0;i<seconds.length;i++)if(seconds[i]==timerSeconds)current=i;
+        timerSeconds=seconds[(current+1)%seconds.length];
+        timerButton.setText(timerSeconds+"s");
+    }
+    private void cycleRatio(){
+        ratioIndex=(ratioIndex+1)%RATIOS.length;
+        ratioButton.setText(RATIO_NAMES[ratioIndex]);
+        frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+    }
+    private void scheduleShot(){
+        if(!active||disposed||capturing)return;
+        if(Build.VERSION.SDK_INT<29&&activity.checkSelfPermission(
+            Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){
+            activity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                MainActivity.CAMERA_STORAGE_PERMISSION);
+            return;
+        }
+        capturing=true;shutterButton.setEnabled(false);
+        final int seconds=timerSeconds;
+        if(seconds<=0)shoot();else countdown(seconds);
+    }
+    private void countdown(int seconds){
+        if(disposed||!active){capturing=false;return;}
+        if(seconds==0){shoot();return;}
+        status.setText("Capturando em "+seconds+"…");
+        mainHandler.postDelayed(()->countdown(seconds-1),1000);
+    }
+    private CameraPhotoPipeline.Settings pendingSettings;
+    private void shoot(){
+        if(!active||disposed){capturing=false;return;}
+        CameraPhotoPipeline.Settings settings=new CameraPhotoPipeline.Settings();
+        settings.frame=frameGuide.frame();
+        settings.viewWidth=frameGuide.getWidth();
+        settings.viewHeight=frameGuide.getHeight();
+        settings.mirror=engine.front();
+        settings.orientation=deviceOrientationDegrees;
+        settings.jpegQuality=jpegQuality;
+        settings.sat=saturation;settings.warm=temperature;
+        settings.exposure=residualExposure;
+        settings.hue=hue;settings.contrast=contrast;
+        pendingSettings=settings;
+        status.setText("Fotografando…");
+        engine.shoot();
+    }
+    private void saveCapturedPhoto(byte[] jpeg,int cameraRotation){
+        final CameraPhotoPipeline.Settings snapshot=pendingSettings==null?
+            new CameraPhotoPipeline.Settings():pendingSettings.copy();
+        snapshot.jpegRotation=cameraRotation;
+        pictures.execute(()->{
+            try{
+                Uri uri=CameraPhotoPipeline.save(activity.getApplicationContext(),jpeg,snapshot);
+                Bitmap previewThumb=null;
+                try(InputStream in=activity.getContentResolver().openInputStream(uri)){
+                    BitmapFactory.Options options=new BitmapFactory.Options();
+                    options.inSampleSize=16;
+                    previewThumb=BitmapFactory.decodeStream(in,null,options);
+                }catch(Exception ignored){}
+                final Bitmap thumbnail=previewThumb;
+                mainHandler.post(()->{
+                    if(disposed){
+                        if(thumbnail!=null)thumbnail.recycle();
+                        return;
+                    }
+                    latestPhoto=uri;
+                    capturing=false;shutterButton.setEnabled(true);
+                    if(thumbnail!=null)lastThumbnail.setImageBitmap(thumbnail);
+                    editButton.setAlpha(1f);editButton.setEnabled(true);
+                    status.setText("Foto salva em Pictures/Noise!");
+                });
+            }catch(Exception|OutOfMemoryError e){
+                android.util.Log.e("NoiseCamera","Save",e);
+                mainHandler.post(()->{
+                    if(!disposed){
+                        capturing=false;shutterButton.setEnabled(true);
+                        status.setText("Falha ao salvar: memória ou espaço insuficiente");
+                    }
+                });
+            }
+        });
+    }
     void start(){
         if(disposed)return;
         active=true;
         if(deviceOrientationListener.canDetectOrientation())deviceOrientationListener.enable();
         if(activity.checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
-            message("Autorize o uso da câmera para fotografar");return;
+            status.setText("Autorize a câmera");return;
         }
-        if(preview.isAvailable())openCamera();
+        engine.start();
     }
     void stop(){
-        deviceOrientationListener.disable();
         active=false;
-        ++generation;
-        if(cameraHandler!=null)cameraHandler.post(this::closeCamera);
+        deviceOrientationListener.disable();
+        mainHandler.removeCallbacksAndMessages(null);
+        engine.stop();
+        capturing=false;shutterButton.setEnabled(true);
     }
     void dispose(){
-        disposed=true;stop();photos.shutdown();
-        if(cameraHandler!=null)cameraHandler.post(()->{
-            closeCamera();
-            if(cameraThread!=null)cameraThread.quitSafely();
-        });
+        if(disposed)return;
+        stop();disposed=true;
+        engine.dispose();pictures.shutdown();
     }
-    private void prepareThread(){
-        if(cameraThread==null){
-            cameraThread=new HandlerThread("NoiseCamera");
-            cameraThread.start();
-            cameraHandler=new Handler(cameraThread.getLooper());
-        }
+    static int nearestRightAngle(int orientation){
+        if(orientation<0)return 0;
+        return (((orientation+45)/90)*90)%360;
     }
-    private int chooseCamera(){
-        int count=Camera.getNumberOfCameras(),fallback=-1;
-        for(int i=0;i<count;i++){
-            Camera.CameraInfo info=new Camera.CameraInfo();Camera.getCameraInfo(i,info);
-            if(fallback<0)fallback=i;
-            if(info.facing==preferredFacing)return i;
-        }
-        return fallback;
-    }
-    private void openCamera(){
-        if(!active||disposed||cameraReady||!preview.isAvailable())return;
-        if(activity.checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)return;
-        prepareThread();
-        final int n=++generation;
-        cameraHandler.post(()->{
-            if(n!=generation||!active||disposed||cameraReady)return;
-            try{
-                if(camera!=null)closeCamera();
-                cameraId=chooseCamera();
-                if(cameraId<0)throw new IOException("Nenhuma câmera encontrada");
-                Camera opened=Camera.open(cameraId);
-                if(n!=generation||!active||disposed){opened.release();return;}
-                camera=opened;
-                Camera.Parameters p=opened.getParameters();
-                Camera.Size size=previewSize(p,preview.getWidth(),preview.getHeight());
-                if(size!=null){
-                    p.setPreviewSize(size.width,size.height);
-                    Camera.Size picture=pictureSize(p,size);
-                    if(picture!=null)p.setPictureSize(picture.width,picture.height);
-                }
-                if(p.getSupportedFocusModes()!=null&&p.getSupportedFocusModes().contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE))
-                    p.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
-                opened.setParameters(p);
-                Camera.CameraInfo info=new Camera.CameraInfo();Camera.getCameraInfo(cameraId,info);
-                int displayDegrees=rotationDegrees(activity.getWindowManager().getDefaultDisplay().getRotation());
-                int orientation=info.facing==Camera.CameraInfo.CAMERA_FACING_FRONT
-                    ?(360-(info.orientation+displayDegrees)%360)%360
-                    :(info.orientation-displayDegrees+360)%360;
-                opened.setDisplayOrientation(orientation);
-                if(size!=null){
-                    previewBufferWidth=size.width;previewBufferHeight=size.height;
-                    previewDisplayOrientation=orientation;
-                    activity.runOnUiThread(()->{if(!disposed&&active)
-                        fitPreview(size.width,size.height,orientation);});
-                }
-                opened.setPreviewTexture(preview.getSurfaceTexture());
-                opened.startPreview();
-                cameraReady=true;
-                activity.runOnUiThread(()->{
-                    if(!disposed&&active){message("Pronto para fotografar");shutter.setEnabled(true);}
-                });
-            }catch(Exception error){
-                closeCamera();
-                activity.runOnUiThread(()->{if(!disposed){message("Câmera indisponível. Confira as permissões.");shutter.setEnabled(false);}});
-            }
-        });
-    }
-    /** Center crop the camera feed without nonuniform stretching. */
-    private void fitPreview(int bufferWidth,int bufferHeight,int displayOrientation){
-        if(disposed||preview.getWidth()<=0||preview.getHeight()<=0)return;
-        int viewWidth=preview.getWidth(),viewHeight=preview.getHeight();
-        float displayedWidth=(displayOrientation%180==0)?bufferWidth:bufferHeight;
-        float displayedHeight=(displayOrientation%180==0)?bufferHeight:bufferWidth;
-        float scale=Math.max(viewWidth/displayedWidth,viewHeight/displayedHeight)*digitalZoom;
-        Matrix matrix=new Matrix();
-        matrix.setScale(displayedWidth*scale/viewWidth,displayedHeight*scale/viewHeight,
-            viewWidth*.5f,viewHeight*.5f);
-        preview.setTransform(matrix);
-    }
-    /** Match preview and capture sensor aspect ratios to keep the crop predictable. */
-    private static Camera.Size pictureSize(Camera.Parameters p,Camera.Size preview){
-        List<Camera.Size> sizes=p.getSupportedPictureSizes();
-        if(sizes==null||sizes.isEmpty())return null;
-        float previewRatio=preview.width/(float)preview.height;
-        Camera.Size best=null;double score=Double.MAX_VALUE;
-        for(Camera.Size candidate:sizes){
-            float ratio=candidate.width/(float)candidate.height;
-            double mismatch=Math.abs(ratio-previewRatio);
-            int longSide=Math.max(candidate.width,candidate.height);
-            double cost=mismatch*100d + (longSide>4096?2d:0d)
-                +1d/Math.max(1d,candidate.width*(double)candidate.height)*1000000d;
-            if(cost<score){score=cost;best=candidate;}
-        }
-        return best;
-    }
-    private static Camera.Size previewSize(Camera.Parameters p,int width,int height){
-        List<Camera.Size> list=p.getSupportedPreviewSizes();
-        if(list==null||list.isEmpty())return null;
-        float target=height>0&&width>0?Math.max(width,height)/(float)Math.min(width,height):16f/9f;
-        Camera.Size best=null;double score=Double.MAX_VALUE;
-        for(Camera.Size size:list){
-            float ratio=Math.max(size.width,size.height)/(float)Math.min(size.width,size.height);
-            double cost=Math.abs(ratio-target)*3+Math.abs(Math.log((size.width*(double)size.height)/(1280d*720d)))*.16;
-            if(size.width>1920||size.height>1920)cost+=3;
-            if(cost<score){score=cost;best=size;}
-        }
-        return best;
-    }
-    private static int rotationDegrees(int rotation){
-        switch(rotation){case Surface.ROTATION_90:return 90;case Surface.ROTATION_180:return 180;
-            case Surface.ROTATION_270:return 270;default:return 0;}
-    }
-    /** Autofocus at the tapped point; the tap never opens the media gallery. */
-    private void tapToFocus(float x,float y){
-        if(!active||disposed||capturing||!cameraReady||cameraHandler==null)return;
-        final int width=Math.max(1,frameGuide.getWidth()),height=Math.max(1,frameGuide.getHeight());
-        final int orientation=previewDisplayOrientation;
-        // The live feed is never zoomed. Focus coordinates must not shrink with the frame.
-        final boolean front=preferredFacing==Camera.CameraInfo.CAMERA_FACING_FRONT;
-        cameraHandler.post(()->{
-            try{
-                if(camera==null||!active||disposed)return;
-                Camera.Parameters p=camera.getParameters();
-                List<String> modes=p.getSupportedFocusModes();
-                boolean auto=modes!=null&&modes.contains(Camera.Parameters.FOCUS_MODE_AUTO);
-                boolean point=p.getMaxNumFocusAreas()>0||p.getMaxNumMeteringAreas()>0;
-                if(!auto&&!point){
-                    activity.runOnUiThread(()->message("Este aparelho mantém o foco automático contínuo"));
-                    return;
-                }
-                float dx=((x/width)-.5f)*2000f;
-                float dy=((y/height)-.5f)*2000f;
-                double angle=Math.toRadians(-orientation);
-                float rx=(float)(dx*Math.cos(angle)-dy*Math.sin(angle));
-                float ry=(float)(dx*Math.sin(angle)+dy*Math.cos(angle));
-                if(front)rx=-rx;
-                int cx=Math.max(-850,Math.min(850,Math.round(rx)));
-                int cy=Math.max(-850,Math.min(850,Math.round(ry)));
-                Camera.Area area=new Camera.Area(new Rect(cx-145,cy-145,cx+145,cy+145),1000);
-                if(p.getMaxNumFocusAreas()>0)
-                    p.setFocusAreas(Collections.singletonList(area));
-                if(p.getMaxNumMeteringAreas()>0)
-                    p.setMeteringAreas(Collections.singletonList(area));
-                camera.cancelAutoFocus();
-                if(auto)p.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-                camera.setParameters(p);
-                if(auto)camera.autoFocus((ok,device)->activity.runOnUiThread(()->{
-                    if(!disposed)message(ok?"Foco ajustado":"Ajustando foco…");
-                }));
-                else activity.runOnUiThread(()->{if(!disposed)message("Área de foco ajustada");});
-            }catch(RuntimeException error){
-                activity.runOnUiThread(()->{if(!disposed)message("Foco automático indisponível");});
-            }
-        });
-    }
-    /** Quantize accelerometer orientation without rotating any View. */
-    static int nearestRightAngle(int sensorDegrees){
-        if(sensorDegrees<0)return 0;
-        return (((sensorDegrees+45)/90)*90)%360;
-    }
-    /** Rotate the recorded photograph, not the camera interface. */
-    static Bitmap rotateForDevice(Bitmap source,int sensorDegrees){
-        int rotation=(360-nearestRightAngle(sensorDegrees))%360;
+    static Bitmap rotateForDevice(Bitmap source,int degrees){
+        int rotation=(360-nearestRightAngle(degrees))%360;
         if(rotation==0)return source;
-        Matrix rotate=new Matrix();
-        rotate.setRotate(rotation);
-        return Bitmap.createBitmap(source,0,0,source.getWidth(),source.getHeight(),rotate,true);
-    }
-    private void closeCamera(){
-        cameraReady=false;
-        if(camera!=null){
-            try{camera.stopPreview();}catch(RuntimeException ignored){}
-            try{camera.release();}catch(RuntimeException ignored){}
-            camera=null;
-        }
-    }
-    private void switchCamera(){
-        if(capturing)return;
-        preferredFacing=preferredFacing==Camera.CameraInfo.CAMERA_FACING_BACK
-            ?Camera.CameraInfo.CAMERA_FACING_FRONT:Camera.CameraInfo.CAMERA_FACING_BACK;
-        stop();
-        message("Alternando câmera…");
-        if(cameraHandler!=null)cameraHandler.post(()->activity.runOnUiThread(()->{if(!disposed)start();}));
-    }
-    private void takePhoto(){
-        if(!active||disposed||capturing||cameraHandler==null)return;
-        if(Build.VERSION.SDK_INT<29&&activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){
-            message("Autorize o armazenamento para salvar a foto");
-            activity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                MainActivity.CAMERA_STORAGE_PERMISSION);
-            return;
-        }
-        capturing=true;shutter.setEnabled(false);
-        final float sat=saturation,warm=temperature,ev=exposure;
-        final RectF cropFrame=frameGuide.frame();
-        final int snapshotOrientation=deviceOrientationDegrees;
-        final int frameWidth=frameGuide.getWidth(),frameHeight=frameGuide.getHeight();
-        message("Capturando…");
-        cameraHandler.post(()->{
-            try{
-                if(camera==null)throw new IOException("Câmera desconectada");
-                Camera.Parameters parameters=camera.getParameters();
-                Camera.CameraInfo info=new Camera.CameraInfo();Camera.getCameraInfo(cameraId,info);
-                // The UI/preview is locked to portrait. First encode a portrait
-                // JPEG so crop coordinates correspond to the visible guide.
-                // Only after cropping is the photo rotated for device posture.
-                int jpegRotation=info.orientation;
-                parameters.setRotation(jpegRotation);
-                camera.setParameters(parameters);
-                camera.takePicture(null,null,(bytes,device)->{
-                    try{device.startPreview();}catch(Exception ignored){}
-                    if(disposed)return;
-                    photos.execute(()->{
-                        try{
-                            Uri uri=savePicture(activity.getApplicationContext(),bytes,sat,warm,ev,cropFrame,frameWidth,frameHeight,snapshotOrientation);
-                            activity.runOnUiThread(()->{
-                                if(disposed)return;latestPhoto=uri;
-                                edit.setEnabled(true);edit.setAlpha(1f);
-                                capturing=false;shutter.setEnabled(true);
-                                message("Foto salva em Pictures/Noise! · Toque em Editar");
-                            });
-                        }catch(Exception|OutOfMemoryError e){
-                            android.util.Log.e("NoiseCamera","capture",e);
-                            activity.runOnUiThread(()->{
-                                if(!disposed){capturing=false;shutter.setEnabled(true);
-                                    message("Falha ao salvar foto. Confira o espaço livre.");}
-                            });
-                        }
-                    });
-                });
-            }catch(Exception e){
-                activity.runOnUiThread(()->{if(!disposed){capturing=false;shutter.setEnabled(camera!=null);
-                    message("Não foi possível capturar a foto");}});
-            }
-        });
+        Matrix matrix=new Matrix();matrix.setRotate(rotation);
+        return Bitmap.createBitmap(source,0,0,source.getWidth(),source.getHeight(),matrix,true);
     }
     static Bitmap processPhoto(Bitmap source,float saturation,float temperature,float exposure){
-        Bitmap output=Bitmap.createBitmap(source.getWidth(),source.getHeight(),Bitmap.Config.ARGB_8888);
-        Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-        paint.setColorFilter(new ColorMatrixColorFilter(colorAdjustments(saturation,temperature,exposure)));
-        new Canvas(output).drawBitmap(source,0,0,paint);
-        return output;
+        return CameraPhotoPipeline.processPhoto(source,saturation,temperature,exposure,0,1f,0);
     }
-    private static Bitmap decodeAndOrient(byte[] jpeg)throws Exception{
-        BitmapFactory.Options options=new BitmapFactory.Options();
-        options.inJustDecodeBounds=true;
-        BitmapFactory.decodeByteArray(jpeg,0,jpeg.length,options);
-        if(options.outWidth<=0||options.outHeight<=0)throw new IOException("JPEG inválido");
-        int sample=1;
-        while(Math.max(options.outWidth,options.outHeight)/sample>4096)sample*=2;
-        options.inJustDecodeBounds=false;options.inSampleSize=sample;
-        Bitmap decoded=BitmapFactory.decodeByteArray(jpeg,0,jpeg.length,options);
-        if(decoded==null)throw new IOException("Falha ao decodificar JPEG");
-        ExifInterface exif=new ExifInterface(new ByteArrayInputStream(jpeg));
-        int orientation=exif.getAttributeInt(ExifInterface.TAG_ORIENTATION,ExifInterface.ORIENTATION_NORMAL);
-        Matrix transform=new Matrix();
-        switch(orientation){
-            case ExifInterface.ORIENTATION_ROTATE_90:transform.postRotate(90);break;
-            case ExifInterface.ORIENTATION_ROTATE_180:transform.postRotate(180);break;
-            case ExifInterface.ORIENTATION_ROTATE_270:transform.postRotate(270);break;
-            case ExifInterface.ORIENTATION_FLIP_HORIZONTAL:transform.postScale(-1,1);break;
-            case ExifInterface.ORIENTATION_FLIP_VERTICAL:transform.postScale(1,-1);break;
-            case ExifInterface.ORIENTATION_TRANSPOSE:transform.postRotate(90);transform.postScale(-1,1);break;
-            case ExifInterface.ORIENTATION_TRANSVERSE:transform.postRotate(270);transform.postScale(-1,1);break;
-        }
-        if(transform.isIdentity())return decoded;
-        Bitmap oriented=Bitmap.createBitmap(decoded,0,0,decoded.getWidth(),decoded.getHeight(),transform,true);
-        if(oriented!=decoded)decoded.recycle();
-        return oriented;
-    }
-    private static Uri savePicture(Context c,byte[] jpeg,float saturation,float temperature,float exposure,
-                                   RectF frame,int frameWidth,int frameHeight,int sensorOrientation)throws Exception{
-        Bitmap decoded=null,cropped=null,orientedCrop=null,filtered=null;Uri pending=null;File legacy=null;
-        try{
-            decoded=decodeAndOrient(jpeg);
-            Rect rect=CameraFrameGuide.photoCrop(decoded.getWidth(),decoded.getHeight(),
-                frameWidth,frameHeight,frame);
-            cropped=Bitmap.createBitmap(decoded,rect.left,rect.top,rect.width(),rect.height());
-            orientedCrop=rotateForDevice(cropped,sensorOrientation);
-            filtered=processPhoto(orientedCrop,saturation,temperature,exposure);
-            String name="Noise-Camera-"+new SimpleDateFormat("yyyyMMdd-HHmmss-SSS",Locale.US).format(new Date())+".jpg";
-            Uri uri;
-            if(Build.VERSION.SDK_INT>=29){
-                ContentValues v=new ContentValues();
-                v.put(MediaStore.Images.Media.DISPLAY_NAME,name);
-                v.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");
-                v.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Noise!");
-                v.put(MediaStore.Images.Media.IS_PENDING,1);
-                uri=pending=c.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,v);
-                if(uri==null)throw new IOException("Falha ao criar imagem");
-            }else{
-                File folder=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),"Noise!");
-                if(!folder.exists()&&!folder.mkdirs())throw new IOException("Pasta indisponível");
-                legacy=new File(folder,name);
-                uri=Uri.fromFile(legacy);
-            }
-            try(OutputStream stream=legacy!=null?new FileOutputStream(legacy):
-                    c.getContentResolver().openOutputStream(uri,"w")){
-                if(stream==null||!filtered.compress(Bitmap.CompressFormat.JPEG,94,stream))
-                    throw new IOException("Falha ao codificar foto");
-            }
-            if(pending!=null){
-                ContentValues ready=new ContentValues();ready.put(MediaStore.Images.Media.IS_PENDING,0);
-                if(c.getContentResolver().update(pending,ready,null,null)<1)throw new IOException("Falha ao publicar foto");
-            }else{
-                MediaScannerConnection.scanFile(c,new String[]{legacy.getAbsolutePath()},
-                    new String[]{"image/jpeg"},null);
-            }
-            return uri;
-        }catch(Exception|OutOfMemoryError e){
-            if(pending!=null)try{c.getContentResolver().delete(pending,null,null);}catch(Exception ignored){}
-            if(legacy!=null)legacy.delete();throw e;
-        }finally{
-            if(filtered!=null)filtered.recycle();
-            if(orientedCrop!=null&&orientedCrop!=cropped)orientedCrop.recycle();
-            if(cropped!=null&&cropped!=decoded)cropped.recycle();
-            if(decoded!=null)decoded.recycle();
-        }
-    }
-    @Override public void onSurfaceTextureAvailable(SurfaceTexture texture,int width,int height){
-        if(active)openCamera();
-    }
-    @Override public void onSurfaceTextureSizeChanged(SurfaceTexture texture,int width,int height){
-        if(previewBufferWidth>0&&previewBufferHeight>0)
-            fitPreview(previewBufferWidth,previewBufferHeight,previewDisplayOrientation);
-    }
-    @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture texture){
-        // A rotation may replace TextureView's SurfaceTexture. Release that
-        // camera connection but preserve the requested active camera session.
-        ++generation;cameraReady=false;
-        if(cameraHandler!=null)cameraHandler.post(this::closeCamera);
-        return true;
-    }
-    @Override public void onSurfaceTextureUpdated(SurfaceTexture texture){}
 }

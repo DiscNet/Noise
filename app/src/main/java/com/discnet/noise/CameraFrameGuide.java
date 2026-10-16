@@ -21,8 +21,10 @@ final class CameraFrameGuide extends View {
     private final RectF frame=new RectF();
     private final ScaleGestureDetector pinch;
     private float ratio=1f,zoom=1f,touchX,touchY,focusX=-1,focusY=-1;
+    private float exactAspect=1f,offsetX,offsetY;
+    private boolean draggingFrame;
     private long touchAt,focusAt;
-    private boolean multiple,moved;
+    private boolean multiple,moved,gridEnabled=true;
 
     CameraFrameGuide(Context context,Gestures gestures){
         super(context);
@@ -39,10 +41,27 @@ final class CameraFrameGuide extends View {
     }
     void ratio(float wideToShort){ratio=Math.max(1f,Math.min(2f,wideToShort));invalidate();}
     void zoom(float value){zoom=Math.max(1f,Math.min(4f,value));invalidate();}
+    void exactAspect(float widthToHeight){
+        exactAspect=Math.max(.4f,Math.min(2.5f,widthToHeight));
+        offsetX=0;offsetY=0;invalidate();
+    }
+    float exactAspect(){return exactAspect;}
+    void grid(boolean enabled){gridEnabled=enabled;invalidate();}
+    void centerFrame(){offsetX=0;offsetY=0;invalidate();}
+    static void geometryExact(int w,int h,float aspect,float zoom,float dx,float dy,RectF out){
+        if(w<1||h<1){out.setEmpty();return;}
+        float maxW=w*.91f,maxH=h*.86f;
+        float width=Math.min(maxW,maxH*aspect),height=width/aspect;
+        float z=Math.max(1f,Math.min(4f,zoom));
+        float halfW=width/(z*2f),halfH=height/(z*2f);
+        float cx=Math.max(halfW,Math.min(w-halfW,w*.5f+dx));
+        float cy=Math.max(halfH,Math.min(h-halfH,h*.5f+dy));
+        out.set(cx-halfW,cy-halfH,cx+halfW,cy+halfH);
+    }
     float zoom(){return zoom;}
     float ratio(){return ratio;}
     RectF frame(){
-        geometry(getWidth(),getHeight(),ratio,zoom,frame);
+        geometryExact(getWidth(),getHeight(),exactAspect,zoom,offsetX,offsetY,frame);
         return new RectF(frame);
     }
     static void geometry(int w,int h,float ratio,RectF out){
@@ -80,25 +99,43 @@ final class CameraFrameGuide extends View {
         int top=Math.max(0,Math.min(imageH-outH,Math.round(cy-outH*.5f)));
         return new Rect(left,top,left+outW,top+outH);
     }
+    /** Maps a mirrored front preview's visual frame to the non-mirrored sensor image. */
+    static Rect photoCrop(int imageW,int imageH,int viewW,int viewH,RectF guide,boolean mirror){
+        if(!mirror)return photoCrop(imageW,imageH,viewW,viewH,guide);
+        RectF mirrored=new RectF(viewW-guide.right,guide.top,viewW-guide.left,guide.bottom);
+        return photoCrop(imageW,imageH,viewW,viewH,mirrored);
+    }
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);
-        geometry(getWidth(),getHeight(),ratio,zoom,frame);
+        geometryExact(getWidth(),getHeight(),exactAspect,zoom,offsetX,offsetY,frame);
         if(frame.isEmpty())return;
-        paint.setColor(0x99000000);paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0x78000000);paint.setStyle(Paint.Style.FILL);
         canvas.drawRect(0,0,getWidth(),frame.top,paint);
         canvas.drawRect(0,frame.top,frame.left,frame.bottom,paint);
         canvas.drawRect(frame.right,frame.top,getWidth(),frame.bottom,paint);
         canvas.drawRect(0,frame.bottom,getWidth(),getHeight(),paint);
-        paint.setColor(0xe8ffffff);paint.setStrokeWidth(dp(1.5f));
+        paint.setColor(0xf0ffffff);paint.setStrokeWidth(dp(1.2f));
         paint.setStyle(Paint.Style.STROKE);
         canvas.drawRoundRect(frame,dp(2),dp(2),paint);
-        paint.setColor(0x7dffffff);paint.setStrokeWidth(dp(0.7f));
-        for(int i=1;i<=2;i++){
-            float x=frame.left+frame.width()*i/3f;
-            float y=frame.top+frame.height()*i/3f;
-            canvas.drawLine(x,frame.top,x,frame.bottom,paint);
-            canvas.drawLine(frame.left,y,frame.right,y,paint);
+        if(gridEnabled){
+            paint.setColor(0x45ffffff);paint.setStrokeWidth(dp(0.6f));
+            for(int i=1;i<=2;i++){
+                float x=frame.left+frame.width()*i/3f;
+                float y=frame.top+frame.height()*i/3f;
+                canvas.drawLine(x,frame.top,x,frame.bottom,paint);
+                canvas.drawLine(frame.left,y,frame.right,y,paint);
+            }
         }
+        paint.setColor(0xffffffff);paint.setStrokeWidth(dp(2.4f));
+        float corner=Math.min(dp(19),Math.min(frame.width(),frame.height())*.20f);
+        canvas.drawLine(frame.left,frame.top,frame.left+corner,frame.top,paint);
+        canvas.drawLine(frame.left,frame.top,frame.left,frame.top+corner,paint);
+        canvas.drawLine(frame.right,frame.top,frame.right-corner,frame.top,paint);
+        canvas.drawLine(frame.right,frame.top,frame.right,frame.top+corner,paint);
+        canvas.drawLine(frame.left,frame.bottom,frame.left+corner,frame.bottom,paint);
+        canvas.drawLine(frame.left,frame.bottom,frame.left,frame.bottom-corner,paint);
+        canvas.drawLine(frame.right,frame.bottom,frame.right-corner,frame.bottom,paint);
+        canvas.drawLine(frame.right,frame.bottom,frame.right,frame.bottom-corner,paint);
         if(focusX>=0&&android.os.SystemClock.uptimeMillis()-focusAt<1100){
             paint.setStrokeWidth(dp(1.8f));paint.setColor(0xffffddbb);
             canvas.drawRoundRect(focusX-dp(23),focusY-dp(23),
@@ -114,14 +151,31 @@ final class CameraFrameGuide extends View {
         switch(e.getActionMasked()){
             case MotionEvent.ACTION_DOWN:
                 touchX=e.getX();touchY=e.getY();touchAt=e.getEventTime();
-                moved=false;multiple=false;return true;
+                moved=false;multiple=false;
+                RectF r=frame();
+                float margin=dp(26);
+                boolean onLeft=Math.abs(touchX-r.left)<=margin&&touchY>=r.top-margin&&touchY<=r.bottom+margin;
+                boolean onRight=Math.abs(touchX-r.right)<=margin&&touchY>=r.top-margin&&touchY<=r.bottom+margin;
+                boolean onTop=Math.abs(touchY-r.top)<=margin&&touchX>=r.left-margin&&touchX<=r.right+margin;
+                boolean onBottom=Math.abs(touchY-r.bottom)<=margin&&touchX>=r.left-margin&&touchX<=r.right+margin;
+                draggingFrame=onLeft||onRight||onTop||onBottom;
+                return true;
             case MotionEvent.ACTION_POINTER_DOWN:
                 multiple=true;return true;
             case MotionEvent.ACTION_MOVE:
                 if(Math.hypot(e.getX()-touchX,e.getY()-touchY)>dp(14))moved=true;
+                if(draggingFrame&&!multiple){
+                    offsetX+=e.getX()-touchX;
+                    offsetY+=e.getY()-touchY;
+                    touchX=e.getX();touchY=e.getY();
+                    RectF constrained=frame();
+                    offsetX=constrained.centerX()-getWidth()*.5f;
+                    offsetY=constrained.centerY()-getHeight()*.5f;
+                    invalidate();
+                }
                 return true;
             case MotionEvent.ACTION_UP:
-                if(!multiple&&!moved&&e.getEventTime()-touchAt<550){
+                if(!multiple&&!moved&&!draggingFrame&&e.getEventTime()-touchAt<550){
                     focusX=e.getX();focusY=e.getY();focusAt=android.os.SystemClock.uptimeMillis();
                     gestures.focus(focusX,focusY);invalidate();
                     performClick();

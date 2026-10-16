@@ -56,12 +56,13 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -camera-front emulated
           script: |
             adb install app/build/outputs/apk/debug/app-debug.apk
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             # Start gallery without a runtime permission modal during GPU smoke tests.
             adb shell pm grant com.discnet.noise android.permission.READ_EXTERNAL_STORAGE || true
+            adb shell pm grant com.discnet.noise android.permission.CAMERA
             mkdir -p smoke
             # Focused pull-request gate. Run exhaustive 60-control suite
             # manually without -e noise_test_mode; it exceeds SwiftShader CI time.
