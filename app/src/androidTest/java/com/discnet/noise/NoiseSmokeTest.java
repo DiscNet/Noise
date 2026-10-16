@@ -175,12 +175,14 @@ public class NoiseSmokeTest extends Instrumentation {
                     softRuler[0].layout(0,0,720,100);
                     long t=SystemClock.uptimeMillis();
                     MotionEvent down=MotionEvent.obtain(t,t,MotionEvent.ACTION_DOWN,360,55,0);
-                    MotionEvent move=MotionEvent.obtain(t,t+120,MotionEvent.ACTION_MOVE,325,55,0);
+                    float swipe=35f*activity.getResources().getDisplayMetrics().density;
+                    MotionEvent move=MotionEvent.obtain(t,t+120,
+                        MotionEvent.ACTION_MOVE,360-swipe,55,0);
                     softRuler[0].onTouchEvent(down);softRuler[0].onTouchEvent(move);
                     down.recycle();move.recycle();
                 });
                 require(softRuler[0].value()>=1.15f,
-                    "Ruler changes several precision steps with a light 35px drag");
+                    "Ruler changes several precision steps with a light 35dp drag");
                 stage("V1.33: movable frame and capture geometry");
                 RectF selectedFrame=new RectF();
                 CameraFrameGuide.geometryExact(720,1100,3f/4f,2f,100f,-85f,selectedFrame);
