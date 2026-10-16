@@ -14,7 +14,7 @@ final class EditorDocument {
     int outputLongEdge=0,jpegQuality=95;
     int outputWidth=0,outputHeight=0; // V1.28 optional; legacy outputLongEdge retained
     boolean jpeg=false;
-    String exportFormat="png";
+    String exportFormat="";
     // Six stops per editable curve: H→H, H→S, S→S. Zero is the identity curve.
     final float[] colorCurves=new float[18];
     // Three separate chromatic wheels: shadow, midtone, highlight (XY vectors).
@@ -112,10 +112,10 @@ final class EditorDocument {
                 (float)Math.max(-1,Math.min(1,n)):0f;
         }
         d.jpeg=o.optBoolean("jpeg");
-        String requested=o.optString("exportFormat",d.jpeg?"jpeg":"png");
+        String requested=o.optString("exportFormat","");
         d.exportFormat=(requested.equals("webp")||requested.equals("jpeg")||requested.equals("png"))
-            ?requested:(d.jpeg?"jpeg":"png");
-        d.jpeg=d.exportFormat.equals("jpeg");
+            ?requested:"";
+        if(!d.exportFormat.isEmpty())d.jpeg=d.exportFormat.equals("jpeg");
         d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
     }
     private static float bounded(double n){return Double.isFinite(n)?(float)Math.max(0,Math.min(1,n)):0;}
