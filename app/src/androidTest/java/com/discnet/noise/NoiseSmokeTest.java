@@ -79,6 +79,28 @@ public class NoiseSmokeTest extends Instrumentation {
                 float current=(Float)field(atmosphere,"phase");
                 require(current!=previous,"Home gradient must advance animation frames");
             }
+            stage("V1.35.1: professional square Home surfaces");
+            ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
+            ViewGroup homePanel=(ViewGroup)homePage.getChildAt(2);
+            require(homePanel.getBackground() instanceof android.graphics.drawable.GradientDrawable,
+                "Home action panel uses one simple native gradient surface");
+            android.graphics.drawable.GradientDrawable panelSurface=
+                (android.graphics.drawable.GradientDrawable)homePanel.getBackground();
+            float homeDensity=homePanel.getResources().getDisplayMetrics().density;
+            require(Math.abs(panelSurface.getCornerRadius()/homeDensity-12f)<.2f,
+                "Home panel corners are 12dp, not old excessive rounding");
+            for(int i=0;i<homeActions.getChildCount();i++){
+                android.graphics.drawable.RippleDrawable ripple=
+                    (android.graphics.drawable.RippleDrawable)homeActions.getChildAt(i).getBackground();
+                android.graphics.drawable.GradientDrawable surface=
+                    (android.graphics.drawable.GradientDrawable)ripple.getDrawable(0);
+                require(Math.abs(surface.getCornerRadius()/homeDensity-12f)<.2f,
+                    "Each Home action card uses a consistent 12dp radius");
+            }
+            try{
+                homeCircle.getClass().getDeclaredField("orbitPaint");
+                require(false,"Hero must not draw artificial decorative rings");
+            }catch(NoSuchFieldException expected){}
             stage("V1.35: functional home studio, hero composition and responsive layout");
             final HomeScreen[] studio={null};
             final int[] called={0,0,0,0,0};
@@ -1055,7 +1077,68 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Hit-test identifies exact icon center with transformed coordinates");
             require(hitIcons[activeIndex].getBackground().getClass()
                 .getSimpleName().equals("IconGlowFrame"),
-                "Selected orbital icon has a custom white-glow outline");
+                "Selected orbital icon has custom liquid focus decoration");
+            Method outlined=hitIcons[activeIndex].getBackground().getClass()
+                .getDeclaredMethod("outlined");
+            outlined.setAccessible(true);
+            require((Boolean)outlined.invoke(hitIcons[activeIndex].getBackground()),
+                "Only the centered icon has a white focus border");
+            for(int i=0;i<hitIcons.length;i++){
+                if(i==activeIndex)continue;
+                require(!(Boolean)outlined.invoke(hitIcons[i].getBackground()),
+                    "Unaligned orbital icons never have a border, even while visible");
+            }
+            stage("V1.35.1: liquid selection follows exact alignment");
+            Field offsetField=orbitStage.getClass().getDeclaredField("offset");
+            Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
+            offsetField.setAccessible(true);targetField.setAccessible(true);
+            Method redraw=orbitStage.getClass().getDeclaredMethod("render");
+            redraw.setAccessible(true);
+            int chosenIndex=activeIndex;
+            runOnMainSync(()->{
+                try{
+                    offsetField.setFloat(orbitStage,chosenIndex+.43f);
+                    targetField.setFloat(orbitStage,chosenIndex+.43f);
+                    redraw.invoke(orbitStage);
+                }catch(Exception error){throw new RuntimeException(error);}
+            });
+            require((Integer)field(orbitStage,"framedIndex")==-1,
+                "White border vanishes while both wheel icons are between snap positions");
+            for(ImageView icon:hitIcons){
+                require(!(Boolean)outlined.invoke(icon.getBackground()),
+                    "No icon inherits border before alignment");
+            }
+            runOnMainSync(()->{
+                try{
+                    offsetField.setFloat(orbitStage,chosenIndex);
+                    targetField.setFloat(orbitStage,chosenIndex);
+                    redraw.invoke(orbitStage);
+                }catch(Exception error){throw new RuntimeException(error);}
+            });
+            require((Integer)field(orbitStage,"framedIndex")==chosenIndex,
+                "Liquid border reattaches to centered icon after snapping");
+            Object fluid=hitIcons[chosenIndex].getBackground();
+            Method changeLiquid=fluid.getClass().getDeclaredMethod("setLiquid",float.class);
+            changeLiquid.setAccessible(true);
+            final Bitmap[] liquidStates=new Bitmap[2];
+            runOnMainSync(()->{
+                try{
+                    for(int p=0;p<2;p++){
+                        changeLiquid.invoke(fluid,p==0?0f:.5f);
+                        Bitmap frame=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888);
+                        ((android.graphics.drawable.Drawable)fluid).setBounds(0,0,128,128);
+                        ((android.graphics.drawable.Drawable)fluid).draw(new Canvas(frame));
+                        liquidStates[p]=frame;
+                    }
+                    changeLiquid.invoke(fluid,1f);
+                }catch(Exception error){throw new RuntimeException(error);}
+            });
+            int changed=0;
+            for(int y=0;y<128;y+=2)for(int x=0;x<128;x+=2)
+                if(liquidStates[0].getPixel(x,y)!=liquidStates[1].getPixel(x,y))changed++;
+            require(changed>18,
+                "Liquid selector actually morphs the outlined shape instead of changing its color");
+            liquidStates[0].recycle();liquidStates[1].recycle();
             float gestureX=orbitStage.getWidth()*.60f,from=orbitStage.getHeight()*.72f,to=orbitStage.getHeight()*.22f;
             long time=SystemClock.uptimeMillis();
             runOnMainSync(()->{

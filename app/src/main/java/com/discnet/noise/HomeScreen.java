@@ -37,21 +37,23 @@ final class HomeScreen extends FrameLayout {
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(brand,new LinearLayout.LayoutParams(0,-1,1));
-        TextView eyebrow=text("IMAGEM  /  MOVIMENTO  /  CRIAÇÃO",9,0xffbba7cc);
+        TextView eyebrow=text("FOTOGRAFIA  ·  EDIÇÃO  ·  EXPERIMENTAÇÃO",9,0xffbba7cc);
         eyebrow.setLetterSpacing(.12f);
         brand.addView(eyebrow);
         TextView logo=text("Noise!",34,EditorTheme.INK);
         logo.setTypeface(NoiseTypography.bold(c));logo.setLetterSpacing(-.055f);
         brand.addView(logo);
-        TextView subtitle=text("Seu estúdio de possibilidades.",12,0xffb1a8b8);
+        TextView subtitle=text("Ferramentas criativas para sua imagem.",12,0xffb1a8b8);
         brand.addView(subtitle);
         ImageView folders=IconArt.button(c,IconArt.FOLDER,"Meus projetos");
         LinearLayout.LayoutParams folderParams=new LinearLayout.LayoutParams(dp(44),dp(44));
         folderParams.rightMargin=dp(4);
         header.addView(folders,folderParams);
+        homeHeaderButton(folders);
         folders.setOnClickListener(v->onProjects.run());
         ImageView settings=IconArt.button(c,IconArt.SETTINGS,"Configurações");
         header.addView(settings,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        homeHeaderButton(settings);
         settings.setOnClickListener(v->onSettings.run());
 
         FrameLayout orbArea=new FrameLayout(c);
@@ -62,34 +64,21 @@ final class HomeScreen extends FrameLayout {
         Sphere sphere=new Sphere(c);
         orbArea.addView(sphere,new FrameLayout.LayoutParams(-1,-1));
 
-        // Attached to the hero rather than scattered across the page.
-        TextView orbitLabel=eyebrow("NOISE  /  LAB 01",10);
-        FrameLayout.LayoutParams orbitTag=new FrameLayout.LayoutParams(-2,dp(24),
-            Gravity.TOP|Gravity.RIGHT);
-        orbitTag.setMargins(0,dp(12),dp(2),0);
-        orbArea.addView(orbitLabel,orbitTag);
-
         LinearLayout sphLabels=new LinearLayout(c);
         sphLabels.setOrientation(LinearLayout.VERTICAL);
         sphLabels.setGravity(Gravity.CENTER);
         FrameLayout.LayoutParams centerLabels=new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER);
         orbArea.addView(sphLabels,centerLabels);
-        TextView small=text("O PRÓXIMO FRAME",10,0xffe4c9f2);
+        TextView small=text("NOISE! STUDIO",10,0xffd8c2df);
         small.setLetterSpacing(.13f);small.setGravity(Gravity.CENTER);
         sphLabels.addView(small);
         TextView start=text("Nova\ncriação",31,EditorTheme.INK);
         start.setGravity(Gravity.CENTER);
         start.setTypeface(NoiseTypography.bold(c));start.setLetterSpacing(-.05f);
         sphLabels.addView(start);
-        TextView hint=text("Toque para começar  ↗",12,0xffe0c6ed);
+        TextView hint=text("Toque para importar",12,0xffd6c3de);
         hint.setGravity(Gravity.CENTER);hint.setPadding(0,dp(9),0,0);
         sphLabels.addView(hint);
-
-        TextView filmTag=eyebrow("DITHER   ·   ASCII   ·   COR",10);
-        FrameLayout.LayoutParams toolTag=new FrameLayout.LayoutParams(-2,dp(24),
-            Gravity.BOTTOM|Gravity.LEFT);
-        toolTag.setMargins(dp(2),0,0,dp(13));
-        orbArea.addView(filmTag,toolTag);
 
         // On compact displays keep the artwork legible rather than packing
         // ornamental labels and large type around a smaller hero circle.
@@ -97,8 +86,7 @@ final class HomeScreen extends FrameLayout {
             int available=b-t;
             boolean compact=available<dp(245);
             boolean veryCompact=available<dp(175);
-            orbitLabel.setVisibility(compact?View.GONE:View.VISIBLE);
-            filmTag.setVisibility(compact?View.GONE:View.VISIBLE);
+            // Keep decoration out of the hero; scale only meaningful labels.
             start.setTextSize(veryCompact?23:compact?27:31);
             small.setVisibility(veryCompact?View.GONE:View.VISIBLE);
             hint.setVisibility(veryCompact?View.GONE:View.VISIBLE);
@@ -120,7 +108,7 @@ final class HomeScreen extends FrameLayout {
         GradientDrawable lowerSurface=new GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             new int[]{0xff27202d,0xff1b1822,0xff15141c});
-        lowerSurface.setCornerRadius(dp(21));
+        lowerSurface.setCornerRadius(dp(12));
         lowerSurface.setStroke(dp(1),0x66554761);
         lower.setBackground(lowerSurface);
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
@@ -171,7 +159,7 @@ final class HomeScreen extends FrameLayout {
         resume.setTypeface(NoiseTypography.medium(c));
         resume.setGravity(Gravity.CENTER_VERTICAL);
         resume.setPadding(dp(13),0,dp(13),0);
-        resume.setBackground(EditorTheme.buttonSurface(c,14,false));
+        resume.setBackground(homeSurface(0xff211f29,12));
         resume.setMinHeight(dp(43));
         resume.setSingleLine(true);
         resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -188,6 +176,17 @@ final class HomeScreen extends FrameLayout {
         navButton(nav,"Biblioteca",IconArt.GALLERY,onImport,false);
         navButton(nav,"Projetos",IconArt.FOLDER,onProjects,false);
     }
+    /** All noncircular Home surfaces have the same 12dp optical radius. */
+    private GradientDrawable homeSurface(int color,float radius){
+        GradientDrawable d=new GradientDrawable();
+        d.setColor(color);d.setCornerRadius(dp(radius));
+        d.setStroke(dp(1),0x66433a4b);
+        return d;
+    }
+    private void homeHeaderButton(ImageView icon){
+        icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x24ffffff),
+            homeSurface(0xff211d28,12),null));
+    }
     private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
                                    boolean primary,Runnable action){
         FrameLayout tile=new FrameLayout(c);
@@ -195,7 +194,7 @@ final class HomeScreen extends FrameLayout {
             GradientDrawable.Orientation.TL_BR,
             primary?new int[]{0xffaa82c7,0xff795891,0xff4d395f}
                    :new int[]{0xff302838,0xff27202f,0xff211d27});
-        body.setCornerRadius(dp(15));
+        body.setCornerRadius(dp(12));
         body.setStroke(dp(1),primary?0xffb597cf:0xff514557);
         tile.setBackground(new RippleDrawable(
             ColorStateList.valueOf(primary?0x3fffffff:0x26ffffff),body,null));
@@ -325,8 +324,6 @@ final class HomeScreen extends FrameLayout {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Matrix lightMatrix=new Matrix();
         private final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint orbitPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF orbitOval=new RectF();
         private RadialGradient base,atmosphere,highlight,reflectedLight;
         private SweepGradient rim;
         private ValueAnimator animator;
@@ -363,23 +360,23 @@ final class HomeScreen extends FrameLayout {
             radius=Math.min(Math.min(w*.40f,h*.40f),188*density);
             if(radius<=0)return;
             float x=w*.5f,y=h*.5f,r=radius;
-            rimWidth=Math.max(density*.9f,r*.008f);
+            rimWidth=Math.max(density*.85f,r*.0065f);
             base=new RadialGradient(x-r*.25f,y-r*.43f,r*1.72f,
-                new int[]{0xff896c9b,0xff483254,0xff211729,0xff100d17},
+                new int[]{0xff74657c,0xff3c3047,0xff211b29,0xff100e16},
                 new float[]{0f,.36f,.74f,1f},Shader.TileMode.CLAMP);
             // Concentrate the glow at the silhouette instead of washing out
             // the entire area around the circle. Cached shaders avoid blur work.
             atmosphere=new RadialGradient(x,y,r*1.25f,
-                new int[]{0x00855ebf,0x00855ebf,0x609a60df,0x28855ebf,0x00855ebf},
+                new int[]{0x00855ebf,0x00855ebf,0x358c76b5,0x16855ebf,0x00855ebf},
                 new float[]{0f,.66f,.80f,.89f,1f},Shader.TileMode.CLAMP);
             highlight=new RadialGradient(x-r*.42f,y-r*.40f,r*1.12f,
-                new int[]{0x9ddfc4ff,0x4ab294dc,0x008767ba},
+                new int[]{0x79e2d5ec,0x39b5a7cc,0x008767ba},
                 new float[]{0f,.38f,1f},Shader.TileMode.CLAMP);
             reflectedLight=new RadialGradient(x+r*.43f,y+r*.46f,r*.97f,
-                new int[]{0x65b77ea7,0x286e548c,0x006e548c},
+                new int[]{0x42bba9c0,0x186e548c,0x006e548c},
                 new float[]{0f,.42f,1f},Shader.TileMode.CLAMP);
             rim=new SweepGradient(x,y,
-                new int[]{0xffab85d1,0xff9c77c1,0xffdfb5d5,0xfff0e2ff,0xffab85d1},
+                new int[]{0xff91849e,0xff9280a8,0xffb7a1c4,0xffdfd2e6,0xff91849e},
                 new float[]{0f,.27f,.48f,.68f,1f});
         }
         @Override protected void onDraw(Canvas canvas){
@@ -399,16 +396,16 @@ final class HomeScreen extends FrameLayout {
             canvas.clipPath(circleClip(x,y,r));
             // Whole-period motion makes the loop seamless. The surface moves
             // gently while the circle and its text remain completely steady.
-            float dx=(float)Math.sin(t)*r*.08f,dy=(float)Math.cos(t)*r*.06f;
+            float dx=(float)Math.sin(t)*r*.035f,dy=(float)Math.cos(t)*r*.025f;
             lightMatrix.reset();lightMatrix.setTranslate(dx,dy);
             highlight.setLocalMatrix(lightMatrix);
             paint.setShader(highlight);
-            paint.setAlpha(198+(int)(22*breath));
+            paint.setAlpha(158+(int)(13*breath));
             canvas.drawCircle(x,y,r,paint);
             lightMatrix.reset();lightMatrix.setTranslate(-dx*.62f,dy*.66f);
             reflectedLight.setLocalMatrix(lightMatrix);
             paint.setShader(reflectedLight);
-            paint.setAlpha(154+(int)(16*breath));
+            paint.setAlpha(138+(int)(12*breath));
             canvas.drawCircle(x,y,r,paint);
             canvas.restore();
             paint.setShader(null);paint.setAlpha(255);
@@ -418,32 +415,11 @@ final class HomeScreen extends FrameLayout {
             lightMatrix.reset();lightMatrix.setRotate((float)Math.sin(t)*7f,x,y);
             rim.setLocalMatrix(lightMatrix);
             contour.setShader(rim);
-            contour.setAlpha(230+(int)(12*breath));
+            contour.setAlpha(202+(int)(13*breath));
             contour.setStrokeWidth(rimWidth);
             canvas.drawCircle(x,y,r,contour);
             contour.setShader(null);contour.setAlpha(255);
             contour.setStyle(Paint.Style.FILL);
-            // A pair of slow orbital traces belongs to the same light system as
-            // the sphere rim. No scattered shapes, no extra View animations.
-            orbitPaint.setShader(null);
-            orbitPaint.setStyle(Paint.Style.STROKE);
-            orbitPaint.setStrokeCap(Paint.Cap.ROUND);
-            float outer=r*1.105f;
-            orbitOval.set(x-outer,y-outer,x+outer,y+outer);
-            orbitPaint.setStrokeWidth(Math.max(.65f,getResources().getDisplayMetrics().density*.85f));
-            orbitPaint.setColor(0x306f5a84);
-            canvas.drawArc(orbitOval,0,360,false,orbitPaint);
-            float rotation=(float)Math.sin(t*.70f)*14f;
-            orbitPaint.setColor(0xa1cda9e6);
-            orbitPaint.setStrokeWidth(Math.max(1f,r*.009f));
-            canvas.drawArc(orbitOval,206+rotation,49,false,orbitPaint);
-            orbitPaint.setColor(0x7dbb98d7);
-            canvas.drawArc(orbitOval,22+rotation,33,false,orbitPaint);
-            orbitPaint.setStyle(Paint.Style.FILL);
-            float dot=(float)Math.toRadians(229+rotation);
-            orbitPaint.setColor(0xffe4c9f8);
-            canvas.drawCircle(x+(float)Math.cos(dot)*outer,
-                y+(float)Math.sin(dot)*outer,Math.max(1.3f,r*.014f),orbitPaint);
         }
         private Path circleClip(float x,float y,float r){
             clip.reset();clip.addCircle(x,y,r,Path.Direction.CW);
