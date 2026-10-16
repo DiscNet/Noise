@@ -408,38 +408,81 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
     @Override protected void onDetachedFromWindow(){
         removeCallbacks(closeWatchdog);
         stopTracking();content.animate().cancel();scrim.animate().cancel();
-        edgeFeather.animate().cancel();orbit.cancelMotion();
+        edgeFeather.animate().cancel();orbit.cancelMotion();orbit.cancelLiquid();
         super.onDetachedFromWindow();
     }
 
-    /** Reusable lightweight icon backing with a thin white rim and diffuse
-     * simulated glow; no software blur or per-frame allocations. */
+    /**
+     * One foreground ring only on the icon physically aligned with the orbit.
+     * All other icons use an unoutlined graphite backing. The selected rim
+     * briefly deforms into an asymmetric fluid membrane, then settles; the
+     * drawable is reused across frames and respects reduced-motion settings.
+     */
     private static final class IconGlowFrame extends android.graphics.drawable.Drawable {
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path=new Path();
         private final float scale;
         private final boolean active;
+        private float liquid=1f;
         IconGlowFrame(Context c,boolean active){
             this.active=active;scale=c.getResources().getDisplayMetrics().density;
         }
+        boolean outlined(){return active;}
+        float liquidProgress(){return liquid;}
+        void setLiquid(float progress){
+            liquid=Math.max(0f,Math.min(1f,progress));
+            invalidateSelf();
+        }
         @Override public void draw(Canvas canvas){
-            android.graphics.Rect b=getBounds();
+            Rect b=getBounds();
+            if(b.isEmpty())return;
             float l=b.left+scale*2.2f,t=b.top+scale*2.2f;
-            float r=b.right-scale*2.2f,bt=b.bottom-scale*2.2f;
+            float right=b.right-scale*2.2f,bottom=b.bottom-scale*2.2f;
             float radius=scale*19f;
+            p.setShader(null);
             p.setStyle(Paint.Style.FILL);
-            p.setColor(active?0xc9bd92dd:0x5b1c1925);
-            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setColor(active?0xffb899d0:0x80302a39);
+            if(!active){
+                canvas.drawRoundRect(l,t,right,bottom,radius,radius,p);
+                return; // IMPORTANT: inactive icons never draw a ring.
+            }
+            float cx=(l+right)*.5f,cy=(t+bottom)*.5f;
+            float w=(right-l)*.5f,h=(bottom-t)*.5f;
+            // At rest this remains a precise rounded selection frame.
+            // Halfway through the transition, asymmetric bezier bulges create
+            // the liquid snap without attaching glow to neighboring icons.
+            float pulse=(float)Math.sin(Math.PI*liquid);
+            float wave=scale*5.8f*pulse;
+            path.reset();
+            path.moveTo(cx,cy-h-wave*.65f);
+            path.cubicTo(cx+w*.60f,cy-h-wave*.50f,
+                cx+w+wave*.20f,cy-h*.68f,cx+w,cy);
+            path.cubicTo(cx+w-wave*.04f,cy+h*.65f,
+                cx+w*.53f,cy+h+wave*.40f,cx,cy+h+wave*.28f);
+            path.cubicTo(cx-w*.65f,cy+h+wave*.30f,
+                cx-w-wave*.22f,cy+h*.56f,cx-w-wave*.10f,cy);
+            path.cubicTo(cx-w-wave*.18f,cy-h*.69f,
+                cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
+            path.close();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xffb194ca);
+            canvas.drawPath(path,p);
+            // The white hairline is drawn ONCE, on this aligned icon only.
             p.setStyle(Paint.Style.STROKE);
-            p.setColor(active?0x229edaff:0x0fb2b6cf);p.setStrokeWidth(scale*6f);
-            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
-            p.setColor(active?0x5df5f1ff:0x25faf8ff);p.setStrokeWidth(scale*3f);
-            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
-            p.setColor(active?0xdffaf9ff:0x88fbfaff);p.setStrokeWidth(scale*1.1f);
-            canvas.drawRoundRect(l,t,r,bt,radius,radius,p);
+            p.setStrokeWidth(scale*1.3f);
+            p.setColor(0xe7ffffff);
+            canvas.drawPath(path,p);
+            // A restrained inner glint follows the deformation.
+            p.setStrokeWidth(scale*.8f);
+            p.setColor(0x65ffffff);
+            canvas.drawArc(l+scale*6,t+scale*6,right-scale*6,bottom-scale*6,
+                201,110,false,p);
             p.setStyle(Paint.Style.FILL);
         }
         @Override public void setAlpha(int a){p.setAlpha(a);invalidateSelf();}
-        @Override public void setColorFilter(android.graphics.ColorFilter filter){p.setColorFilter(filter);}
+        @Override public void setColorFilter(android.graphics.ColorFilter filter){
+            p.setColorFilter(filter);invalidateSelf();
+        }
         @Override public int getOpacity(){return android.graphics.PixelFormat.TRANSLUCENT;}
     }
 
@@ -451,6 +494,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final LinearLayout[] rows=new LinearLayout[names.length];
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
+        private final IconGlowFrame[] idleFrames=new IconGlowFrame[names.length];
+        private IconGlowFrame focusedFrame;
+        private ValueAnimator liquidAnimator;
+        private int framedIndex=-1;
+        private int lastFocusedIndex=-1;
         private VelocityTracker velocity;
         private float angularVelocity;
         private boolean settling;
@@ -477,6 +525,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
                 icon.setPadding(dp(20),dp(20),dp(20),dp(20));
                 captions[i]=text;icons[i]=icon;
+                idleFrames[i]=new IconGlowFrame(context,false);
+                icon.setBackground(idleFrames[i]);
+                icon.setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],EditorTheme.INK));
                 // Insert after setMode so tools put the icon first (left),
                 // effects put the icon last (right).
                 row.setContentDescription(names[i]+", ferramenta orbital");
@@ -572,12 +623,14 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                     boolean on=i==active;
                     captions[i].setTextColor(on?EditorTheme.INK:EditorTheme.MUTED);
                     captions[i].setTypeface(on?NoiseTypography.bold(getContext()):NoiseTypography.medium(getContext()));
-                    icons[i].setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],on?0xff1a1421:EditorTheme.INK));
-                    icons[i].setBackground(new IconGlowFrame(getContext(),on));
+                    // Do not outline the rounded-nearest item while it is
+                    // still traveling between positions. The ring is managed
+                    // separately by updateAlignedFrame().
                     rows[i].setContentDescription(names[i]+(on?", selecionado":"")+". Toque para selecionar.");
                 }
                 if(onSelection!=null)onSelection.run();
             }
+            updateAlignedFrame();
             for(int i=0;i<rows.length;i++){
                 float theta=(i-offset)*STEP;
                 float distance=Math.abs(i-offset);
@@ -606,6 +659,54 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 row.setScaleX(scale);row.setScaleY(scale);
             }
             invalidate();
+        }
+        /** Only an item at the physical center receives a white outline. */
+        private int alignedIndex(){
+            int n=selected();
+            return Math.abs(offset-n)<=.10f?n:-1;
+        }
+        private void cancelLiquid(){
+            if(liquidAnimator!=null){
+                liquidAnimator.cancel();
+                liquidAnimator=null;
+            }
+        }
+        private void updateAlignedFrame(){
+            int aligned=alignedIndex();
+            if(aligned==framedIndex)return;
+            int old=framedIndex;
+            cancelLiquid();
+            if(old>=0){
+                icons[old].setBackground(idleFrames[old]);
+                icons[old].setImageDrawable(new IconArt(
+                    symbols[Math.min(old,symbols.length-1)],EditorTheme.INK));
+            }
+            framedIndex=aligned;
+            focusedFrame=null;
+            if(aligned<0)return;
+            focusedFrame=new IconGlowFrame(getContext(),true);
+            icons[aligned].setBackground(focusedFrame);
+            icons[aligned].setImageDrawable(new IconArt(
+                symbols[Math.min(aligned,symbols.length-1)],0xff24182d));
+            boolean first=lastFocusedIndex<0;
+            lastFocusedIndex=aligned;
+            if(first){
+                focusedFrame.setLiquid(1f); // no gratuitous startup animation
+                return;
+            }
+            if(!ValueAnimator.areAnimatorsEnabled()){
+                focusedFrame.setLiquid(1f);
+                return;
+            }
+            final IconGlowFrame frame=focusedFrame;
+            liquidAnimator=ValueAnimator.ofFloat(0f,1f);
+            liquidAnimator.setDuration(285);
+            liquidAnimator.setInterpolator(new PathInterpolator(.23f,.71f,.31f,1f));
+            liquidAnimator.addUpdateListener(a->{
+                if(framedIndex==aligned && icons[aligned].getBackground()==frame)
+                    frame.setLiquid((Float)a.getAnimatedValue());
+            });
+            liquidAnimator.start();
         }
         private void cancelMotion(){
             if(rotationalFrameScheduled){
