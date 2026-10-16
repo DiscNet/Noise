@@ -316,9 +316,9 @@ final class GalleryScreen extends FrameLayout {
                 return;
             }
             ImageView cell=(ImageView)h.itemView;
-            int cell=Math.max(dp(68),(getWidth()-dp(25))/Math.max(1,columns)-dp(5));
+            int tileSize=Math.max(dp(68),(getWidth()-dp(25))/Math.max(1,columns)-dp(5));
             int span=item.featured&&columns>=3?2:1;
-            int height=span==2?Math.round(cell*1.42f):cell;
+            int height=span==2?Math.round(tileSize*1.42f):tileSize;
             RecyclerView.LayoutParams p=new RecyclerView.LayoutParams(-1,height);
             p.setMargins(dp(2),dp(2),dp(2),dp(2));
             cell.setLayoutParams(p);
