@@ -61,6 +61,7 @@ final class CameraScreen extends FrameLayout {
     private float zoom=1f,saturation=1f,temperature=0f,exposure=0f,hue=0f,contrast=1f,sharpness=0f,alignment=0f;
     private int deviceOrientationDegrees,timerSeconds,ratioIndex=0,flashIndex=0;
     private float nativeAspect=.75f,maxFrameZoom=4f;
+    private int jpegQuality=98;
     private boolean nativeEv;
     private float residualExposure;
     private String resolution="MAX";
@@ -225,7 +226,7 @@ final class CameraScreen extends FrameLayout {
             @Override public void error(String message){
                 if(!disposed){status.setText(message);capturing=false;shutterButton.setEnabled(true);}
             }
-            @Override public void jpeg(byte[] data){saveCapturedPhoto(data);}
+            @Override public void jpeg(byte[] data,int cameraRotation){saveCapturedPhoto(data,cameraRotation);}
         });
         selectTool(Tool.ZOOM);
         post(this::applyPreview);
@@ -380,6 +381,7 @@ final class CameraScreen extends FrameLayout {
         settings.viewHeight=frameGuide.getHeight();
         settings.mirror=engine.front();
         settings.orientation=deviceOrientationDegrees;
+        settings.jpegQuality=jpegQuality;
         settings.sat=saturation;settings.warm=temperature;
         settings.exposure=residualExposure;
         settings.hue=hue;settings.contrast=contrast;
@@ -387,9 +389,10 @@ final class CameraScreen extends FrameLayout {
         status.setText("Fotografando…");
         engine.shoot();
     }
-    private void saveCapturedPhoto(byte[] jpeg){
+    private void saveCapturedPhoto(byte[] jpeg,int cameraRotation){
         final CameraPhotoPipeline.Settings snapshot=pendingSettings==null?
             new CameraPhotoPipeline.Settings():pendingSettings.copy();
+        snapshot.jpegRotation=cameraRotation;
         pictures.execute(()->{
             try{
                 Uri uri=CameraPhotoPipeline.save(activity.getApplicationContext(),jpeg,snapshot);
