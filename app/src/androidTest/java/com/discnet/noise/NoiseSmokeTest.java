@@ -1537,10 +1537,10 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Noise!","noise!","image/png","Test.png");
             Uri copied=MediaLibrary.duplicate(getTargetContext(),savedPhoto);
             require(copied!=null,"Viewer download creates a lossless public copy");
-            try(InputStream originalBytes=getTargetContext().getContentResolver().openInputStream(savedUri);
+            try(InputStream gallerySourceBytes=getTargetContext().getContentResolver().openInputStream(savedUri);
                 InputStream copyBytes=getTargetContext().getContentResolver().openInputStream(copied)){
                 byte[] srcBuf=new byte[4096],dstBuf=new byte[4096];int n;
-                while((n=originalBytes.read(srcBuf))!=-1){
+                while((n=gallerySourceBytes.read(srcBuf))!=-1){
                     int off=0;while(off<n){
                         int got=copyBytes.read(dstBuf,off,n-off);
                         require(got>0,"Download copy must preserve every original byte");
@@ -1578,9 +1578,9 @@ public class NoiseSmokeTest extends Instrumentation {
             File webp=new File(getTargetContext().getFilesDir(),"export.webp");
             ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,
                 Uri.fromFile(webp));
-            try(InputStream input=new FileInputStream(webp)){
+            try(InputStream webpInput=new FileInputStream(webp)){
                 byte[] header=new byte[12];
-                require(input.read(header)==12
+                require(webpInput.read(header)==12
                     &&new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")
                     &&new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP"),
                     "WebP option invokes a real encoder and writes WebP bytes");
