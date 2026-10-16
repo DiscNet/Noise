@@ -43,8 +43,8 @@ public class NoiseSmokeTest extends Instrumentation {
                 "First app launch records the initial permission request");
             HomeScreen home=(HomeScreen)field(activity,"homeScreen");
             require(home!=null,"Noise home screen exists");
-            require(home.getChildAt(0).getClass().getSimpleName().equals("StockAtmosphere"),
-                "Home renders ambient blurred stock-art behind its content");
+            require(home.getChildAt(0) instanceof OrganicBackdrop,
+                "Home renders a passive procedural GPU ink field behind its content");
             saveScreenshot("noise-home.png");
             // Home V1.30.3: check the central surface is geometrically a
             // single, responsive circle with a continuous, restrained rim.
@@ -73,12 +73,6 @@ public class NoiseSmokeTest extends Instrumentation {
                     "The subtle circle animation runs in a 14-second loop");
             }
             View atmosphere=home.getChildAt(0);
-            if(android.animation.ValueAnimator.areAnimatorsEnabled()){
-                float previous=(Float)field(atmosphere,"phase");
-                SystemClock.sleep(115);
-                float current=(Float)field(atmosphere,"phase");
-                require(current!=previous,"Home gradient must advance animation frames");
-            }
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
             ViewGroup homePanel=(ViewGroup)homePage.getChildAt(2);
@@ -99,41 +93,8 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(Math.abs(surface.getCornerRadius()/homeDensity-7f)<.3f,
                     "Each action card has 7dp corners");
             }
-            stage("V1.36.2: black organic ink with speckled edges on off-white base");
-            require(atmosphere instanceof OrganicBackdrop,
-                "Home retains a native procedural background, with no textured glass");
-            Field inkField=OrganicBackdrop.class.getDeclaredField("inkLayer");
-            inkField.setAccessible(true);
-            Bitmap inkBitmap=(Bitmap)inkField.get(atmosphere);
-            require(inkBitmap!=null&&!inkBitmap.isRecycled(),
-                "High-resolution organic ink is generated once for the viewport");
-            int feather=0,darkCores=0,voids=0;
-            for(int y=0;y<inkBitmap.getHeight();y+=4)
-                for(int x=0;x<inkBitmap.getWidth();x+=4){
-                    int alpha=Color.alpha(inkBitmap.getPixel(x,y));
-                    if(alpha>10&&alpha<220)feather++;
-                    if(alpha>225)darkCores++;
-                    if(alpha==0)voids++;
-                }
-            require(feather>50&&darkCores>60&&voids>100,
-                "Ink artwork must contain real black masses, soft grain and white negative space");
-            final Bitmap[] backdropSample={null};
-            runOnMainSync(()->{
-                backdropSample[0]=Bitmap.createBitmap(
-                    Math.max(2,atmosphere.getWidth()),
-                    Math.max(2,atmosphere.getHeight()),Bitmap.Config.ARGB_8888);
-                atmosphere.draw(new Canvas(backdropSample[0]));
-            });
-            int bright=0,dark=0;
-            for(int y=0;y<backdropSample[0].getHeight();y+=6)
-                for(int x=0;x<backdropSample[0].getWidth();x+=6){
-                    int r=Color.red(backdropSample[0].getPixel(x,y));
-                    if(r>205)bright++;
-                    if(r<95)dark++;
-                }
-            require(bright>50&&dark>40,
-                "Home background has both pale paper areas and dark organic silhouettes");
-            backdropSample[0].recycle();
+            stage("V1.37: fluid geometry, interaction, reduced motion and lifecycle");
+            FluidBackgroundTest.run(this, activity, home);
             try{
                 homeCircle.getClass().getDeclaredField("orbitPaint");
                 require(false,"Hero must not draw artificial decorative rings");

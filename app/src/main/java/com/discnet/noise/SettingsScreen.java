@@ -25,7 +25,9 @@ final class SettingsScreen extends FrameLayout {
         setClickable(true);setFocusableInTouchMode(true);
         LinearLayout page=new LinearLayout(c);page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(20),dp(14),dp(20),dp(16));
-        addView(page,new LayoutParams(-1,-1));
+        ScrollView scroll=new ScrollView(c);scroll.setFillViewport(true);
+        scroll.addView(page,new ScrollView.LayoutParams(-1,-2));
+        addView(scroll,new LayoutParams(-1,-1));
         LinearLayout bar=new LinearLayout(c);bar.setGravity(Gravity.CENTER_VERTICAL);
         page.addView(bar,new LinearLayout.LayoutParams(-1,dp(64)));
         ImageView back=IconArt.button(c,IconArt.BACK,"Voltar");
@@ -62,6 +64,49 @@ final class SettingsScreen extends FrameLayout {
         toggle.setOnClickListener(v->setEnabledState(!enabledState()));
         card.setFocusable(true);card.setContentDescription("Ativar ou desativar redimensionamento do painel");
         refresh();
+
+        TextView fluidHeading=text("FUNDO DA TELA INICIAL",11,false);
+        fluidHeading.setLetterSpacing(.10f);
+        LinearLayout.LayoutParams fluidHeadingParams=new LinearLayout.LayoutParams(-1,dp(49));
+        fluidHeadingParams.topMargin=dp(12);page.addView(fluidHeading,fluidHeadingParams);
+        LinearLayout fluidCard=new LinearLayout(c);fluidCard.setOrientation(LinearLayout.VERTICAL);
+        fluidCard.setPadding(dp(15),dp(10),dp(15),dp(12));
+        fluidCard.setBackground(EditorTheme.panel(c,0xff1c1a23,0,7,0));
+        page.addView(fluidCard,new LinearLayout.LayoutParams(-1,-2));
+        fluidCard.addView(text("Qualidade da animação",14,true));
+        LinearLayout choices=new LinearLayout(c);choices.setOrientation(LinearLayout.VERTICAL);
+        fluidCard.addView(choices,new LinearLayout.LayoutParams(-1,-2));
+        String[] values={"auto","high","balanced","eco"};
+        String[] labels={"Automática","Alto","Equilibrado","Econômico"};
+        TextView[] buttons=new TextView[4];
+        Runnable refreshQuality=()->{
+            String selected=prefs.getString(OrganicBackdrop.QUALITY,"auto");
+            for(int i=0;i<buttons.length;i++){
+                boolean chosen=values[i].equals(selected);
+                buttons[i].setText((chosen?"●  ":"○  ")+labels[i]);
+                buttons[i].setSelected(chosen);
+                buttons[i].setTextColor(chosen?EditorTheme.LIME:EditorTheme.INK);
+                buttons[i].setContentDescription(labels[i]+(chosen?", selecionado":""));
+            }
+        };
+        for(int i=0;i<buttons.length;i++){
+            final String value=values[i];buttons[i]=text("",13,true);
+            buttons[i].setMinHeight(dp(44));buttons[i].setFocusable(true);
+            choices.addView(buttons[i],new LinearLayout.LayoutParams(-1,dp(44)));
+            buttons[i].setOnClickListener(v->{prefs.edit().putString(OrganicBackdrop.QUALITY,value).apply();refreshQuality.run();});
+        }
+        refreshQuality.run();
+        TextView fluidInfo=text("A qualidade se ajusta à carga e à economia de bateria. As formas continuam se fundindo em todos os perfis.",12,false);
+        fluidInfo.setPadding(0,dp(6),0,dp(8));fluidCard.addView(fluidInfo);
+        TextView motion=text("",13,true);motion.setMinHeight(dp(48));motion.setFocusable(true);
+        Runnable refreshMotion=()->{
+            boolean reduced=prefs.getBoolean(OrganicBackdrop.REDUCE_MOTION,false);
+            motion.setText("Reduzir movimento: "+(reduced?"ativado":"desativado"));
+            motion.setContentDescription(motion.getText());
+        };
+        motion.setOnClickListener(v->{prefs.edit().putBoolean(OrganicBackdrop.REDUCE_MOTION,
+            !prefs.getBoolean(OrganicBackdrop.REDUCE_MOTION,false)).apply();refreshMotion.run();});
+        fluidCard.addView(motion);refreshMotion.run();
 
         TextView info=text("As preferências desta tela são guardadas no dispositivo e não alteram os projetos salvos.",11.5f,false);
         LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);

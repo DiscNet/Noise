@@ -78,7 +78,15 @@ jobs:
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-projects.png > smoke/noise-projects.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-presets.png > smoke/noise-presets.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-home.png > smoke/noise-home.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-fluid-start.png > smoke/noise-fluid-start.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-fluid-later.png > smoke/noise-fluid-later.png || true
+            timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-fluid-metrics.txt > smoke/noise-fluid-metrics.txt || true
             grep -q NOISE_SMOKE_OK smoke/results.txt
+            # Record the actual Home renderer at normal speed, including multiple neck transitions.
+            adb shell am force-stop com.discnet.noise
+            adb shell am start -W -n com.discnet.noise/.MainActivity
+            adb shell screenrecord --size 540x960 --bit-rate 2000000 --time-limit 40 /sdcard/noise-fluid.mp4
+            adb pull /sdcard/noise-fluid.mp4 smoke/noise-fluid.mp4
       - uses: actions/upload-artifact@v4
         if: always()
         with:
