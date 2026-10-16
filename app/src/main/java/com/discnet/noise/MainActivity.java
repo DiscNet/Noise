@@ -716,6 +716,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         });
         appBackground.addView(exportResult,new FrameLayout.LayoutParams(-1,-1));
         exportResult.bringToFront();
+        final ExportResultOverlay shown=exportResult;
+        shown.postDelayed(()->{if(exportResult==shown)hideExportResult();},4300);
     }
     private void hideExportResult(){
         if(exportResult!=null){
