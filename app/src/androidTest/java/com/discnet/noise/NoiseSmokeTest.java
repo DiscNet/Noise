@@ -72,6 +72,12 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(circleAnimator!=null&&circleAnimator.getDuration()==14000,
                     "The subtle circle animation runs in a 14-second loop");
             }
+            StudioTabBar tabsUI=(StudioTabBar)field(activity,"studioTabs");
+            require(tabsUI!=null&&tabsUI.selectedTab()==StudioTabBar.HOME,
+                "Studio has one persistent readable bottom bar on Home");
+            require(GalleryScreen.isNoisePhoto("Pictures/Noise!/","Noise!")
+                &&!GalleryScreen.isNoisePhoto("Pictures/Other/","Other"),
+                "Gallery includes only photos produced by Noise");
             View atmosphere=home.getChildAt(0);
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
@@ -1032,6 +1038,9 @@ public class NoiseSmokeTest extends Instrumentation {
                 });sheet[0].show();});
             waitForIdleSync();
             saveScreenshot("noise-transform.png");
+            require(sheet[0].getParent()!=null&&sheet[0].getHeight()>=
+                EditorTheme.dp(activity,280),
+                "Export now opens its own full-height page rather than a bottom sheet");
             EditText widthInput=(EditText)field(sheet[0],"width");
             EditText heightInput=(EditText)field(sheet[0],"height");
             runOnMainSync(()->widthInput.setText("450"));
@@ -1051,6 +1060,9 @@ public class NoiseSmokeTest extends Instrumentation {
             while(library.previewCount()==0&&SystemClock.uptimeMillis()<libraryDeadline)
                 SystemClock.sleep(90);
             require(library.previewCount()>0,"At least one real project image preview decoded");
+            require(((View)field(library,"cards")).getPaddingBottom()>=
+                EditorTheme.dp(activity,20),
+                "Projects grid stays scrollable and clear of bottom navigation");
             saveScreenshot("noise-projects.png");
             runOnMainSync(activity::onBackPressed);
             require(field(activity,"projectLibrary")==null,"Project browser closes without stale touch overlay");
@@ -1126,6 +1138,8 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid connection fades continuously at both ends without a white flash");
             }
             early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
+            stage("V1.38.0: no liquid is drawn by the orbital stage");
+            require(!bridge.connected(),"Removed liquid connector never renders while wheel rests");
             stage("V1.37.5: orbital dock is a gradient without a full square panel");
             LinearLayout dock=(LinearLayout)field(orbital,"content");
             require(dock.getBackground() instanceof android.graphics.drawable.ColorDrawable
