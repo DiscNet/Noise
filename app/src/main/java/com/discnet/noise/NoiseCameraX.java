@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
  */
 final class NoiseCameraX implements LifecycleOwner {
     interface Listener {
-        void ready(boolean flashAvailable,boolean evAvailable,String resolutionLabel);
+        void ready(boolean flashAvailable,boolean evAvailable,String resolutionLabel,float nativeAspect,float maxFrameZoom);
         void error(String message);
         void jpeg(byte[] data);
     }
@@ -125,11 +125,27 @@ final class NoiseCameraX implements LifecycleOwner {
                     .setResolutionSelector(new androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
                         .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build());
                 capture=stillBuilder.build();
-                camera=provider.bindToLifecycle(this,selection,previewUseCase,capture);
+                androidx.camera.core.ViewPort port=view.getViewPort();
+                if(port!=null){
+                    androidx.camera.core.UseCaseGroup group=new androidx.camera.core.UseCaseGroup.Builder()
+                        .addUseCase(previewUseCase).addUseCase(capture)
+                        .setViewPort(port).build();
+                    camera=provider.bindToLifecycle(this,selection,group);
+                }else camera=provider.bindToLifecycle(this,selection,previewUseCase,capture);
                 capture.setFlashMode(hasFlash()?flash:ImageCapture.FLASH_MODE_OFF);
                 boolean nativeEv=hasNativeEv();
                 if(nativeEv)setExposureEv(requestedEv);
-                listener.ready(hasFlash(),nativeEv,"ALTA RES.");
+                String resolution="MAX";float nativeAspect=.75f,maxFrameZoom=4f;
+                androidx.camera.core.ResolutionInfo details=capture.getResolutionInfo();
+                if(details!=null){
+                    android.util.Size pixels=details.getResolution();
+                    int w=pixels.getWidth(),h=pixels.getHeight();
+                    resolution=w+"×"+h;
+                    nativeAspect=Math.min(w,h)/(float)Math.max(w,h);
+                    // Reserve at least ~800 pixels on the short side for useful crop detail.
+                    maxFrameZoom=Math.max(1f,Math.min(4f,Math.min(w,h)/800f));
+                }
+                listener.ready(hasFlash(),nativeEv,resolution,nativeAspect,maxFrameZoom);
             }catch(Exception error){
                 camera=null;capture=null;
                 listener.error("Não foi possível iniciar a câmera: "+error.getClass().getSimpleName());
