@@ -317,6 +317,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         cameraScreen=new CameraScreen(this,new CameraScreen.Listener(){
             @Override public void close(){closeCamera();showHome();}
             @Override public void edit(Uri uri){closeCamera();load(uri);}
+            @Override public void gallery(){closeCamera();showGallery();}
         });
         appBackground.addView(cameraScreen,new FrameLayout.LayoutParams(-1,-1));
         cameraScreen.bringToFront();
