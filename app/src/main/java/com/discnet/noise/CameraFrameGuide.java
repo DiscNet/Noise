@@ -21,7 +21,7 @@ final class CameraFrameGuide extends View {
     private final RectF frame=new RectF();
     private final ScaleGestureDetector pinch;
     private float ratio=1f,zoom=1f,touchX,touchY,focusX=-1,focusY=-1;
-    private float exactAspect=1f,offsetX,offsetY,alignmentDegrees;
+    private float exactAspect=0f,offsetX,offsetY,alignmentDegrees;
     private boolean draggingFrame;
     private long touchAt,focusAt;
     private boolean multiple,moved,gridEnabled=true;
@@ -42,7 +42,8 @@ final class CameraFrameGuide extends View {
     void ratio(float wideToShort){ratio=Math.max(1f,Math.min(2f,wideToShort));invalidate();}
     void zoom(float value){zoom=Math.max(1f,Math.min(4f,value));invalidate();}
     void exactAspect(float widthToHeight){
-        exactAspect=Math.max(.4f,Math.min(2.5f,widthToHeight));
+        // Aspect 0 means the entire visible CameraX preview, without a 1x border.
+        exactAspect=widthToHeight<=0f?0f:Math.max(.4f,Math.min(2.5f,widthToHeight));
         offsetX=0;offsetY=0;invalidate();
     }
     float exactAspect(){return exactAspect;}
@@ -54,8 +55,10 @@ final class CameraFrameGuide extends View {
     void centerFrame(){offsetX=0;offsetY=0;invalidate();}
     static void geometryExact(int w,int h,float aspect,float zoom,float dx,float dy,RectF out){
         if(w<1||h<1){out.setEmpty();return;}
-        float maxW=w*.91f,maxH=h*.86f;
-        float width=Math.min(maxW,maxH*aspect),height=width/aspect;
+        // 1x uses all the available sensor preview. The old 91%/86%
+        // margins caused an unwanted permanent "zoom" even at 1x.
+        float actualAspect=aspect<=0f?w/(float)h:aspect;
+        float width=Math.min(w,h*actualAspect),height=width/actualAspect;
         float z=Math.max(1f,Math.min(4f,zoom));
         float halfW=width/(z*2f),halfH=height/(z*2f);
         float cx=Math.max(halfW,Math.min(w-halfW,w*.5f+dx));
@@ -120,7 +123,9 @@ final class CameraFrameGuide extends View {
         canvas.drawRect(0,frame.bottom,getWidth(),getHeight(),paint);
         paint.setColor(0xf0ffffff);paint.setStrokeWidth(dp(1.2f));
         paint.setStyle(Paint.Style.STROKE);
-        canvas.drawRoundRect(frame,dp(2),dp(2),paint);
+        // At 1x in "Tela" mode the screen itself is the viewfinder.
+        boolean fullFrame=exactAspect<=0f&&zoom<=1.0001f;
+        if(!fullFrame)canvas.drawRoundRect(frame,dp(2),dp(2),paint);
         if(gridEnabled){
             paint.setColor(0x45ffffff);paint.setStrokeWidth(dp(0.6f));
             for(int i=1;i<=2;i++){
@@ -147,6 +152,7 @@ final class CameraFrameGuide extends View {
         }
         paint.setColor(0xffffffff);paint.setStrokeWidth(dp(2.4f));
         float corner=Math.min(dp(19),Math.min(frame.width(),frame.height())*.20f);
+        if(!fullFrame){
         canvas.drawLine(frame.left,frame.top,frame.left+corner,frame.top,paint);
         canvas.drawLine(frame.left,frame.top,frame.left,frame.top+corner,paint);
         canvas.drawLine(frame.right,frame.top,frame.right-corner,frame.top,paint);
@@ -155,6 +161,7 @@ final class CameraFrameGuide extends View {
         canvas.drawLine(frame.left,frame.bottom,frame.left,frame.bottom-corner,paint);
         canvas.drawLine(frame.right,frame.bottom,frame.right-corner,frame.bottom,paint);
         canvas.drawLine(frame.right,frame.bottom,frame.right,frame.bottom-corner,paint);
+        }
         if(focusX>=0&&android.os.SystemClock.uptimeMillis()-focusAt<1100){
             paint.setStrokeWidth(dp(1.8f));paint.setColor(0xffffddbb);
             canvas.drawRoundRect(focusX-dp(23),focusY-dp(23),
