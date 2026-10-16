@@ -42,7 +42,7 @@ final class NoiseCameraX implements LifecycleOwner {
     interface Listener {
         void ready(boolean flashAvailable,boolean evAvailable,String resolutionLabel,float nativeAspect,float maxFrameZoom);
         void error(String message);
-        void jpeg(byte[] data);
+        void jpeg(byte[] data,int rotationDegrees);
     }
     private final Activity activity;
     private final PreviewView view;
@@ -195,7 +195,8 @@ final class NoiseCameraX implements LifecycleOwner {
                     ByteBuffer data=image.getPlanes()[0].getBuffer();
                     byte[] bytes=new byte[data.remaining()];
                     data.get(bytes);
-                    main.execute(()->{if(!disposed)listener.jpeg(bytes);});
+                    int rotation=image.getImageInfo().getRotationDegrees();
+                    main.execute(()->{if(!disposed)listener.jpeg(bytes,rotation);});
                 }catch(Exception error){
                     main.execute(()->{if(!disposed)listener.error("Falha ao capturar imagem");});
                 }finally{image.close();}
