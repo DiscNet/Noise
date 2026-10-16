@@ -29,6 +29,7 @@ final class PresetDialog extends FrameLayout {
     private final ImageView preview;
     private final TextView caption,apply;
     private View modal;
+    private final boolean compact;
     private final LinearLayout cards;
 
     PresetDialog(Activity activity,ProjectStore store,Bitmap original,EditorDocument base,
@@ -38,7 +39,7 @@ final class PresetDialog extends FrameLayout {
         this.base=base.copy();this.presets=presets;this.listener=listener;
         setBackgroundColor(0xff0c0b10);setClickable(true);setFocusableInTouchMode(true);
         LinearLayout page=new LinearLayout(activity);page.setOrientation(LinearLayout.VERTICAL);
-        boolean compact=getResources().getDisplayMetrics().heightPixels<dp(690);
+        compact=getResources().getDisplayMetrics().heightPixels<dp(690);
         page.setPadding(dp(12),dp(8),dp(12),dp(10));
         addView(page,new LayoutParams(-1,-1));
         LinearLayout top=new LinearLayout(activity);top.setGravity(Gravity.CENTER_VERTICAL);
