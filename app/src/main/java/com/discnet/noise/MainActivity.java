@@ -407,7 +407,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(galleryScreen==null){
             galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){
                 @Override public void onPhoto(Uri uri){hideStudioTabs();load(uri);}
-                @Override public void onShare(Uri uri){share(uri,false);}
+                @Override public void onShare(Uri uri){shareGallery(uri);}
                 @Override public void onSystemGallery(){systemPicker();}
                 @Override public void onGrantPermission(){grantGalleryPermission();}
                 @Override public void onClose(){switchStudioTab(StudioTabBar.HOME);}
@@ -444,7 +444,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(projectLibrary!=null){revealStudioTabs(StudioTabBar.PROJECTS);return;}
         closeGallery();
         final ProjectLibraryScreen screen=new ProjectLibraryScreen(this,new ProjectLibraryScreen.Listener(){
-            @Override public void close(){closeProjectLibrary();}
+            @Override public void close(){switchStudioTab(StudioTabBar.HOME);}
             @Override public void create(){closeProjectLibrary();showGallery();}
             @Override public void chooseVault(){chooseProjectVault();}
             @Override public void open(ProjectStore.Project project){
@@ -671,6 +671,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(exportResult!=null){
             appBackground.removeView(exportResult);exportResult=null;
         }
+    }
+    private void shareGallery(Uri uri){
+        String type=getContentResolver().getType(uri);
+        share(uri,type!=null&&type.equalsIgnoreCase("image/jpeg"));
     }
     private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
