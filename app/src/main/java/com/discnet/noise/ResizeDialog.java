@@ -74,13 +74,13 @@ final class ResizeDialog extends FrameLayout {
         LinearLayout wbox=fieldBox("LARGURA");width=number(context,targetW,wbox);
         LinearLayout hbox=fieldBox("ALTURA");height=number(context,targetH,hbox);
         fields.addView(wbox,new LinearLayout.LayoutParams(0,-1,1));
-        lock=button("🔗",false);
+        lock=button("FIXA",false);
         lock.setContentDescription("Manter proporção, ativado");
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(48),dp(49));
         lp.setMargins(dp(5),0,dp(5),0);fields.addView(lock,lp);
         fields.addView(hbox,new LinearLayout.LayoutParams(0,-1,1));
         lock.setOnClickListener(v->{
-            locked=!locked;lock.setText(locked?"🔗":"⛓");
+            locked=!locked;lock.setText(locked?"FIXA":"LIVRE");
             lock.setContentDescription("Manter proporção, "+(locked?"ativado":"desativado"));
             lock.setTextColor(locked?EditorTheme.LIME:EditorTheme.MUTED);
             if(locked){targetH=Math.max(1,Math.round(targetW*sourceH/(float)sourceW));sync();}
@@ -98,13 +98,13 @@ final class ResizeDialog extends FrameLayout {
             TextView chip=button(percentage+"%",false);
             LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(77),dp(42));
             p.setMargins(0,0,dp(7),0);chips.addView(chip,p);
-            chip.setOnClickListener(v->{locked=true;lock.setText("🔗");lock.setTextColor(EditorTheme.LIME);
+            chip.setOnClickListener(v->{locked=true;lock.setText("FIXA");lock.setTextColor(EditorTheme.LIME);
                 targetW=Math.max(1,Math.round(sourceW*percentage/100f));
                 targetH=Math.max(1,Math.round(sourceH*percentage/100f));sync();});
         }
         TextView nativeChip=button("Original",false);
         chips.addView(nativeChip,new LinearLayout.LayoutParams(dp(88),dp(42)));
-        nativeChip.setOnClickListener(v->{locked=true;lock.setText("🔗");targetW=sourceW;targetH=sourceH;sync();});
+        nativeChip.setOnClickListener(v->{locked=true;lock.setText("FIXA");targetW=sourceW;targetH=sourceH;sync();});
 
         TextView note=text("Apenas redução nesta versão. Ampliar não recupera detalhes; limites de imagem e GPU serão respeitados.",11,false);
         note.setPadding(dp(3),dp(9),dp(3),dp(10));
