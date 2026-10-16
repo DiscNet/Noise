@@ -15,6 +15,7 @@ final class IconArt extends Drawable {
     private final Path path=new Path();
     private int color=0xffeee5ff;
     IconArt(int symbol,int color){this.symbol=symbol;this.color=color;p.setStrokeWidth(1.8f);}
+    void tint(int next){if(color!=next){color=next;invalidateSelf();}}
     static ImageView button(Context context,int symbol,String description){
         ImageView view=new ImageView(context);
         view.setImageDrawable(new IconArt(symbol,EditorTheme.INK));
