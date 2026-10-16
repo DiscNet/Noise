@@ -154,7 +154,7 @@ final class CameraPhotoPipeline {
                 ExifInterface.TAG_DATETIME,ExifInterface.TAG_DATETIME_ORIGINAL,
                 ExifInterface.TAG_MAKE,ExifInterface.TAG_MODEL,
                 ExifInterface.TAG_F_NUMBER,ExifInterface.TAG_FOCAL_LENGTH,
-                ExifInterface.TAG_EXPOSURE_TIME,ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY
+                ExifInterface.TAG_EXPOSURE_TIME,ExifInterface.TAG_ISO_SPEED_RATINGS
             };
             for(String field:fields){
                 String value=exif.getAttribute(field);
