@@ -19,16 +19,18 @@ final class CameraRuler extends View {
     private final OverScroller scroller;
     private Listener listener;
     private float minimum=1f,maximum=4f,step=.1f,neutral=1f,value=1f;
-    private float startX,startValue,unitsPerPixel;
+    private float startX,startValue;
     private boolean dragging;
     private long lastHaptic;
     private VelocityTracker velocity;
     private final float spacing;
     CameraRuler(Context context){
         super(context);
-        spacing=dp(17);
+        // Fewer pixels per adjustment step: lighter swipe and faster response.
+        spacing=dp(8.5f);
         scroller=new OverScroller(context);
-        setLayerType(View.LAYER_TYPE_SOFTWARE,null);
+        scroller.setFriction(.010f);
+        // Hardware-accelerated drawing keeps scroll animations responsive.
         setFocusable(true);
         setContentDescription("Régua graduada de precisão. Arraste para alterar, toque duas vezes para zerar");
         gestures=new GestureDetector(context,new GestureDetector.SimpleOnGestureListener(){
@@ -69,7 +71,7 @@ final class CameraRuler extends View {
         int right=Math.min(Math.round((maximum-minimum)/step),(int)Math.ceil(from+center/spacing)+2);
         for(int tick=left;tick<=right;tick++){
             float x=center+(tick-from)*spacing;
-            boolean major=tick%5==0;
+            boolean major=tick%10==0;
             paint.setColor(major?0xbbeee5f4:0x607c7884);
             paint.setStrokeWidth(major?dp(1.5f):dp(.9f));
             float top=major?height*.40f:height*.52f;
@@ -101,12 +103,12 @@ final class CameraRuler extends View {
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if(velocity!=null)velocity.addMovement(e);
-                if(Math.abs(e.getX()-startX)>dp(4))dragging=true;
+                if(Math.abs(e.getX()-startX)>dp(2))dragging=true;
                 if(dragging){
                     float before=value;
                     setValue(startValue+(startX-e.getX())/spacing*step,true);
                     if(Math.abs(before-value)>.0001f
-                        &&SystemClock.uptimeMillis()-lastHaptic>50){
+                        &&SystemClock.uptimeMillis()-lastHaptic>100){
                         performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
                         lastHaptic=SystemClock.uptimeMillis();
                     }
@@ -114,10 +116,10 @@ final class CameraRuler extends View {
                 return true;
             case MotionEvent.ACTION_UP:
                 if(velocity!=null){velocity.addMovement(e);velocity.computeCurrentVelocity(1000);}
-                if(dragging&&velocity!=null&&Math.abs(velocity.getXVelocity())>dp(350)){
+                if(dragging&&velocity!=null&&Math.abs(velocity.getXVelocity())>dp(180)){
                     int start=Math.round((value-minimum)/step*spacing);
                     int upper=Math.round((maximum-minimum)/step*spacing);
-                    scroller.fling(start,0,Math.round(-velocity.getXVelocity()*.65f),0,
+                    scroller.fling(start,0,Math.round(-velocity.getXVelocity()*.90f),0,
                         0,upper,0,0);
                     postInvalidateOnAnimation();
                 }
