@@ -187,6 +187,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             params.width=dock;params.height=LayoutParams.MATCH_PARENT;
             params.gravity=gravity;content.setLayoutParams(params);
         }
+        // Screen-centered CTA independently of the left/right orbital dock.
+        continueButton.setTranslationX((effectsMode?1f:-1f)*(screenWidth-dock)*.5f);
     }
     @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
         super.onSizeChanged(w,h,oldW,oldH);
