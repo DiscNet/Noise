@@ -86,15 +86,15 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Home action panel uses one simple native gradient surface");
             android.graphics.drawable.GradientDrawable panelSurface=
                 (android.graphics.drawable.GradientDrawable)homePanel.getBackground();
-            float density=homePanel.getResources().getDisplayMetrics().density;
-            require(Math.abs(panelSurface.getCornerRadius()/density-12f)<.2f,
+            float homeDensity=homePanel.getResources().getDisplayMetrics().density;
+            require(Math.abs(panelSurface.getCornerRadius()/homeDensity-12f)<.2f,
                 "Home panel corners are 12dp, not old excessive rounding");
             for(int i=0;i<homeActions.getChildCount();i++){
                 android.graphics.drawable.RippleDrawable ripple=
                     (android.graphics.drawable.RippleDrawable)homeActions.getChildAt(i).getBackground();
                 android.graphics.drawable.GradientDrawable surface=
                     (android.graphics.drawable.GradientDrawable)ripple.getDrawable(0);
-                require(Math.abs(surface.getCornerRadius()/density-12f)<.2f,
+                require(Math.abs(surface.getCornerRadius()/homeDensity-12f)<.2f,
                     "Each Home action card uses a consistent 12dp radius");
             }
             try{
