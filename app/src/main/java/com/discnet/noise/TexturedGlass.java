@@ -51,28 +51,30 @@ final class TexturedGlass extends Drawable {
         return (a+(b-a)*fx)*(1f-fy)+(c+(d-c)*fx)*fy;
     }
     private static int clamp(int v){return Math.max(0,Math.min(255,v));}
-    private int[] position(){
+    private int posX,posY;
+    private void resolvePosition(){
         if(host.isAttachedToWindow()&&backdrop!=null&&backdrop.isAttachedToWindow()){
             host.getLocationOnScreen(hostLocation);
             backdrop.getLocationOnScreen(sourceLocation);
-            return new int[]{hostLocation[0]-sourceLocation[0],
-                hostLocation[1]-sourceLocation[1]};
+            posX=hostLocation[0]-sourceLocation[0];
+            posY=hostLocation[1]-sourceLocation[1];
+        }else{
+            posX=Math.round(host.getX());posY=Math.round(host.getY());
         }
-        return new int[]{Math.round(host.getX()),Math.round(host.getY())};
     }
     private void ensureTexture(int width,int height){
-        int[] pos=position();
+        resolvePosition();
         Bitmap source=backdrop==null?null:backdrop.blurredSnapshot();
         int generation=backdrop==null?0:backdrop.materialVersion();
         if(texture!=null&&!texture.isRecycled()&&lastW==width&&lastH==height
-            &&lastSourceVersion==generation&&lastX==pos[0]&&lastY==pos[1])return;
+            &&lastSourceVersion==generation&&lastX==posX&&lastY==posY)return;
         int w=Math.max(1,Math.min(288,(width+2)/3));
         int h=Math.max(1,Math.min(216,(height+2)/3));
         Bitmap next=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
         int[] pixels=new int[w*h];
         float sx=width/(float)w,sy=height/(float)h;
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-            float gx=pos[0]+(x+.5f)*sx,gy=pos[1]+(y+.5f)*sy;
+            float gx=posX+(x+.5f)*sx,gy=posY+(y+.5f)*sy;
             // Broad hammered-cell contours + a finer surface ripple.
             float low=noise(gx*.040f+23.1f,gy*.040f+7.8f);
             float mid=noise(gx*.125f+15.6f,gy*.125f+49.2f);
@@ -96,7 +98,7 @@ final class TexturedGlass extends Drawable {
         next.setPixels(pixels,0,w,0,0,w,h);
         if(texture!=null&&!texture.isRecycled())texture.recycle();
         texture=next;materialShader=new BitmapShader(texture,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);
-        lastW=width;lastH=height;lastSourceVersion=generation;lastX=pos[0];lastY=pos[1];
+        lastW=width;lastH=height;lastSourceVersion=generation;lastX=posX;lastY=posY;
         reflection=new LinearGradient(0,0,0,height,
             new int[]{0x1cffffff,0x05ffffff,0x00000000,0x0cffffff},
             new float[]{0f,.19f,.67f,1f},Shader.TileMode.CLAMP);
@@ -131,5 +133,5 @@ final class TexturedGlass extends Drawable {
     @Override public void setColorFilter(ColorFilter colorFilter){
         paint.setColorFilter(colorFilter);invalidateSelf();
     }
-    @Override public int getOpacity(){return PixelFormat.OPAQUE;}
+    @Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}
 }
