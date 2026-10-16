@@ -66,6 +66,23 @@ void main() {
     // A faint translucent wash adds depth, without a blur pass or alpha-only fusion.
     float wash = smoothstep(.035,.22,field)*(1.0-ink)*.17;
     paper = mix(paper,vec3(.43,.37,.49),wash);
+    // Overspray is a separate, pixel-scale treatment around the original threshold.
+    // Two incommensurate lookups of the existing static noise lattice produce fine
+    // ink particles without a CPU pixel pass, animation resets or new textures.
+    vec2 pixel = gl_FragCoord.xy;
+    float particleA = texture2D(uNoise, pixel / 64.0).b;
+    float particleB = texture2D(uNoise,
+        (pixel * vec2(.793,1.127) + vec2(19.7,41.3)) / 64.0).a;
+    float fleck = fract(particleA * .923 + particleB * .781);
+    // Only the perimeter gets grain. The dark interior remains opaque and the
+    // white negative space remains clean beyond this soft exterior band.
+    float fringe = max(0.0, smoothstep(.095,.385,field) - ink);
+    float particles = smoothstep(.50,.76,fleck);
+    float overspray = fringe * (.10 + .77 * particles);
+    float innerRim = smoothstep(.35,.395,field) *
+        (1.0 - smoothstep(.415,.52,field));
+    float erosion = innerRim * (1.0 - particles) * .14;
+    ink = clamp(ink + (1.0 - ink) * overspray - erosion, 0.0, 1.0);
     // Protect the existing dark header type; the orb and cards are opaque foreground views.
     ink *= smoothstep(.16,.38,p.y);
     vec3 result = mix(paper,color,ink);
