@@ -559,7 +559,11 @@ final class CameraScreen extends FrameLayout {
         return (((orientation+45)/90)*90)%360;
     }
     static Bitmap rotateForDevice(Bitmap source,int degrees){
-        int rotation=(360-nearestRightAngle(degrees))%360;
+        // CameraX has already oriented its JPEG toward the portrait preview.
+        // OrientationEventListener degrees are the additional clockwise
+        // rotation of the *image*, not the display Surface rotation. Applying
+        // 360-degrees here inverted landscape captures on several devices.
+        int rotation=nearestRightAngle(degrees);
         if(rotation==0)return source;
         Matrix matrix=new Matrix();matrix.setRotate(rotation);
         return Bitmap.createBitmap(source,0,0,source.getWidth(),source.getHeight(),matrix,true);
