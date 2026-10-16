@@ -240,13 +240,16 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(Color.red(sharp.getPixel(8,8))>Color.red(soft.getPixel(8,8))+10,
                     "Sharpness tool changes captured image detail, not just button appearance");
                 soft.recycle();sharp.recycle();detail.recycle();
-                CameraFrameGuide alignedGuide=new CameraFrameGuide(activity,
-                    new CameraFrameGuide.Gestures(){
-                        @Override public void focus(float x,float y){}
-                        @Override public void zoom(float factor){}
-                    });
-                alignedGuide.alignment(-7.5f);
-                require(Math.abs(alignedGuide.alignment()+7.5f)<.01f,
+                final CameraFrameGuide[] alignedGuide={null};
+                runOnMainSync(()->{
+                    alignedGuide[0]=new CameraFrameGuide(activity,
+                        new CameraFrameGuide.Gestures(){
+                            @Override public void focus(float x,float y){}
+                            @Override public void zoom(float factor){}
+                        });
+                    alignedGuide[0].alignment(-7.5f);
+                });
+                require(Math.abs(alignedGuide[0].alignment()+7.5f)<.01f,
                     "Leveling guide responds to exact camera ruler adjustment");
                 require(((java.util.ArrayList<?>)field(cameraUi[0],"toolButtons")).size()>=8,
                     "Camera exposes working sharpening and alignment selectors");
