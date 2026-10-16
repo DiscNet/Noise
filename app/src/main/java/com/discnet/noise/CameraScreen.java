@@ -36,7 +36,8 @@ final class CameraScreen extends FrameLayout {
         WARMTH("Temperatura","◐",-1f,1f,.025f,0f),
         HUE("Matiz","◈",-180f,180f,2f,0f),
         CONTRAST("Contraste","◕",.5f,1.5f,.025f,1f),
-        SHARPNESS("Nitidez","◇",0f,.25f,.005f,0f);
+        SHARPNESS("Nitidez JPEG","◇",0f,.25f,.005f,0f),
+        ALIGNMENT("Alinhar","⟳",-15f,15f,.25f,0f);
         final String name,symbol;
         final float min,max,step,neutral;
         Tool(String name,String symbol,float min,float max,float step,float neutral){
@@ -132,7 +133,7 @@ final class CameraScreen extends FrameLayout {
         ratioButton=chip("1:1",46);
         LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(46),dp(38));
         ratioP.leftMargin=dp(3);top.addView(ratioButton,ratioP);
-        ratioButton.setOnClickListener(v->cycleRatio());
+        ratioButton.setOnClickListener(v->showRatios(ratioButton));
         TextView flip=chip("⇄",36);
         LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(36),dp(38));
         flipP.leftMargin=dp(3);top.addView(flip,flipP);
@@ -313,6 +314,7 @@ final class CameraScreen extends FrameLayout {
             case HUE:return hue;
             case CONTRAST:return contrast;
             case SHARPNESS:return sharpness;
+            case ALIGNMENT:return alignment;
         }
         return 0;
     }
@@ -330,6 +332,7 @@ final class CameraScreen extends FrameLayout {
             case HUE:hue=clamped;break;
             case CONTRAST:contrast=clamped;break;
             case SHARPNESS:sharpness=clamped;break;
+            case ALIGNMENT:alignment=clamped;frameGuide.alignment(alignment);break;
         }
         if(selected==tool){
             if(emitToRuler)ruler.setValue(clamped,false);
@@ -347,6 +350,7 @@ final class CameraScreen extends FrameLayout {
             case WARMTH:text=String.format(Locale.US,"%+.0f",v*100f);break;
             case HUE:text=String.format(Locale.US,"%+.0f°",v);break;
             case SHARPNESS:text=String.format(Locale.US,"%.0f%%",v*400f);break;
+            case ALIGNMENT:text=String.format(Locale.US,"%+.2f°",v);break;
             default:text=String.format(Locale.US,"%.0f%%",v*100f);
         }
         valueLabel.setText(text);
@@ -406,6 +410,23 @@ final class CameraScreen extends FrameLayout {
         timerSeconds=seconds[(current+1)%seconds.length];
         timerButton.setText(timerSeconds+"s");
     }
+    /** Select any aspect ratio in one tap rather than seven sequential toggles. */
+    private void showRatios(View anchor){
+        PopupMenu menu=new PopupMenu(activity,anchor);
+        for(int i=0;i<RATIO_NAMES.length;i++){
+            final int index=i;
+            menu.getMenu().add(0,i,i,RATIO_NAMES[i])
+                .setCheckable(true).setChecked(index==ratioIndex);
+        }
+        menu.getMenu().setGroupCheckable(0,true,true);
+        menu.setOnMenuItemClickListener(item->{
+            ratioIndex=item.getItemId();
+            ratioButton.setText(RATIO_NAMES[ratioIndex]);
+            frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+            return true;
+        });
+        menu.show();
+    }
     private void cycleRatio(){
         ratioIndex=(ratioIndex+1)%RATIOS.length;
         ratioButton.setText(RATIO_NAMES[ratioIndex]);
@@ -441,7 +462,8 @@ final class CameraScreen extends FrameLayout {
         settings.jpegQuality=jpegQuality;
         settings.sat=saturation;settings.warm=temperature;
         settings.exposure=residualExposure;
-        settings.hue=hue;settings.contrast=contrast;settings.sharpness=sharpness;
+        settings.hue=hue;settings.contrast=contrast;
+        settings.sharpness=sharpness;settings.alignment=alignment;
         pendingSettings=settings;
         status.setText("Fotografando…");
         engine.shoot();
