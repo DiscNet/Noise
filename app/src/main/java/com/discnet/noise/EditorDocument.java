@@ -35,6 +35,33 @@ final class EditorDocument {
         System.arraycopy(from.colorWheels,0,colorWheels,0,colorWheels.length);
         blendMode=from.blendMode;
     }
+    /** Real non-destructive preset strength; geometry/output settings stay unchanged. */
+    static EditorDocument blendLook(EditorDocument base,EditorDocument look,float amount){
+        float t=Math.max(0f,Math.min(1f,amount));
+        EditorDocument result=base.copy();
+        for(int i=0;i<result.values.length;i++){
+            float start=base.value(i),target=look.value(i);
+            result.values[i]=AdjustmentSpec.clamp(i,start+(target-start)*t);
+            result.disabled[i]=false;
+        }
+        for(int i=0;i<result.colorCurves.length;i++)
+            result.colorCurves[i]=base.colorCurves[i]+
+                (look.colorCurves[i]-base.colorCurves[i])*t;
+        for(int i=0;i<result.colorWheels.length;i++)
+            result.colorWheels[i]=base.colorWheels[i]+
+                (look.colorWheels[i]-base.colorWheels[i])*t;
+        if(t>.01f){
+            // Discrete operations cannot be interpolated; enable at midpoint.
+            if(t>=.50f){
+                result.invert=look.invert;result.asciiEnabled=look.asciiEnabled;
+                result.asciiColored=look.asciiColored;result.asciiDither=look.asciiDither;
+                result.asciiSymbols=look.asciiSymbols;result.grainColored=look.grainColored;
+                result.ditherMethod=look.ditherMethod;result.ditherPalette=look.ditherPalette;
+                result.blendMode=look.blendMode;
+            }
+        }
+        return result;
+    }
     JSONObject toJson() throws JSONException {
         JSONObject o=new JSONObject();o.put("schema",1);
         JSONArray v=new JSONArray(),d=new JSONArray();
