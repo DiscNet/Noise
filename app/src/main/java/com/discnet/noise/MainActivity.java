@@ -646,7 +646,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                     document.outputWidth=w==nativeSize[0]&&h==nativeSize[1]?0:w;
                     document.outputHeight=w==nativeSize[0]&&h==nativeSize[1]?0:h;
                     document.outputLongEdge=0;
-                    document.jpeg=jpeg;document.jpegQuality=quality;
+                    document.exportFormat=exportScreen!=null?
+                        exportScreen.selectedFormat():(jpeg?"jpeg":"png");
+                    document.jpeg=document.exportFormat.equals("jpeg");
+                    document.jpegQuality=quality;
                 });
                 sizeStatus();
                 exportScreen=null;
@@ -709,7 +712,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showExportResult(Uri uri,boolean jpeg){
         hideExportResult();
         exportResult=new ExportResultOverlay(this,this::hideExportResult,()->{
-            hideExportResult();share(uri,jpeg);
+            hideExportResult();shareGallery(uri);
         });
         appBackground.addView(exportResult,new FrameLayout.LayoutParams(-1,-1));
         exportResult.bringToFront();
@@ -723,7 +726,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         String type=getContentResolver().getType(uri);
         share(uri,type!=null&&type.equalsIgnoreCase("image/jpeg"));
     }
-    private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
+    private void share(Uri uri,boolean jpeg){String detected=getContentResolver().getType(uri);
+        Intent i=new Intent(Intent.ACTION_SEND).setType(detected!=null?detected:
+            (jpeg?"image/jpeg":"image/png")).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
