@@ -57,7 +57,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         setClipChildren(false);setClipToPadding(false);
         setClickable(true);setFocusableInTouchMode(true);
         scrim=new View(c);
-        scrim.setBackgroundColor(OrbitalMaterial.BLACK);
+        scrim.setBackgroundColor(0xff09070e);
         scrim.setAlpha(0f);
         addView(scrim,new FrameLayout.LayoutParams(-1,-1));
         edgeFeather=new View(c);
@@ -70,8 +70,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         // produced straight cutoffs near the outer menu edges.
         content.setClipChildren(false);content.setClipToPadding(false);
         content.setPadding(dp(20),dp(12),dp(20),dp(16));
-        // Solid, subtly stippled purple dock: no glass or transparency layer.
-        content.setBackground(new OrbitalMaterial(c,OrbitalMaterial.DARK_PURPLE,6f,false));
+        // No opaque panel rectangle: the soft scrim behind the wheel provides
+        // contrast without a hard black dividing edge.
+        content.setBackgroundColor(Color.TRANSPARENT);
         content.setAlpha(0f); // First frame is hidden: prevent a one-frame pop before swipe reveal.
         content.setScaleX(1f);content.setScaleY(1f);
         addView(content,new FrameLayout.LayoutParams(-1,-1));
@@ -79,15 +80,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         LinearLayout header=new LinearLayout(c);
         header.setGravity(Gravity.TOP|Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(11),dp(9),dp(7),dp(9));
-        header.setBackground(new OrbitalMaterial(c,OrbitalMaterial.BLACK,4f,false));
         column.addView(header,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout heading=new LinearLayout(c);heading.setOrientation(LinearLayout.VERTICAL);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
-        favorite=label(c,"☆",29,OrbitalMaterial.BLACK);
-        OrbitalMaterial favBlock=new OrbitalMaterial(c,OrbitalMaterial.WHITE,4f,true);
-        favBlock.setStrength(1f);
-        favorite.setBackground(favBlock);
+        favorite=label(c,"☆",29,OrbitalMaterial.WHITE);
         favorite.setGravity(Gravity.CENTER);favorite.setContentDescription("Marcar favorito");
         favorite.setFocusable(true);
         header.addView(favorite,new LinearLayout.LayoutParams(dp(48),dp(48)));
@@ -116,20 +112,25 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         orbit=new OrbitStage(c,initial);
         column.addView(orbit,new LinearLayout.LayoutParams(-1,0,1));
-        TextView current=label(c,"↕  DESLIZE SUAVEMENTE   ·   TOQUE PARA SELECIONAR",10,OrbitalMaterial.WHITE);
-        current.setBackground(new OrbitalMaterial(c,OrbitalMaterial.PURPLE,4f,false));
+        TextView current=label(c,"↕  DESLIZE SUAVEMENTE   ·   TOQUE PARA SELECIONAR",10,OrbitalMaterial.MUTED);
         current.setGravity(Gravity.CENTER);
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
-        continueButton=label(c,"Selecionar "+names[orbit.selected()],16,OrbitalMaterial.BLACK);
+        continueButton=label(c,"Selecionar "+names[orbit.selected()],16,EditorTheme.INK);
         continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
-        OrbitalMaterial selectSurface=new OrbitalMaterial(c,OrbitalMaterial.WHITE,4f,true);
+        // The sole square filled control in the wheel; centered in its dock.
+        OrbitalMaterial selectSurface=new OrbitalMaterial(c,OrbitalMaterial.WHITE,3f,true);
         selectSurface.setStrength(1f);
+        continueButton.setTextColor(OrbitalMaterial.BLACK);
         continueButton.setBackground(new android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x2a7235ae),selectSurface,null));
+            android.content.res.ColorStateList.valueOf(0x287235ae),selectSurface,null));
         continueButton.setClickable(true);continueButton.setFocusable(true);
-        column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
+        LinearLayout.LayoutParams selectParams=new LinearLayout.LayoutParams(-1,dp(54));
+        selectParams.leftMargin=dp(13);
+        selectParams.rightMargin=dp(13);
+        selectParams.gravity=Gravity.CENTER_HORIZONTAL;
+        column.addView(continueButton,selectParams);
         continueButton.setOnClickListener(v->commit());
         orbit.onSelection=()->{
             continueButton.setText("Selecionar "+this.names[orbit.selected()]);
@@ -165,9 +166,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         effectsMode=effects;
         GradientDrawable gradient=new GradientDrawable(
             effects?GradientDrawable.Orientation.LEFT_RIGHT:GradientDrawable.Orientation.RIGHT_LEFT,
-            // Opaque menu dock plus a stronger purple-to-black boundary,
-            // still feathered over the photograph outside the dock.
-            new int[]{0xf01c0d30,0xdb1c0d30,0xaa30144e,0x6209070e,0x0009070e});
+            // Screen-wide feather. An opaque panel underneath would give this
+            // a hard rectangular seam even if the background itself fades.
+            new int[]{0xf0190b2b,0xdb30144e,0xad432269,0x70322143,0x0009070e});
         gradient.setGradientType(GradientDrawable.LINEAR_GRADIENT);
         edgeFeather.setBackground(gradient);
         headerTitle.setGravity(effects?Gravity.LEFT:Gravity.RIGHT);
@@ -242,7 +243,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         closing=false;revealFraction=1f;
         targetX=0f;
         targetAlpha=1f;
-        targetScrim=.79f;
+        targetScrim=.75f;
         targetFeather=.96f;
         targetScale=1f;
         requestMotion();
@@ -257,7 +258,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         float p=.12f+.88f*revealFraction;
         targetX=entrance()*(1f-p);
         targetAlpha=p;
-        targetScrim=.79f*p;
+        targetScrim=.75f*p;
         targetFeather=.96f*p;
         targetScale=1f; // no zoom/pop on finger down or release
         requestMotion();
@@ -429,14 +430,12 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path=new Path();
         private final float scale;
-        private final OrbitalMaterial box;
         private final boolean active;
         private float liquid=1f;
         private float strength;
         IconGlowFrame(Context c,boolean active){
             this.active=active;
             scale=c.getResources().getDisplayMetrics().density;
-            box=new OrbitalMaterial(c,OrbitalMaterial.WHITE,4f,true);
         }
         boolean outlined(){return active&&strength>=.97f;}
         float strength(){return strength;}
@@ -460,40 +459,36 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             if(b.isEmpty())return;
             float l=b.left+scale*2.2f,t=b.top+scale*2.2f;
             float right=b.right-scale*2.2f,bottom=b.bottom-scale*2.2f;
+            float radius=scale*19f;
             p.setShader(null);
             p.setStyle(Paint.Style.FILL);
-            // White filled square-corner button, dark glyph provided by IconArt.
-            box.setBounds(b);
-            box.setStrength(active?strength:0f);
-            box.draw(canvas);
+            p.setColor(0x93302c37);
+            canvas.drawRoundRect(l,t,right,bottom,radius,radius,p);
             if(!active||strength<=.001f)return;
-            // The classic meniscus is retained but wraps the new near-square
-            // button instead of drawing an oversized rounded liquid disk.
+            float cx=(l+right)*.5f,cy=(t+bottom)*.5f;
+            float w=(right-l)*.5f,h=(bottom-t)*.5f;
+            // Subtle Bézier meniscus during the final settle.
             float pulse=(float)Math.sin(Math.PI*liquid);
-            float wave=scale*2.8f*pulse;
-            float corner=scale*4f;
+            float wave=scale*2.5f*pulse;
             path.reset();
-            path.moveTo(l+corner,t-wave*.18f);
-            path.lineTo(right-corner,t-wave*.18f);
-            path.quadTo(right+wave*.28f,t-wave*.16f,right+wave*.30f,t+corner);
-            path.lineTo(right+wave*.55f,bottom-corner);
-            path.quadTo(right+wave*.25f,bottom+wave*.16f,right-corner,bottom+wave*.18f);
-            path.lineTo(l+corner,bottom+wave*.18f);
-            path.quadTo(l-wave*.25f,bottom+wave*.16f,l-wave*.30f,bottom-corner);
-            path.lineTo(l-wave*.30f,t+corner);
-            path.quadTo(l-wave*.25f,t-wave*.16f,l+corner,t-wave*.18f);
+            path.moveTo(cx,cy-h-wave*.65f);
+            path.cubicTo(cx+w*.60f,cy-h-wave*.5f,
+                cx+w+wave*.2f,cy-h*.68f,cx+w,cy);
+            path.cubicTo(cx+w-wave*.04f,cy+h*.65f,
+                cx+w*.53f,cy+h+wave*.40f,cx,cy+h+wave*.28f);
+            path.cubicTo(cx-w*.65f,cy+h+wave*.30f,
+                cx-w-wave*.22f,cy+h*.56f,cx-w-wave*.10f,cy);
+            path.cubicTo(cx-w-wave*.18f,cy-h*.69f,
+                cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
             path.close();
             // Premultiplied alpha: a neighboring icon gains its highlight
             // as it approaches center, while the previous fades out.
-            p.setColor(Color.argb(Math.round(28f*strength),114,53,174));
+            p.setColor(Color.argb(Math.round(145f*strength),116,102,140));
             canvas.drawPath(path,p);
             p.setStyle(Paint.Style.STROKE);
-            // Two soft translucent strokes form a visible white glow without blur.
-            p.setStrokeWidth(scale*4.0f);
-            p.setColor(Color.argb(Math.round(72f*strength),255,255,255));
-            canvas.drawPath(path,p);
-            p.setStrokeWidth(scale*1.25f);
-            p.setColor(Color.argb(Math.round(255f*strength),255,255,255));
+            p.setStrokeWidth(scale*1.2f);
+            p.setColor(Color.argb(Math.round(237f*strength),
+                250,245,252));
             canvas.drawPath(path,p);
             p.setStrokeWidth(scale*.75f);
             p.setColor(Color.argb(Math.round(90f*strength),255,255,255));
@@ -519,7 +514,6 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final ImageView[] icons=new ImageView[names.length];
         private final IconGlowFrame[] idleFrames=new IconGlowFrame[names.length];
         private final IconGlowFrame[] focusFrames=new IconGlowFrame[names.length];
-        private final OrbitalMaterial[] captionBlocks=new OrbitalMaterial[names.length];
         private IconGlowFrame focusedFrame;
         private int framedIndex=-1;
         private VelocityTracker velocity;
@@ -542,10 +536,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 LinearLayout row=new LinearLayout(context);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                TextView text=label(context,names[i],15,OrbitalMaterial.WHITE);
-                captionBlocks[i]=new OrbitalMaterial(context,
-                    (i%2==0)?OrbitalMaterial.DEEP_PURPLE:OrbitalMaterial.PURPLE,4f,true);
-                text.setBackground(captionBlocks[i]);
+                TextView text=label(context,names[i],15,EditorTheme.MUTED);
                 text.setSingleLine(true);text.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 ImageView icon=new ImageView(context);
                 icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -554,7 +545,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 idleFrames[i]=new IconGlowFrame(context,false);
                 focusFrames[i]=new IconGlowFrame(context,true);
                 icon.setBackground(idleFrames[i]);
-                icon.setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],OrbitalMaterial.BLACK));
+                icon.setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],EditorTheme.INK));
                 // Insert after setMode so tools put the icon first (left),
                 // effects put the icon last (right).
                 row.setContentDescription(names[i]+", ferramenta orbital");
@@ -574,7 +565,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 ImageView icon=icons[i];
                 row.removeAllViews();
                 caption.setGravity((effectsMode?Gravity.LEFT:Gravity.RIGHT)|Gravity.CENTER_VERTICAL);
-                caption.setPadding(dp(12),0,dp(12),0);
+                caption.setPadding(effectsMode?dp(9):0,0,effectsMode?0:dp(9),0);
                 LinearLayout.LayoutParams textParams=new LinearLayout.LayoutParams(dp(136),dp(64));
                 LinearLayout.LayoutParams iconParams=new LinearLayout.LayoutParams(dp(64),dp(64));
                 if(effectsMode){
@@ -593,7 +584,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // without throwing most of the outer rim beyond the display.
             radius=Math.max(dp(175),Math.min(dp(235),w*.68f));
             halo=new RadialGradient(arcX(0f),arcY(0f),dp(96),
-                new int[]{0x54ffffff,0x2948227c,0x0030184d},null,Shader.TileMode.CLAMP);
+                new int[]{0x42d8b4f8,0x1b843bb7,0x00843bb7},null,Shader.TileMode.CLAMP);
             render();
         }
         private float arcX(float theta){
@@ -625,7 +616,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 float endFade=Math.max(0f,Math.min(1f,(1.40f-Math.abs(theta))/.27f));
                 float opacity=xFade*yFade*endFade;
                 if(opacity<.01f)continue;
-                stroke.setColor(Color.argb(Math.round(169f*opacity),164,113,209));
+                stroke.setColor(Color.argb(Math.round(124f*opacity),150,108,190));
                 canvas.drawLine(arcX(t0),arcY(t0),arcX(t1),arcY(t1),stroke);
             }
             float x=arcX(0),y=arcY(0);
@@ -636,7 +627,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Place the locator OUTSIDE the icon, not between icon and text:
             // Effects: left of icon; Tools: right of icon.
             // Short, low-contrast stroke should not dominate the selection.
-            light.setColor(0xeaffffff);
+            light.setColor(0x719f9aa9);
             float markerX=x+(effectsMode?-dp(54):dp(54));
             canvas.drawRoundRect(markerX-dp(5),y-dp(.75f),
                 markerX+dp(5),y+dp(.75f),dp(1),dp(1),light);
@@ -683,13 +674,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 float emphasis=proximity*proximity*(3f-2f*proximity);
                 // Crossfade labels and icons continuously rather than switching
                 // styles at selected()'s midpoint.
-                captionBlocks[i].setStrength(emphasis);
-                // Foreground reverses continuously from white to near-black
-                // as its box changes from purple to white.
                 captions[i].setTextColor(Color.rgb(
-                    Math.round(248-236*emphasis),
-                    Math.round(244-233*emphasis),
-                    Math.round(253-238*emphasis)));
+                    Math.round(142+(242-142)*emphasis),
+                    Math.round(139+(237-139)*emphasis),
+                    Math.round(151+(247-151)*emphasis)));
                 icons[i].setImageAlpha(Math.round(192+63*emphasis));
                 float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.32f));
                 float topBottom=Math.min(y,getHeight()-y-dp(64));

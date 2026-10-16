@@ -44,6 +44,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private boolean homeHostResumed;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
+    private ExportProgressOverlay exportProgress;
     private PresetDialog presetLibrary;
     private OrbitalSelector orbital;
     private CropEditor cropEditor;
@@ -140,7 +141,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         // Physical edges are checked by SwipeNavigationHost. Horizontal
         // navigation may start anywhere in the editor EXCEPT actual editable
         // slider hit areas. Moving between tabs never disables this gate.
-        if(original==null||loading||orbital!=null||preview==null
+        if(original==null||loading||exporting||orbital!=null||preview==null
             ||workspace==null||cropEditor!=null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
@@ -520,9 +521,60 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             }).show();
     }
     private void chooseOutput(){if(Build.VERSION.SDK_INT<29&&checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},SAVE_PERMISSION);return;}export(null);}
-    private void export(Uri supplied){if(original==null||loading||exporting)return;final EditorDocument d=document.copy();final ImageSource current=source;final Bitmap previewSource=original;final int w=sourceWidth(),h=sourceHeight(),limit=maxTexture;exporting=true;status.setText("Exportando… você pode continuar editando");updateActions();
-        exportWorker.execute(()->{Bitmap full=null;try{full=current!=null?ImageSource.decode(current.file,limit):previewSource;Uri uri=ExportManager.save(getApplicationContext(),full,d,w,h,limit,supplied);runOnUiThread(()->{if(destroyed)return;exporting=false;updateActions();status.setText("Salvo em Pictures/Noise!");if(uri!=null&&supplied==null)new AlertDialog.Builder(this).setTitle("Imagem salva").setMessage("Disponível na galeria, em Pictures/Noise!.").setNegativeButton("Concluir",null).setPositiveButton("Compartilhar",(a,b)->share(uri,d.jpeg)).show();});}
-            catch(Exception|OutOfMemoryError e){android.util.Log.e("NoiseExport","Save",e);runOnUiThread(()->{if(!destroyed){exporting=false;updateActions();status.setText("Falha ao exportar. Tente uma resolução menor ou libere espaço.");toast("Não foi possível salvar a imagem");}});}finally{if(full!=null&&full!=previewSource)full.recycle();}});
+    private void showExportProgress(){
+        hideExportProgress();
+        exportProgress=new ExportProgressOverlay(this);
+        appBackground.addView(exportProgress,new FrameLayout.LayoutParams(-1,-1));
+        exportProgress.bringToFront();
+        exportProgress.requestFocus();
+    }
+    private void hideExportProgress(){
+        if(exportProgress!=null){
+            appBackground.removeView(exportProgress);
+            exportProgress=null;
+        }
+    }
+    private void export(Uri supplied){
+        if(original==null||loading||exporting)return;
+        final EditorDocument d=document.copy();
+        final ImageSource current=source;
+        final Bitmap previewSource=original;
+        final int w=sourceWidth(),h=sourceHeight(),limit=maxTexture;
+        exporting=true;
+        status.setText("Salvando imagem…");
+        updateActions();
+        showExportProgress();
+        exportWorker.execute(()->{
+            Bitmap full=null;
+            try{
+                full=current!=null?ImageSource.decode(current.file,limit):previewSource;
+                Uri uri=ExportManager.save(getApplicationContext(),full,d,w,h,limit,supplied);
+                runOnUiThread(()->{
+                    if(destroyed)return;
+                    hideExportProgress();
+                    exporting=false;
+                    updateActions();
+                    status.setText("Salvo em Pictures/Noise!");
+                    if(uri!=null&&supplied==null)
+                        new AlertDialog.Builder(this).setTitle("Imagem salva")
+                            .setMessage("Disponível na galeria, em Pictures/Noise!.")
+                            .setNegativeButton("Concluir",null)
+                            .setPositiveButton("Compartilhar",(a,b)->share(uri,d.jpeg)).show();
+                });
+            }catch(Exception|OutOfMemoryError e){
+                android.util.Log.e("NoiseExport","Save",e);
+                runOnUiThread(()->{
+                    if(destroyed)return;
+                    hideExportProgress();
+                    exporting=false;
+                    updateActions();
+                    status.setText("Falha ao exportar. Tente uma resolução menor ou libere espaço.");
+                    toast("Não foi possível salvar a imagem");
+                });
+            }finally{
+                if(full!=null&&full!=previewSource)full.recycle();
+            }
+        });
     }
     private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
@@ -540,6 +592,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        // The save transaction is not cancellable; keep progress visible.
+        if(exporting)return;
         if(cameraScreen!=null){closeCamera();showHome();return;}
         if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
@@ -560,7 +614,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override protected void onResume(){super.onResume();homeHostResumed=true;if(homeScreen!=null)homeScreen.hostResumed(true);if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
     @Override protected void onPause(){homeHostResumed=false;if(homeScreen!=null)homeScreen.hostResumed(false);comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;closeSettings();closeCamera();
+    @Override protected void onDestroy(){destroyed=true;hideExportProgress();closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
         closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }

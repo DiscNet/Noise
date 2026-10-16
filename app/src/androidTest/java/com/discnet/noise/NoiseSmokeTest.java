@@ -90,8 +90,11 @@ public class NoiseSmokeTest extends Instrumentation {
                     "No photo cards contain glass material, blur or cloudy overlays");
                 android.graphics.drawable.GradientDrawable surface=
                     (android.graphics.drawable.GradientDrawable)ripple.getDrawable(0);
-                require(Math.abs(surface.getCornerRadius()/homeDensity-7f)<.3f,
-                    "Each action card has 7dp corners");
+                require(Math.abs(surface.getCornerRadius()/homeDensity-4f)<.3f,
+                    "Home actions use the compact 4dp palette");
+                int expected=i==0?OrbitalMaterial.WHITE:OrbitalMaterial.PURPLE;
+                require(surface.getColors()!=null&&surface.getColors()[0]==expected,
+                    "Home action colors alternate white and violet");
             }
             stage("V1.37: fluid geometry, interaction, reduced motion and lifecycle");
             FluidBackgroundTest.run(this, activity, home);
@@ -1123,31 +1126,25 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid connection fades continuously at both ends without a white flash");
             }
             early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
-            stage("V1.37.4: classic Bezier membrane and opaque high-contrast wheel");
-            require(bridge.getClass().getDeclaredFields().length>0,
-                "Classic bridge retained instead of the procedural density rasterizer");
-            OrbitalMaterial[] blocks=(OrbitalMaterial[])field(orbitStage,"captionBlocks");
-            require(blocks.length==hitIcons.length&&blocks[activeIndex].cornerRadius()<=
-                EditorTheme.dp(getTargetContext(),5f),
-                "Caption cards have compact near-square corners");
-            require(Color.red(blocks[activeIndex].filledColor())>220,
-                "Aligned title uses a solid white material");
-            int neighbor=activeIndex==0?1:activeIndex-1;
-            require(Color.red(blocks[neighbor].baseColor())<150,
-                "Unselected captions preserve dark purple and violet surfaces");
-            Object background=hitIcons[activeIndex].getBackground();
-            Method frameBox=background.getClass().getDeclaredMethod("draw",Canvas.class);
-            frameBox.setAccessible(true);
-            final Bitmap[] whiteCard={null};
-            runOnMainSync(()->{
-                whiteCard[0]=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888);
-                ((android.graphics.drawable.Drawable)background).setBounds(0,0,128,128);
-                ((android.graphics.drawable.Drawable)background).draw(new Canvas(whiteCard[0]));
-            });
-            require(Color.red(whiteCard[0].getPixel(24,24))>205 &&
-                Color.blue(whiteCard[0].getPixel(24,24))>205,
-                "Selected icon is a filled white box, not transparent purple glass");
-            whiteCard[0].recycle();
+            stage("V1.37.5: orbital dock is a gradient without a full square panel");
+            LinearLayout dock=(LinearLayout)field(orbital,"content");
+            require(dock.getBackground() instanceof android.graphics.drawable.ColorDrawable
+                &&((android.graphics.drawable.ColorDrawable)dock.getBackground()).getColor()==Color.TRANSPARENT,
+                "The whole orbital dock must be transparent, not a giant square card");
+            View feather=(View)field(orbital,"edgeFeather");
+            require(feather.getBackground() instanceof android.graphics.drawable.GradientDrawable,
+                "The menu receives its background through a soft purple-black gradient");
+            TextView confirm=(TextView)field(orbital,"continueButton");
+            require(confirm.getGravity()==Gravity.CENTER
+                &&confirm.getBackground() instanceof android.graphics.drawable.RippleDrawable,
+                "Only the centered Select button is a filled square control");
+            android.graphics.drawable.Drawable confirmPlate=
+                ((android.graphics.drawable.RippleDrawable)confirm.getBackground()).getDrawable(0);
+            require(confirmPlate instanceof OrbitalMaterial
+                &&((OrbitalMaterial)confirmPlate).cornerRadius()<=EditorTheme.dp(getTargetContext(),4f),
+                "Centered Select button uses the sole near-square white block");
+            require(confirm.getTextColors().getDefaultColor()==OrbitalMaterial.BLACK,
+                "Black text on the white Select button remains legible");
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
@@ -1478,6 +1475,24 @@ public class NoiseSmokeTest extends Instrumentation {
                 "Another wheel opens immediately even while previous one closes");
             runOnMainSync(activity::onBackPressed);
             SystemClock.sleep(670);
+            stage("V1.37.5: export progress is modal and dismisses cleanly");
+            Method openSaving=activity.getClass().getDeclaredMethod("showExportProgress");
+            Method closeSaving=activity.getClass().getDeclaredMethod("hideExportProgress");
+            openSaving.setAccessible(true);closeSaving.setAccessible(true);
+            runOnMainSync(()->{
+                try{openSaving.invoke(activity);}
+                catch(Exception error){throw new RuntimeException(error);}
+            });
+            Object progressOverlay=field(activity,"exportProgress");
+            require(progressOverlay instanceof ExportProgressOverlay
+                &&((View)progressOverlay).getParent()==gestureHost,
+                "Saving screen is attached above the editor");
+            runOnMainSync(()->{
+                try{closeSaving.invoke(activity);}
+                catch(Exception error){throw new RuntimeException(error);}
+            });
+            require(field(activity,"exportProgress")==null,
+                "Saving overlay disappears when export ends");
             stage("public PNG and JPEG export");
             EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
             Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
