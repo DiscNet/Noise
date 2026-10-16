@@ -60,6 +60,7 @@ final class CameraScreen extends FrameLayout {
     private Uri latestPhoto;
     private float zoom=1f,saturation=1f,temperature=0f,exposure=0f,hue=0f,contrast=1f,sharpness=0f,alignment=0f;
     private int deviceOrientationDegrees,timerSeconds,ratioIndex=0,flashIndex=0;
+    private float nativeAspect=.75f,maxFrameZoom=4f;
     private boolean nativeEv;
     private float residualExposure;
     private String resolution="MAX";
@@ -209,10 +210,14 @@ final class CameraScreen extends FrameLayout {
         editButton.setContentDescription("Abrir última fotografia no editor Noise");
 
         engine=new NoiseCameraX(context,preview,new NoiseCameraX.Listener(){
-            @Override public void ready(boolean flash,boolean ev,String resolutionLabel){
+            @Override public void ready(boolean flash,boolean ev,String resolutionLabel,float aspect,float zoomLimit){
                 if(disposed)return;
                 flashButton.setVisibility(flash?View.VISIBLE:View.GONE);
                 nativeEv=ev;resolution=resolutionLabel;
+                nativeAspect=aspect;maxFrameZoom=zoomLimit;
+                if(ratioIndex==RATIOS.length-1)frameGuide.exactAspect(nativeAspect);
+                if(zoom>maxFrameZoom)setToolValue(Tool.ZOOM,maxFrameZoom,true);
+                if(selected==Tool.ZOOM)selectTool(Tool.ZOOM);
                 residualExposure=exposure-engine.setExposureEv(exposure);
                 applyPreview();
                 status.setText("Pronto · "+resolution);
@@ -273,7 +278,7 @@ final class CameraScreen extends FrameLayout {
             button.setScaleX(activeTool?1.04f:1f);button.setScaleY(activeTool?1.04f:1f);
         }
         titleLabel.setText(tool.name);
-        ruler.configure(tool.min,tool.max,tool.step,toolValue(tool),tool.neutral);
+        ruler.configure(tool.min,tool==Tool.ZOOM?maxFrameZoom:tool.max,tool.step,toolValue(tool),tool.neutral);
         displayToolValue();
     }
     private float toolValue(Tool tool){
@@ -288,7 +293,8 @@ final class CameraScreen extends FrameLayout {
         return 0;
     }
     private void setToolValue(Tool tool,float value,boolean emitToRuler){
-        float clamped=Math.max(tool.min,Math.min(tool.max,value));
+        float upper=tool==Tool.ZOOM?maxFrameZoom:tool.max;
+        float clamped=Math.max(tool.min,Math.min(upper,value));
         switch(tool){
             case ZOOM:
                 zoom=clamped;frameGuide.zoom(zoom);break;
@@ -345,7 +351,7 @@ final class CameraScreen extends FrameLayout {
     private void cycleRatio(){
         ratioIndex=(ratioIndex+1)%RATIOS.length;
         ratioButton.setText(RATIO_NAMES[ratioIndex]);
-        frameGuide.exactAspect(RATIOS[ratioIndex]);
+        frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
     }
     private void scheduleShot(){
         if(!active||disposed||capturing)return;
