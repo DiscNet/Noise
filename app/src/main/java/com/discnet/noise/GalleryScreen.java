@@ -154,6 +154,7 @@ final class GalleryScreen extends FrameLayout {
     }
     void hidePhotoActions(){if(choiceOverlay!=null){removeView(choiceOverlay);choiceOverlay=null;}}
     boolean dismissPhotoActions(){if(choiceOverlay==null)return false;hidePhotoActions();return true;}
+    boolean dismissPhotoActionsPending(){return choiceOverlay!=null;}
     private TextView txt(String s,int size,int color){
         TextView v=new TextView(activity);v.setText(s);v.setTextSize(size);v.setTextColor(color);
         v.setGravity(Gravity.CENTER_VERTICAL);return v;
@@ -182,8 +183,11 @@ final class GalleryScreen extends FrameLayout {
             ArrayList<Photo> found=new ArrayList<>();
             LinkedHashMap<String,String> discovered=new LinkedHashMap<>();
             try{
-                String[] columns={MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH};
+                String[] columns=Build.VERSION.SDK_INT>=29?
+                    new String[]{MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH}:
+                    new String[]{MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
                 try(Cursor cursor=activity.getContentResolver().query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,columns,null,null,
                     MediaStore.Images.Media.DATE_ADDED+" DESC")){
@@ -191,13 +195,13 @@ final class GalleryScreen extends FrameLayout {
                         int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                         int bucket=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID);
                         int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
-                        int path=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH);
+                        int path=cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH);
                         // Iterate all rows to discover every album, even ones
                         // whose latest image falls outside the recent-500 view.
                         while(cursor.moveToNext()){
                             String key=cursor.getString(bucket);
                             String label=cursor.getString(name);
-                            String location=cursor.getString(path);
+                            String location=path<0?null:cursor.getString(path);
                             if(!isNoisePhoto(location,label))continue;
                             Uri uri=ContentUris.withAppendedId(
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id));
@@ -249,8 +253,11 @@ final class GalleryScreen extends FrameLayout {
         work.execute(()->{
             ArrayList<Photo> folder=new ArrayList<>();
             try{
-                String[] projection={MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH};
+                String[] projection=Build.VERSION.SDK_INT>=29?
+                    new String[]{MediaStore.Images.Media._ID,
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH}:
+                    new String[]{MediaStore.Images.Media._ID,
+                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
                 try(Cursor cursor=activity.getContentResolver().query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     projection,
@@ -260,10 +267,10 @@ final class GalleryScreen extends FrameLayout {
                     if(cursor!=null){
                         int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                         int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
-                        int path=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH);
+                        int path=cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH);
                         while(cursor.moveToNext()){
                             String album=cursor.getString(name);
-                            if(!isNoisePhoto(cursor.getString(path),album))continue;
+                            if(!isNoisePhoto(path<0?null:cursor.getString(path),album))continue;
                             folder.add(new Photo(ContentUris.withAppendedId(
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id)),
                                 selectedBucket,album==null?"Sem álbum":album));
