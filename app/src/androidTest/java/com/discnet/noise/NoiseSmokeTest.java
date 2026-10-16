@@ -85,16 +85,16 @@ public class NoiseSmokeTest extends Instrumentation {
             require(homePanel.getBackground() instanceof TexturedGlass,
                 "Home samples organic backdrop through a reusable textured glass surface");
             TexturedGlass panelSurface=(TexturedGlass)homePanel.getBackground();
-            require(panelSurface.samplesBackground()&&Math.abs(panelSurface.radiusDp()-12f)<.2f,
-                "Home panel uses actual blurred background sampling at 12dp");
+            require(panelSurface.samplesBackground()&&Math.abs(panelSurface.radiusDp()-8f)<.2f,
+                "Home panel uses sampled background with precise 8dp corners");
             for(int i=0;i<homeActions.getChildCount();i++){
                 android.graphics.drawable.RippleDrawable ripple=
                     (android.graphics.drawable.RippleDrawable)homeActions.getChildAt(i).getBackground();
                 require(ripple.getDrawable(0) instanceof TexturedGlass,
                     "Each Home action card uses consistent sampled glass");
                 TexturedGlass surface=(TexturedGlass)ripple.getDrawable(0);
-                require(surface.samplesBackground()&&Math.abs(surface.radiusDp()-10f)<.2f,
-                    "Cards have more architectural 10dp corners");
+                require(surface.samplesBackground()&&Math.abs(surface.radiusDp()-7f)<.2f,
+                    "Action cards use clearly squared-off 7dp corners");
             }
             stage("V1.36: organic background is blurred behind glass, not over photos");
             require(atmosphere instanceof OrganicBackdrop,
@@ -103,6 +103,22 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->backgroundSample[0]=((OrganicBackdrop)atmosphere).blurredSnapshot());
             require(backgroundSample[0]!=null&&backgroundSample[0].getWidth()>1,
                 "Glass source is a real low-resolution blurred rendering of the Home background");
+            require(backgroundSample[0].getWidth()>=Math.max(1,atmosphere.getWidth()/5),
+                "Background sample retains enough resolution to avoid 8x enlarged cloud blocks");
+            Field inkField=OrganicBackdrop.class.getDeclaredField("inkLayer");
+            inkField.setAccessible(true);
+            Bitmap inkBitmap=(Bitmap)inkField.get(atmosphere);
+            require(inkBitmap!=null&&!inkBitmap.isRecycled(),
+                "Organic shapes have a reusable softly feathered texture layer");
+            int translucent=0,fullyOpaque=0;
+            for(int y=0;y<inkBitmap.getHeight();y+=6)
+                for(int x=0;x<inkBitmap.getWidth();x+=6){
+                    int alpha=Color.alpha(inkBitmap.getPixel(x,y));
+                    if(alpha>8&&alpha<220)translucent++;
+                    if(alpha>250)fullyOpaque++;
+                }
+            require(translucent>65&&fullyOpaque==0,
+                "Ink shapes blend translucently into atmosphere instead of solid vector cutouts");
             final Bitmap[] glassSample={null};
             runOnMainSync(()->{
                 TexturedGlass glass=(TexturedGlass)homePanel.getBackground();
@@ -1126,6 +1142,24 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid mass transfers and reshapes between icons instead of a static capsule");
             }
             flowA[0].recycle();flowB[0].recycle();
+            stage("V1.36.1: metaball fades smoothly and respects gesture direction");
+            final Bitmap[] early={null},middle={null},late={null};
+            runOnMainSync(()->{
+                early[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
+                middle[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
+                late[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
+                bridge.draw(new Canvas(early[0]),60,70,172,70,.04f,31f);
+                bridge.draw(new Canvas(middle[0]),60,70,172,70,.50f,31f);
+                bridge.draw(new Canvas(late[0]),60,70,172,70,.96f,31f);
+            });
+            if(ValueAnimator.areAnimatorsEnabled()){
+                int a=Color.alpha(early[0].getPixel(110,70));
+                int b=Color.alpha(middle[0].getPixel(110,70));
+                int c=Color.alpha(late[0].getPixel(110,70));
+                require(b>a&&b>c,
+                    "Liquid connection fades continuously at both ends without a white flash");
+            }
+            early[0].recycle();middle[0].recycle();late[0].recycle();
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
