@@ -1123,6 +1123,20 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid connection fades continuously at both ends without a white flash");
             }
             early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
+            stage("V1.37.3: orbital scalar ink connects and separates geometrically");
+            Method densitySample=LiquidSelectorLayer.class.getDeclaredMethod(
+                "densityAt",float.class,float.class,float.class,float.class,float.class,float.class);
+            densitySample.setAccessible(true);
+            float separatedA=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.04f,0f);
+            float neck=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.50f,0f);
+            float separatedB=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.96f,0f);
+            require(separatedA<0f&&neck>0f&&separatedB<0f,
+                "The scalar density must create a real neck and break it again at both ends");
+            float edgeAtRest=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,0f);
+            float edgeLater=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,7f);
+            float edgeRepeated=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,0f);
+            require(edgeAtRest==edgeRepeated&&Math.abs(edgeLater-edgeAtRest)>.0002f,
+                "Edge deformation must be continuous and deterministic, not a screen-space overlay");
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
