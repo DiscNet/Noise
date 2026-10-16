@@ -75,6 +75,7 @@ class OrganicBackdrop extends View {
     }
     private void scene(Canvas canvas,float w,float h){
         if(baseGradient==null)return;
+        paint.setColor(Color.WHITE);
         paint.setShader(baseGradient);
         canvas.drawRect(0,0,w,h,paint);
         paint.setShader(null);
@@ -89,6 +90,7 @@ class OrganicBackdrop extends View {
             float rw=w*(i==1?.72f:.56f),rh=h*(i==0?.30f:.39f);
             matrix.reset();matrix.setScale(rw,rh);matrix.postTranslate(x,y);
             atmosphere[i].setLocalMatrix(matrix);
+            paint.setColor(Color.WHITE);
             paint.setShader(atmosphere[i]);
             canvas.drawOval(x-rw,y-rh,x+rw,y+rh,paint);
         }
