@@ -127,6 +127,52 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Turning the phone saves landscape photo while the camera UI remains portrait");
                 if(landscapePhoto!=portraitPhoto)landscapePhoto.recycle();
                 portraitPhoto.recycle();
+                stage("V1.34.1: genuine full-preview 1x and orientation-aware ratio");
+                RectF fullView=new RectF(),fullZoom=new RectF(),squareFull=new RectF();
+                CameraFrameGuide.geometryExact(720,1100,0f,1f,0,0,fullView);
+                require(Math.abs(fullView.left)<.01f&&Math.abs(fullView.top)<.01f
+                    &&Math.abs(fullView.right-720)<.01f
+                    &&Math.abs(fullView.bottom-1100)<.01f,
+                    "At 1x the TELA guide must cover 100% of the camera preview");
+                CameraFrameGuide.geometryExact(720,1100,0f,2f,0,0,fullZoom);
+                require(Math.abs(fullZoom.width()*2f-fullView.width())<.1f
+                    &&Math.abs(fullZoom.height()*2f-fullView.height())<.1f,
+                    "At 2x ONLY the guide shrinks, not the image or viewport");
+                CameraFrameGuide.geometryExact(720,1100,1f,1f,0,0,squareFull);
+                require(Math.abs(squareFull.width()-720)<.01f,
+                    "1:1 reaches both horizontal edges without artificial margins");
+                require(CameraScreen.viewAspect(0,.75f)==0f
+                    &&Math.abs(CameraScreen.viewAspect(2,.75f)-.75f)<.001f
+                    &&Math.abs(CameraScreen.viewAspect(3,.75f)-9f/16f)<.001f,
+                    "Ratios use one portrait-view shape and rotate with the saved photo");
+                Bitmap markerPhoto=Bitmap.createBitmap(3,5,Bitmap.Config.ARGB_8888);
+                markerPhoto.eraseColor(Color.BLACK);
+                markerPhoto.setPixel(0,0,Color.RED);
+                Bitmap rightPhoto=CameraScreen.rotateForDevice(markerPhoto,90);
+                Bitmap leftPhoto=CameraScreen.rotateForDevice(markerPhoto,270);
+                require(rightPhoto.getWidth()==5&&rightPhoto.getHeight()==3
+                    &&rightPhoto.getPixel(4,0)==Color.RED,
+                    "Phone rotation 90 must rotate JPEG clockwise, never upside down");
+                require(leftPhoto.getWidth()==5&&leftPhoto.getHeight()==3
+                    &&leftPhoto.getPixel(0,2)==Color.RED,
+                    "Phone rotation 270 must rotate JPEG counterclockwise");
+                rightPhoto.recycle();leftPhoto.recycle();markerPhoto.recycle();
+                final CameraRuler[] smoothRuler={null};
+                runOnMainSync(()->{
+                    smoothRuler[0]=new CameraRuler(activity);
+                    smoothRuler[0].configure(-180f,180f,2f,0f,0f);
+                    int density=Math.round(activity.getResources().getDisplayMetrics().density);
+                    int width=Math.round(360*activity.getResources().getDisplayMetrics().density);
+                    smoothRuler[0].layout(0,0,width,Math.max(80,density*81));
+                    long t=SystemClock.uptimeMillis();
+                    float from=width*.88f,to=width*.32f;
+                    MotionEvent down=MotionEvent.obtain(t,t,MotionEvent.ACTION_DOWN,from,40,0);
+                    MotionEvent move=MotionEvent.obtain(t,t+250,MotionEvent.ACTION_MOVE,to,40,0);
+                    smoothRuler[0].onTouchEvent(down);smoothRuler[0].onTouchEvent(move);
+                    down.recycle();move.recycle();
+                });
+                require(smoothRuler[0].value()>55f,
+                    "One normal swipe must move the precision ruler substantially");
                 stage("V1.33: movable frame and capture geometry");
                 RectF selectedFrame=new RectF();
                 CameraFrameGuide.geometryExact(720,1100,3f/4f,2f,100f,-85f,selectedFrame);
@@ -278,9 +324,11 @@ public class NoiseSmokeTest extends Instrumentation {
                 try(InputStream in=activity.getContentResolver().openInputStream(captured)){
                     BitmapFactory.decodeStream(in,null,photoInfo);
                 }
+                RectF capturedGuide=((CameraFrameGuide)field(cameraUi[0],"frameGuide")).frame();
+                float expectedAspect=capturedGuide.width()/capturedGuide.height();
                 require(photoInfo.outWidth>0&&photoInfo.outHeight>0
-                    &&Math.abs(photoInfo.outWidth-photoInfo.outHeight)<=2,
-                    "Captured high-resolution JPEG matches the selected square frame");
+                    &&Math.abs(photoInfo.outWidth/(float)photoInfo.outHeight-expectedAspect)<.035f,
+                    "Full-view 1x JPEG matches visible preview crop without an inset");
                 activity.getContentResolver().delete(captured,null,null);
                 runOnMainSync(()->{
                     cameraUi[0].dispose();
