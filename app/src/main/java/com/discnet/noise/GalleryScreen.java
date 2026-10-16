@@ -27,6 +27,7 @@ final class GalleryScreen extends FrameLayout {
         void onGrantPermission();
         void onClose();
         void onProjects();
+        void onShare(Uri uri);
     }
     private final Set<String> pendingThumbnails=Collections.synchronizedSet(new HashSet<>());
     private final Activity activity;
@@ -45,6 +46,7 @@ final class GalleryScreen extends FrameLayout {
     private final TextView notice;
     private final LinearLayout actions;
     private final PhotoAdapter adapter;
+    private View choiceOverlay;
     private int generation=0;
     private volatile boolean released=false;
     private final Handler ui=new Handler(Looper.getMainLooper());
@@ -57,7 +59,7 @@ final class GalleryScreen extends FrameLayout {
     GalleryScreen(Activity activity,Listener listener){
         super(activity);this.activity=activity;this.listener=listener;
         setBackground(EditorTheme.panel(activity,0xff101216,0xff101216,0,0));
-        setPadding(dp(15),dp(8),dp(15),dp(6));
+        setPadding(dp(15),dp(8),dp(15),dp(75));
         LinearLayout root=new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
         addView(root,new FrameLayout.LayoutParams(-1,-1));
@@ -99,7 +101,7 @@ final class GalleryScreen extends FrameLayout {
         adapter=new PhotoAdapter();grid.setAdapter(adapter);
         root.addView(grid,new LinearLayout.LayoutParams(-1,0,1));
         grid.setOnItemClickListener((parent,view,position,id)->{
-            if(position>=0&&position<filtered.size())listener.onPhoto(filtered.get(position).uri);
+            if(position>=0&&position<filtered.size())showPhotoActions(filtered.get(position).uri);
         });
         actions=new LinearLayout(activity);
         actions.setGravity(Gravity.CENTER_VERTICAL);
@@ -114,6 +116,44 @@ final class GalleryScreen extends FrameLayout {
         refresh(false);
     }
     private int dp(float size){return EditorTheme.dp(activity,size);}
+    private void showPhotoActions(Uri uri){
+        hidePhotoActions();
+        FrameLayout overlay=new FrameLayout(activity);
+        overlay.setBackgroundColor(0xe909070e);
+        overlay.setClickable(true);
+        overlay.setOnClickListener(v->hidePhotoActions());
+        LinearLayout panel=new LinearLayout(activity);
+        panel.setPadding(dp(22),dp(19),dp(22),dp(19));
+        panel.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            new int[]{OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.BLACK});
+        surface.setCornerRadius(dp(6));
+        panel.setBackground(surface);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
+        lp.leftMargin=dp(22);lp.rightMargin=dp(22);
+        overlay.addView(panel,lp);
+        panel.setOnClickListener(v->{});
+        TextView heading=txt("Imagem selecionada",19,OrbitalMaterial.WHITE);
+        panel.addView(heading,new LinearLayout.LayoutParams(-1,dp(46)));
+        TextView edit=button("Editar imagem");
+        edit.setTextColor(OrbitalMaterial.BLACK);
+        edit.setBackground(EditorTheme.buttonSurface(activity,4,true));
+        panel.addView(edit,new LinearLayout.LayoutParams(-1,dp(50)));
+        edit.setOnClickListener(v->{hidePhotoActions();listener.onPhoto(uri);});
+        TextView share=button("Compartilhar");
+        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(50));
+        sp.topMargin=dp(10);panel.addView(share,sp);
+        share.setOnClickListener(v->{hidePhotoActions();listener.onShare(uri);});
+        TextView cancel=button("Cancelar");
+        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(43));
+        cp.topMargin=dp(10);panel.addView(cancel,cp);
+        cancel.setOnClickListener(v->hidePhotoActions());
+        choiceOverlay=overlay;addView(overlay,new FrameLayout.LayoutParams(-1,-1));
+        overlay.bringToFront();
+    }
+    void hidePhotoActions(){if(choiceOverlay!=null){removeView(choiceOverlay);choiceOverlay=null;}}
+    boolean dismissPhotoActions(){if(choiceOverlay==null)return false;hidePhotoActions();return true;}
     private TextView txt(String s,int size,int color){
         TextView v=new TextView(activity);v.setText(s);v.setTextSize(size);v.setTextColor(color);
         v.setGravity(Gravity.CENTER_VERTICAL);return v;
@@ -143,7 +183,7 @@ final class GalleryScreen extends FrameLayout {
             LinkedHashMap<String,String> discovered=new LinkedHashMap<>();
             try{
                 String[] columns={MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH};
                 try(Cursor cursor=activity.getContentResolver().query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,columns,null,null,
                     MediaStore.Images.Media.DATE_ADDED+" DESC")){
@@ -151,11 +191,14 @@ final class GalleryScreen extends FrameLayout {
                         int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                         int bucket=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID);
                         int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
+                        int path=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH);
                         // Iterate all rows to discover every album, even ones
                         // whose latest image falls outside the recent-500 view.
                         while(cursor.moveToNext()){
                             String key=cursor.getString(bucket);
                             String label=cursor.getString(name);
+                            String location=cursor.getString(path);
+                            if(!isNoisePhoto(location,label))continue;
                             Uri uri=ContentUris.withAppendedId(
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id));
                             Photo photo=new Photo(uri,key==null?"":key,
@@ -178,7 +221,7 @@ final class GalleryScreen extends FrameLayout {
                 }
                 updateAlbums();
                 showRecent();
-                notice.setText(found.isEmpty()?"Nenhuma foto encontrada neste dispositivo.":"");
+                notice.setText(found.isEmpty()?"Nenhuma foto editada ou capturada no Noise! encontrada.":"");
                 notice.setVisibility(found.isEmpty()?VISIBLE:GONE);
             });
         });
@@ -207,7 +250,7 @@ final class GalleryScreen extends FrameLayout {
             ArrayList<Photo> folder=new ArrayList<>();
             try{
                 String[] projection={MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH};
                 try(Cursor cursor=activity.getContentResolver().query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     projection,
@@ -217,8 +260,10 @@ final class GalleryScreen extends FrameLayout {
                     if(cursor!=null){
                         int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                         int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
+                        int path=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH);
                         while(cursor.moveToNext()){
                             String album=cursor.getString(name);
+                            if(!isNoisePhoto(cursor.getString(path),album))continue;
                             folder.add(new Photo(ContentUris.withAppendedId(
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id)),
                                 selectedBucket,album==null?"Sem álbum":album));
@@ -234,11 +279,19 @@ final class GalleryScreen extends FrameLayout {
             });
         });
     }
+    static boolean isNoisePhoto(String path,String album){
+        // ExportManager and CameraPhotoPipeline both publish to Pictures/Noise!.
+        String normalized=path==null?"":path.toLowerCase(java.util.Locale.ROOT);
+        String bucket=album==null?"":album.toLowerCase(java.util.Locale.ROOT);
+        return normalized.startsWith("pictures/noise!/") ||
+            normalized.startsWith("dcim/noise!/") ||
+            bucket.equals("noise!");
+    }
     private void showRecent(){
         folderRequest++;
         filtered.clear();filtered.addAll(photos);adapter.notifyDataSetChanged();
         notice.setVisibility(filtered.isEmpty()?VISIBLE:GONE);
-        notice.setText(filtered.isEmpty()?"Nenhuma foto encontrada.":"");
+        notice.setText(filtered.isEmpty()?"Nenhuma foto do Noise! encontrada.":"");
     }
     private final class PhotoAdapter extends BaseAdapter {
         @Override public int getCount(){return filtered.size();}
@@ -289,7 +342,7 @@ final class GalleryScreen extends FrameLayout {
         }
     }
     void dispose(){
-        released=true;generation++;
+        hidePhotoActions();released=true;generation++;
         work.shutdownNow();thumbnails.evictAll();
     }
 }
