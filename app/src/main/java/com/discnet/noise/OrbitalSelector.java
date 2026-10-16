@@ -512,6 +512,16 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private final LiquidSelectorLayer liquidBridge=new LiquidSelectorLayer(getContext());
         private RadialGradient halo;
         private final LinearLayout[] rows=new LinearLayout[names.length];
+        private final IconArt[] pictograms=new IconArt[names.length];
+        private final int[] toolColors={
+            0xffb873ff,0xffffa05d,0xff5bd8ed,0xffff678f,
+            0xffd58aff,0xff7eafff,0xff53e5b9,0xffffd875
+        };
+        private int interpolate(int a,int b,float t){
+            return Color.rgb(Math.round(Color.red(a)*(1-t)+Color.red(b)*t),
+                Math.round(Color.green(a)*(1-t)+Color.green(b)*t),
+                Math.round(Color.blue(a)*(1-t)+Color.blue(b)*t));
+        }
         private final TextView[] captions=new TextView[names.length];
         private final ImageView[] icons=new ImageView[names.length];
         private final IconGlowFrame[] idleFrames=new IconGlowFrame[names.length];
@@ -547,7 +557,9 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 idleFrames[i]=new IconGlowFrame(context,false);
                 focusFrames[i]=new IconGlowFrame(context,true);
                 icon.setBackground(idleFrames[i]);
-                icon.setImageDrawable(new IconArt(symbols[Math.min(i,symbols.length-1)],EditorTheme.INK));
+                pictograms[i]=new IconArt(symbols[Math.min(i,symbols.length-1)],
+                    toolColors[i%toolColors.length]);
+                icon.setImageDrawable(pictograms[i]);
                 // Insert after setMode so tools put the icon first (left),
                 // effects put the icon last (right).
                 row.setContentDescription(names[i]+", ferramenta orbital");
@@ -639,8 +651,10 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             int from=(int)Math.floor(offset);
             if(from>=0&&from<names.length-1){
                 float p=offset-from;
-                // No liquid bridge: only continuous crossfade and the original
-                // damped wheel position determine the visible selection.
+                liquidBridge.draw(canvas,
+                    arcX((from-offset)*STEP),arcY((from-offset)*STEP),
+                    arcX((from+1-offset)*STEP),arcY((from+1-offset)*STEP),
+                    p,dp(27));
             }
         }
         private void render(){
@@ -678,7 +692,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                     Math.round(142+(242-142)*emphasis),
                     Math.round(139+(237-139)*emphasis),
                     Math.round(151+(247-151)*emphasis)));
-                icons[i].setImageAlpha(Math.round(192+63*emphasis));
+                // Interpolate vivid per-tool pigment, preserving distinct hues
+                // instead of washing every icon into the same grey/lavender.
+                int vivid=toolColors[i%toolColors.length];
+                pictograms[i].tint(interpolate(0xffaa91c4,vivid,.48f+.52f*emphasis));
+                icons[i].setImageAlpha(Math.round(212+43*emphasis));
                 float terminalFade=Math.max(0f,Math.min(1f,(1.42f-Math.abs(theta))/.32f));
                 float topBottom=Math.min(y,getHeight()-y-dp(64));
                 float viewportFade=Math.max(0f,Math.min(1f,(topBottom+dp(32))/dp(72)));
@@ -719,7 +737,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 focusFrames[i].setStrength(intensity);
                 // Keep geometry attached to wheel movement rather than
                 // restarting a 455ms animator at each snapped icon.
-                focusFrames[i].setLiquid(1f);
+                focusFrames[i].setLiquid(Math.max(0f,1f-Math.abs(offset-i)));
             }
         }
         private void cancelMotion(){
