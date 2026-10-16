@@ -354,6 +354,38 @@ final class CameraScreen extends FrameLayout {
         preview.setLayerType(View.LAYER_TYPE_HARDWARE,paint);
         preview.invalidate();
     }
+    private void showCameraOptions(View anchor){
+        PopupMenu menu=new PopupMenu(activity,anchor);
+        for(int quality:new int[]{95,98,100}){
+            menu.getMenu().add(1,quality,quality,"JPEG · qualidade "+quality+"%")
+                .setCheckable(true).setChecked(quality==jpegQuality);
+        }
+        menu.getMenu().setGroupCheckable(1,true,true);
+        menu.getMenu().add(2,1,110,showGrid?"Ocultar grade":"Exibir grade");
+        menu.getMenu().add(3,1,111,"Restaurar ajustes da câmera");
+        menu.setOnMenuItemClickListener(item->{
+            if(item.getGroupId()==1){
+                jpegQuality=item.getItemId();
+                activity.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).edit()
+                    .putInt("jpeg_quality",jpegQuality).apply();
+                status.setText("Qualidade de captura JPEG · "+jpegQuality+"%");
+                return true;
+            }
+            if(item.getGroupId()==2){
+                showGrid=!showGrid;
+                frameGuide.grid(showGrid);
+                activity.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).edit()
+                    .putBoolean("show_grid",showGrid).apply();
+                return true;
+            }
+            for(Tool tool:Tool.values())setToolValue(tool,tool.neutral,false);
+            frameGuide.centerFrame();
+            selectTool(selected);
+            status.setText("Ajustes redefinidos");
+            return true;
+        });
+        menu.show();
+    }
     private void cycleFlash(){
         if(!engine.hasFlash())return;
         int[] modes={ImageCapture.FLASH_MODE_OFF,ImageCapture.FLASH_MODE_AUTO,ImageCapture.FLASH_MODE_ON};
@@ -416,10 +448,21 @@ final class CameraScreen extends FrameLayout {
         pictures.execute(()->{
             try{
                 Uri uri=CameraPhotoPipeline.save(activity.getApplicationContext(),jpeg,snapshot);
+                Bitmap previewThumb=null;
+                try(InputStream in=activity.getContentResolver().openInputStream(uri)){
+                    BitmapFactory.Options options=new BitmapFactory.Options();
+                    options.inSampleSize=16;
+                    previewThumb=BitmapFactory.decodeStream(in,null,options);
+                }catch(Exception ignored){}
+                final Bitmap thumbnail=previewThumb;
                 mainHandler.post(()->{
-                    if(disposed)return;
+                    if(disposed){
+                        if(thumbnail!=null)thumbnail.recycle();
+                        return;
+                    }
                     latestPhoto=uri;
                     capturing=false;shutterButton.setEnabled(true);
+                    if(thumbnail!=null)lastThumbnail.setImageBitmap(thumbnail);
                     editButton.setAlpha(1f);editButton.setEnabled(true);
                     status.setText("Foto salva em Pictures/Noise!");
                 });
