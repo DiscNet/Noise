@@ -107,7 +107,7 @@ final class HomeScreen extends FrameLayout {
         LinearLayout lower=new LinearLayout(c);
         lower.setOrientation(LinearLayout.VERTICAL);
         lower.setPadding(dp(15),dp(12),dp(15),dp(13));
-        lower.setBackground(new TexturedGlass(c,backdrop,lower,12,0xff211b29,.43f));
+        lower.setBackground(new TexturedGlass(c,backdrop,lower,8,0xff211b29,.46f));
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
 
         LinearLayout sectionHeader=new LinearLayout(c);
@@ -156,7 +156,7 @@ final class HomeScreen extends FrameLayout {
         resume.setTypeface(NoiseTypography.medium(c));
         resume.setGravity(Gravity.CENTER_VERTICAL);
         resume.setPadding(dp(13),0,dp(13),0);
-        resume.setBackground(new TexturedGlass(c,backdrop,resume,8,0xff24202c,.39f));
+        resume.setBackground(new TexturedGlass(c,backdrop,resume,6,0xff24202c,.43f));
         resume.setMinHeight(dp(43));
         resume.setSingleLine(true);
         resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -173,7 +173,7 @@ final class HomeScreen extends FrameLayout {
         navButton(nav,"Biblioteca",IconArt.GALLERY,onImport,false);
         navButton(nav,"Projetos",IconArt.FOLDER,onProjects,false);
     }
-    /** All noncircular Home surfaces have the same 12dp optical radius. */
+    /** Structural Home components use 6-8dp, preserving the central circle. */
     private GradientDrawable homeSurface(int color,float radius){
         GradientDrawable d=new GradientDrawable();
         d.setColor(color);d.setCornerRadius(dp(radius));
@@ -182,15 +182,15 @@ final class HomeScreen extends FrameLayout {
     }
     private void homeHeaderButton(ImageView icon){
         icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x24ffffff),
-            new TexturedGlass(icon.getContext(),backdrop,icon,8,0xff201d28,.41f),null));
+            new TexturedGlass(icon.getContext(),backdrop,icon,7,0xff201d28,.41f),null));
     }
     private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
                                    boolean primary,Runnable action){
         FrameLayout tile=new FrameLayout(c);
         // A shared material grammar: sampled blurred artwork, micro-refraction,
         // subdued warm/cool reflections. No unrelated translucent rectangles.
-        TexturedGlass material=new TexturedGlass(c,backdrop,tile,10,
-            primary?0xff695577:0xff24202b,primary?.36f:.50f);
+        TexturedGlass material=new TexturedGlass(c,backdrop,tile,7,
+            primary?0xff4b405b:0xff24202b,primary?.43f:.56f);
         tile.setBackground(new RippleDrawable(
             ColorStateList.valueOf(primary?0x29ffffff:0x1bffffff),material,null));
         tile.setClickable(true);

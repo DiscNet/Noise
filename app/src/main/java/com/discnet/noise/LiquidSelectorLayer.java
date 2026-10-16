@@ -5,83 +5,97 @@ import android.content.Context;
 import android.graphics.*;
 
 /**
- * Gesture-driven metaball bridge for adjacent orbital icons.
- *
- * The contour is a continuous Bézier approximation of two merged influence
- * fields. It is evaluated directly from the wheel's fractional angular offset:
- * reversing direction reverses the transfer in the same frame, with no
- * queued transition animators, sliding capsules, or particle decorations.
+ * One gesture-synchronized viscous membrane between neighboring orbital icons.
+ * Its single field follows the wheel's fractional offset and reverses without
+ * allocating animators, restarting timers or dropping frames between items.
  */
 final class LiquidSelectorLayer {
     private final Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint softEdge=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint outline=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sheen=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path field=new Path();
     private final float density;
     private boolean connected;
     private float displayedProgress;
-    LiquidSelectorLayer(Context c){
-        density=c.getResources().getDisplayMetrics().density;
-        outline.setStyle(Paint.Style.STROKE);
-        outline.setStrokeWidth(density*1.15f);
-        outline.setStrokeCap(Paint.Cap.ROUND);
+    LiquidSelectorLayer(Context context){
+        density=context.getResources().getDisplayMetrics().density;
         fill.setStyle(Paint.Style.FILL);
+        softEdge.setStyle(Paint.Style.STROKE);
+        softEdge.setStrokeWidth(3.1f*density);
+        softEdge.setStrokeJoin(Paint.Join.ROUND);
+        outline.setStyle(Paint.Style.STROKE);
+        outline.setStrokeWidth(1.05f*density);
+        outline.setStrokeCap(Paint.Cap.ROUND);
+        outline.setStrokeJoin(Paint.Join.ROUND);
         sheen.setStyle(Paint.Style.STROKE);
-        sheen.setStrokeWidth(density*.60f);
+        sheen.setStrokeWidth(.65f*density);
+        sheen.setStrokeCap(Paint.Cap.ROUND);
     }
     boolean connected(){return connected;}
     float progress(){return displayedProgress;}
+    private static float smooth(float a,float b,float x){
+        float p=Math.max(0f,Math.min(1f,(x-a)/(b-a)));
+        return p*p*(3f-2f*p);
+    }
     /**
-     * Coordinates refer to actual icon centers projected on the orbit.
-     * Rendering happens behind child icons, preserving their readability.
+     * Each icon contributes a smoothly varying influence. The lower and upper
+     * membranes share matching Bézier tangents at the neck, avoiding corners
+     * in the moment of fusion.
      */
     void draw(Canvas canvas,float ax,float ay,float bx,float by,
-              float progress,float iconRadius){
+              float progress,float radius){
         displayedProgress=Math.max(0f,Math.min(1f,progress));
         connected=ValueAnimator.areAnimatorsEnabled()
-            &&displayedProgress>.012f&&displayedProgress<.988f;
+            &&displayedProgress>.002f&&displayedProgress<.998f;
         if(!connected)return;
         float dx=bx-ax,dy=by-ay;
         float distance=(float)Math.hypot(dx,dy);
-        if(distance<1f)return;
-        // Material moves rather than two independent rings fading in/out.
-        float transfer=displayedProgress;
-        float rA=iconRadius*(1f-.48f*transfer);
-        float rB=iconRadius*(.52f+.48f*transfer);
-        float influence=(float)Math.sin(Math.PI*transfer);
-        float neck=Math.max(iconRadius*.12f,Math.min(rA,rB)*(.28f+.12f*influence));
-        float mid=distance*.5f+(rA-rB)*.10f;
+        if(distance<1f){connected=false;return;}
+        float p=displayedProgress;
+        float aWeight=1f-smooth(0f,1f,p);
+        float bWeight=smooth(0f,1f,p);
+        float belly=(float)Math.sin(Math.PI*p);
+        float ra=radius*(.52f+.47f*aWeight);
+        float rb=radius*(.52f+.47f*bWeight);
+        float halfNeck=Math.min(radius*.60f,
+            (Math.min(ra,rb)*(.25f+.22f*belly)));
+        float neckX=distance*(.50f+.08f*(aWeight-bWeight));
+        float tangent=Math.min(distance*.28f,radius*.64f);
 
         field.reset();
-        field.moveTo(0f,-rA);
-        // Two upper flowing shoulders join in one narrow negative-space neck.
-        field.cubicTo(rA*.83f,-rA,mid-rA*.77f,-neck,mid,-neck);
-        field.cubicTo(mid+rB*.75f,-neck,distance-rB*.90f,-rB,distance,-rB);
-        // Positive end lobe.
-        field.cubicTo(distance+rB*.78f,-rB,distance+rB*1.06f,-rB*.45f,
-            distance+rB,0f);
-        field.cubicTo(distance+rB*1.06f,rB*.45f,distance+rB*.78f,rB,
-            distance,rB);
-        // The lower surface mirrors the bridge with a gentle asymmetric drift.
-        field.cubicTo(distance-rB*.83f,rB,mid+rB*.57f,neck*1.06f,mid,neck*1.06f);
-        field.cubicTo(mid-rA*.68f,neck*1.06f,rA*.80f,rA,0f,rA);
-        field.cubicTo(-rA*.82f,rA,-rA*1.06f,rA*.46f,-rA,0f);
-        field.cubicTo(-rA*1.06f,-rA*.46f,-rA*.82f,-rA,0f,-rA);
+        field.moveTo(-ra,0f);
+        // Source lobe: first derivative is smooth at all four extrema.
+        field.cubicTo(-ra,-ra*.56f,-ra*.56f,-ra,0f,-ra);
+        field.cubicTo(ra*.53f,-ra,neckX-tangent,-halfNeck,neckX,-halfNeck);
+        // Neck: horizontal tangent to the receiving lobe.
+        field.cubicTo(neckX+tangent,-halfNeck,distance-rb*.55f,-rb,
+            distance,-rb);
+        field.cubicTo(distance+rb*.57f,-rb,distance+rb,-rb*.54f,
+            distance+rb,0f);
+        field.cubicTo(distance+rb,rb*.54f,distance+rb*.57f,rb,
+            distance,rb);
+        field.cubicTo(distance-rb*.55f,rb,neckX+tangent,halfNeck,
+            neckX,halfNeck);
+        field.cubicTo(neckX-tangent,halfNeck,ra*.53f,ra,0f,ra);
+        field.cubicTo(-ra*.56f,ra,-ra,ra*.56f,-ra,0f);
         field.close();
 
+        // The transfer must not pop in/out. Both opacity and light scattering
+        // taper with continuous derivatives at the beginning and end.
+        float appear=smooth(0f,.19f,p)*(1f-smooth(.81f,1f,p));
+        int alpha=Math.round(204f*appear);
         int save=canvas.save();
         canvas.translate(ax,ay);
         canvas.rotate((float)Math.toDegrees(Math.atan2(dy,dx)));
-        int alpha=Math.round(205f*Math.min(1f,influence*1.65f));
-        fill.setColor(Color.argb(Math.round(alpha*.64f),135,113,161));
+        fill.setColor(Color.argb(Math.round(alpha*.63f),124,105,147));
         canvas.drawPath(field,fill);
-        // White edge is a SINGLE continuous stroke. During transfer only,
-        // both influence zones are connected by the same boundary.
-        outline.setColor(Color.argb(alpha,241,232,246));
+        softEdge.setColor(Color.argb(Math.round(alpha*.17f),226,210,237));
+        canvas.drawPath(field,softEdge);
+        outline.setColor(Color.argb(alpha,245,241,247));
         canvas.drawPath(field,outline);
-        // Surface reflection shares the same cool studio highlights.
-        sheen.setColor(Color.argb(Math.round(alpha*.31f),228,209,242));
-        canvas.drawLine(rA*.38f,-rA*.78f,mid,-neck*.93f,sheen);
+        sheen.setColor(Color.argb(Math.round(alpha*.30f),234,217,239));
+        canvas.drawLine(ra*.30f,-ra*.82f,neckX,-halfNeck*.96f,sheen);
         canvas.restoreToCount(save);
     }
 }

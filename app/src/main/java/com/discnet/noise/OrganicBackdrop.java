@@ -17,7 +17,10 @@ import java.util.ArrayList;
 class OrganicBackdrop extends View {
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
     private final Matrix matrix=new Matrix();
-    private final Path inkLeft=new Path(),inkRight=new Path(),paperLight=new Path();
+    private Bitmap inkLayer;
+    private final Rect inkBounds=new Rect();
+    private final Rect inkDestination=new Rect();
+    private long lastNotifiedAt;
     private final ArrayList<WeakReference<TexturedGlass>> materials=new ArrayList<>();
     private LinearGradient baseGradient;
     private RadialGradient[] atmosphere;
@@ -51,27 +54,57 @@ class OrganicBackdrop extends View {
             new RadialGradient(0,0,1,new int[]{0x628b9ea6,0x2261798c,0x0061798c},
                 new float[]{0f,.45f,1f},Shader.TileMode.CLAMP)
         };
-        // Deliberate, asymmetric negative-space silhouettes, not random blobs.
-        inkLeft.reset();
-        inkLeft.moveTo(-w*.18f,h*.07f);
-        inkLeft.cubicTo(w*.37f,-h*.07f,w*.23f,h*.22f,w*.12f,h*.34f);
-        inkLeft.cubicTo(w*.02f,h*.52f,w*.22f,h*.58f,w*.05f,h*.76f);
-        inkLeft.cubicTo(-w*.09f,h*.87f,-w*.25f,h*.57f,-w*.18f,h*.07f);
-        inkLeft.close();
-        inkRight.reset();
-        inkRight.moveTo(w*1.12f,h*.04f);
-        inkRight.cubicTo(w*.76f,h*.03f,w*.86f,h*.21f,w*.66f,h*.30f);
-        inkRight.cubicTo(w*.50f,h*.43f,w*.83f,h*.48f,w*.90f,h*.63f);
-        inkRight.cubicTo(w*1.06f,h*.84f,w*1.13f,h*.92f,w*1.12f,h*.04f);
-        inkRight.close();
-        paperLight.reset();
-        paperLight.moveTo(w*.12f,h*.12f);
-        paperLight.cubicTo(w*.21f,h*.02f,w*.45f,h*.10f,w*.48f,h*.18f);
-        paperLight.cubicTo(w*.55f,h*.34f,w*.19f,h*.38f,w*.14f,h*.29f);
-        paperLight.cubicTo(w*.09f,h*.23f,w*.06f,h*.18f,w*.12f,h*.12f);
-        paperLight.close();
+        // Compute softened ink fields once per size, at display-independent
+        // resolution. This replaces the former flat, hard-edged paths.
+        buildInkLayer(w,h);
         if(snapshot!=null){snapshot.recycle();snapshot=null;}
         snapshotAt=0;invalidate();notifyMaterials();
+    }
+    private static float smooth(float a,float b,float x){
+        float t=Math.max(0f,Math.min(1f,(x-a)/(b-a)));
+        return t*t*(3f-2f*t);
+    }
+    private static int clamp(int n){return Math.max(0,Math.min(255,n));}
+    /**
+     * Three authored ribbon fields with soft, irregular edges. The ink
+     * deliberately never becomes a solid flat polygon; neighboring atmospheric
+     * light remains visible through the ribbons.
+     */
+    private void buildInkLayer(int width,int height){
+        int w=Math.max(1,Math.min(420,(width+1)/2));
+        int h=Math.max(1,Math.min(780,(height+1)/2));
+        int[] pixels=new int[w*h];
+        for(int y=0;y<h;y++){
+            float v=(y+.5f)/h;
+            float c1=.025f+.20f*(float)Math.sin(v*4.8f+.42f);
+            float c2=1.09f-.22f*(float)Math.sin(v*4.1f+1.25f);
+            float c3=.48f+.25f*(float)Math.sin(v*5.6f+.7f);
+            for(int x=0;x<w;x++){
+                float u=(x+.5f)/w;
+                float fine=(float)(Math.sin((x*1.57+y*2.69)*.39)
+                    *Math.sin((x*2.13-y*.71)*.51));
+                float irregular=.013f*fine;
+                float left=1f-smooth(.15f,.30f,Math.abs(u-c1)+irregular);
+                float right=1f-smooth(.15f,.29f,Math.abs(u-c2)-irregular);
+                float drift=1f-smooth(.07f,.22f,Math.abs(u-c3)+irregular);
+                float gate=smooth(.12f,.31f,v)*(1f-smooth(.75f,.97f,v));
+                float shadow=Math.min(.65f,left*.26f+right*.42f+drift*gate*.17f);
+                float luminous=(1f-smooth(.05f,.22f,Math.abs(u-(.31f+
+                    .22f*(float)Math.sin(v*3.1f)))))*gate*.13f;
+                float mixed=Math.max(0f,shadow+luminous);
+                int alpha=clamp(Math.round(mixed*255f));
+                int red=clamp(Math.round(14f+luminous*300f));
+                int green=clamp(Math.round(14f+luminous*230f));
+                int blue=clamp(Math.round(22f+luminous*375f));
+                pixels[y*w+x]=Color.argb(alpha,red,green,blue);
+            }
+        }
+        Bitmap next=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+        next.setPixels(pixels,0,w,0,0,w,h);
+        if(inkLayer!=null)inkLayer.recycle();
+        inkLayer=next;
+        inkBounds.set(0,0,w,h);
+        inkDestination.set(0,0,width,height);
     }
     private void scene(Canvas canvas,float w,float h){
         if(baseGradient==null)return;
@@ -79,14 +112,13 @@ class OrganicBackdrop extends View {
         paint.setShader(baseGradient);
         canvas.drawRect(0,0,w,h,paint);
         paint.setShader(null);
-        // Off-white is used sparingly as a scattering source, not an opaque wallpaper.
-        paint.setColor(0x243a4051);canvas.drawPath(inkLeft,paint);
-        paint.setColor(0xb70a0b12);canvas.drawPath(inkRight,paint);
-        paint.setColor(0x1239b2ca);canvas.drawPath(paperLight,paint);
+        // The atmospheric gradient stays present behind the new ink forms.
         for(int i=0;i<atmosphere.length;i++){
             float t=phase*6.2831853f;
-            float x=w*(i==0?.18f:i==1?.88f:.44f)+w*.028f*(float)Math.sin(t+i*2.2f);
-            float y=h*(i==0?.24f:i==1?.66f:.87f)+h*.025f*(float)Math.cos(t*.66f+i);
+            float x=w*(i==0?.18f:i==1?.88f:.44f)
+                +w*.020f*(float)Math.sin(t+i*2.2f);
+            float y=h*(i==0?.24f:i==1?.66f:.87f)
+                +h*.021f*(float)Math.cos(t*.66f+i);
             float rw=w*(i==1?.72f:.56f),rh=h*(i==0?.30f:.39f);
             matrix.reset();matrix.setScale(rw,rh);matrix.postTranslate(x,y);
             atmosphere[i].setLocalMatrix(matrix);
@@ -95,9 +127,12 @@ class OrganicBackdrop extends View {
             canvas.drawOval(x-rw,y-rh,x+rw,y+rh,paint);
         }
         paint.setShader(null);
-        // A few soft ink intersections reinforce the shared material direction.
-        paint.setColor(0x2d0a0912);
-        canvas.drawPath(inkRight,paint);
+        if(inkLayer!=null&&!inkLayer.isRecycled()){
+            paint.setColor(Color.WHITE);
+            paint.setAlpha(226);
+            canvas.drawBitmap(inkLayer,inkBounds,inkDestination,paint);
+            paint.setAlpha(255);
+        }
     }
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);
@@ -110,8 +145,10 @@ class OrganicBackdrop extends View {
     Bitmap blurredSnapshot(){
         if(getWidth()<1||getHeight()<1)return null;
         long now=SystemClock.uptimeMillis();
-        if(snapshot!=null&&now-snapshotAt<840)return snapshot;
-        int w=Math.max(1,(getWidth()+7)/8),h=Math.max(1,(getHeight()+7)/8);
+        if(snapshot!=null&&now-snapshotAt<2800)return snapshot;
+        // Four-times reduction keeps detail behind glass without reproducing
+        // the old 8x-upscaled cloudy blocks.
+        int w=Math.max(1,(getWidth()+3)/4),h=Math.max(1,(getHeight()+3)/4);
         Bitmap next=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
         Canvas offscreen=new Canvas(next);
         offscreen.scale(w/(float)getWidth(),h/(float)getHeight());
@@ -151,6 +188,7 @@ class OrganicBackdrop extends View {
         pause();
         if(animator!=null){animator.cancel();animator=null;}
         if(snapshot!=null){snapshot.recycle();snapshot=null;}
+        if(inkLayer!=null){inkLayer.recycle();inkLayer=null;}
         super.onDetachedFromWindow();
     }
     private void resume(){
@@ -163,7 +201,11 @@ class OrganicBackdrop extends View {
             animator.addUpdateListener(a->{
                 phase=(Float)a.getAnimatedValue();
                 postInvalidateOnAnimation();
-                if(SystemClock.uptimeMillis()-snapshotAt>900)notifyMaterials();
+                long now=SystemClock.uptimeMillis();
+                if(now-lastNotifiedAt>2900){
+                    lastNotifiedAt=now;
+                    notifyMaterials();
+                }
             });
         }
         if(!animator.isStarted())animator.start();
