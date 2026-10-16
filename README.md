@@ -55,7 +55,7 @@ O **Noise!** combina os ajustes essenciais de fotografia com ferramentas criativ
 
 ### ◌ Estúdio e interface orbital
 
-Home com **tinta procedural na GPU**: massas que se deformam, fundem e se separam, com contornos de tinta realmente desgastados, lascas e reentrâncias procedurais, reflexos violeta e resposta suave ao toque. Perfis Alto, Equilibrado e Econômico, ajuste automático e redução de movimento nas configurações. **Cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. O menu rotativo mantém a navegação orbital suave, **sem a ponte líquida**, com Selecionar centralizado na tela. O estúdio oferece navegação por deslize entre **Início, Galeria e Projetos**, galeria de fotos capturadas/editadas com opções de edição e compartilhamento, e exportação em tela própria com confirmação Noise!. A Home mantém seu fundo animado e o círculo.
+Home com **tinta procedural na GPU**: massas que se deformam, fundem e se separam, com contornos de tinta realmente desgastados, lascas e reentrâncias procedurais, reflexos violeta e resposta suave ao toque. Perfis Alto, Equilibrado e Econômico, ajuste automático e redução de movimento nas configurações. **Cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. O menu rotativo mantém a navegação orbital suave, **sem a ponte líquida**, com Selecionar centralizado na tela. O estúdio oferece navegação por deslize entre **Início, Galeria e Projetos**. A Galeria acessa a biblioteca autorizada do dispositivo, agrupada por data, e abre um visualizador com zoom, navegação lateral e Baixar/Editar/Compartilhar; o círculo da Home abre um seletor independente que importa a foto diretamente. Presets ajustáveis e exportação PNG/JPEG/WebP em tela própria. A Home mantém seu fundo animado e o círculo.
 
 </td>
 <td valign="top">
@@ -186,7 +186,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.38.0](docs/RELEASE-1.38.0.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.39.0](docs/RELEASE-1.39.0.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -202,7 +202,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.38.0.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.39.0.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 

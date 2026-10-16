@@ -38,6 +38,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorWorkspace workspace;
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
+    private GalleryScreen imagePickerScreen;
+    private MediaLibrary.Photo pendingGalleryCopy;
     private CameraScreen cameraScreen;
     private int orientationBeforeCamera=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private HomeScreen homeScreen;
@@ -63,7 +65,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private boolean loading,exporting,destroyed,comparing,orbitalClosing;
     private int maxTexture=4096;
     private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74,VAULT_REQUEST=82,CAMERA_PERMISSION=83;
-    static final int CAMERA_STORAGE_PERMISSION=84;
+    static final int CAMERA_STORAGE_PERMISSION=84, GALLERY_COPY_PERMISSION=85;
     private int dp(float n){return EditorTheme.dp(this,n);}
     private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setTypeface(NoiseTypography.regular(this));v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView button(String t,boolean primary){TextView v=text(t,14,primary?0xff19121f:EditorTheme.INK);v.setGravity(Gravity.CENTER);EditorTheme.button(v,primary);v.setMinHeight(dp(48));v.setFocusable(true);return v;}
@@ -100,7 +102,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             public void failed(String message){if(!destroyed){status.setText(message);Toast.makeText(MainActivity.this,message,Toast.LENGTH_LONG).show();}}
         });editorStage.addView(preview,new FrameLayout.LayoutParams(-1,-1));
         preview.gestures(new EditorSurface.Gestures(){public void compare(boolean active){comparing=active;publish();}public void fullscreen(){toggleFullscreen();}});
-        empty=text("Noise!\n\nAbrir uma imagem\n\nSeu estúdio, sem distrações",18,EditorTheme.INK);empty.setGravity(Gravity.CENTER);empty.setBackgroundColor(0xff0c0b10);empty.setFocusable(true);editorStage.addView(empty,new FrameLayout.LayoutParams(-1,-1));empty.setOnClickListener(v->showGallery());
+        empty=text("Noise!\n\nAbrir uma imagem\n\nSeu estúdio, sem distrações",18,EditorTheme.INK);empty.setGravity(Gravity.CENTER);empty.setBackgroundColor(0xff0c0b10);empty.setFocusable(true);editorStage.addView(empty,new FrameLayout.LayoutParams(-1,-1));empty.setOnClickListener(v->showImagePicker());
         compareLabel=text("Original",12,EditorTheme.LIME);compareLabel.setBackgroundColor(0xff20242d);compareLabel.setPadding(dp(12),dp(6),dp(12),dp(6));FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-2,-2,Gravity.TOP|Gravity.CENTER_HORIZONTAL);cp.topMargin=dp(8);editorStage.addView(compareLabel,cp);compareLabel.setVisibility(View.GONE);
         status=text("",11,EditorTheme.MUTED);status.setMaxLines(2);status.setPadding(dp(12),dp(5),dp(52),dp(5));status.setBackgroundColor(0xff0c0b10);FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);editorStage.addView(status,sp);
         ImageView full=IconArt.button(this,IconArt.FULL,"Alternar tela cheia");FrameLayout.LayoutParams fp=new FrameLayout.LayoutParams(dp(48),dp(48),Gravity.BOTTOM|Gravity.RIGHT);editorStage.addView(full,fp);full.setOnClickListener(v->toggleFullscreen());
@@ -179,7 +181,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     private void showOrbital(boolean effects){showOrbital(effects,false);}
     private void showOrbital(boolean effects,boolean interactive){
-        if(original==null){showGallery();return;}
+        if(original==null){showImagePicker();return;}
         if(orbital!=null)return;
         // A closing wheel must never lock the editor after a category change.
         // If the user starts another edge gesture, interrupt the previous
@@ -259,7 +261,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         boolean eligible=activeStudioTab>=0&&studioTabs!=null
             &&studioTabs.getVisibility()==View.VISIBLE
             &&cameraScreen==null&&settingsScreen==null&&presetLibrary==null
-            &&exportScreen==null&&!exporting&&exportResult==null
+            &&exportScreen==null&&!exporting&&exportResult==null&&imagePickerScreen==null
             &&(galleryScreen==null||!galleryScreen.dismissPhotoActionsPending())
             &&(projectLibrary==null||!projectLibrary.hasModal());
         if(type==MotionEvent.ACTION_DOWN){
@@ -283,10 +285,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showHome(){
         closeOrbital();
         if(homeScreen==null){
-            homeScreen=new HomeScreen(this,this::showGallery,this::showCamera,this::showProjects,
+            homeScreen=new HomeScreen(this,this::showImagePicker,this::showCamera,this::showProjects,
                 this::showSettings,()->{
                 String id=getPreferences(0).getString("lastProject",null);
-                if(id!=null)loadProject(id,false);else showGallery();
+                if(id!=null)loadProject(id,false);else showImagePicker();
             });
             appBackground.addView(homeScreen,new FrameLayout.LayoutParams(-1,-1));
         }
@@ -359,7 +361,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         case "Meus projetos":showProjects();break;
         case "Neon":mutate(()->document.copyLook(ProjectStore.builtins().get(3).document));break;
     }}
-    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Câmera","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showGallery();break;case "Câmera":showCamera();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
+    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Câmera","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showImagePicker();break;case "Câmera":showCamera();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
     private void showCrop(){if(original==null||loading)return;if(cropEditor!=null)return;
         cropEditor=new CropEditor(this,original,document,sourceWidth(),sourceHeight(),new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
     private void closeCrop(){if(cropEditor!=null){appBackground.removeView(cropEditor);cropEditor=null;}}
@@ -409,6 +411,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){
                 @Override public void onPhoto(Uri uri){hideStudioTabs();load(uri);}
                 @Override public void onShare(Uri uri){shareGallery(uri);}
+                @Override public void onViewerState(boolean showing){
+                    if(showing)hideStudioTabs();
+                    else revealStudioTabs(StudioTabBar.GALLERY);
+                }
                 @Override public void onSystemGallery(){systemPicker();}
                 @Override public void onGrantPermission(){grantGalleryPermission();}
                 @Override public void onClose(){switchStudioTab(StudioTabBar.HOME);}
@@ -422,6 +428,41 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         revealStudioTabs(StudioTabBar.GALLERY);
     }
     private void closeGallery(){if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);}
+    /** Picker route is independent: a single photo tap always imports directly. */
+    private void showImagePicker(){
+        if(imagePickerScreen!=null)return;
+        hideStudioTabs();closeOrbital();
+        imagePickerScreen=new GalleryScreen(this,new GalleryScreen.Listener(){
+            @Override public void onPhoto(Uri uri){
+                closeImagePicker();
+                load(uri);
+            }
+            @Override public void onSystemGallery(){systemPicker();}
+            @Override public void onGrantPermission(){grantGalleryPermission();}
+            @Override public void onClose(){closeImagePicker();}
+            @Override public void onProjects(){closeImagePicker();showProjects();}
+            @Override public void onShare(Uri uri){shareGallery(uri);}
+        },true);
+        appBackground.addView(imagePickerScreen,new FrameLayout.LayoutParams(-1,-1));
+        imagePickerScreen.bringToFront();
+        imagePickerScreen.refresh(hasGalleryPermission());
+    }
+    private void closeImagePicker(){
+        if(imagePickerScreen==null)return;
+        GalleryScreen closing=imagePickerScreen;imagePickerScreen=null;
+        appBackground.removeView(closing);closing.dispose();
+        if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)
+            revealStudioTabs(StudioTabBar.HOME);
+    }
+    void requestGalleryDownloadPermission(MediaLibrary.Photo photo){
+        if(Build.VERSION.SDK_INT>=29){
+            if(galleryScreen!=null)galleryScreen.downloadPhoto(photo);
+            return;
+        }
+        pendingGalleryCopy=photo;
+        requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+            GALLERY_COPY_PERMISSION);
+    }
     private void systemPicker(){Intent intent=Build.VERSION.SDK_INT>=33?new Intent(MediaStore.ACTION_PICK_IMAGES):new Intent(Intent.ACTION_PICK,MediaStore.Images.Media.EXTERNAL_CONTENT_URI);intent.setType("image/*");intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivityForResult(intent,1);}catch(ActivityNotFoundException e){toast("Galeria do sistema indisponível");}}
     void load(Uri uri){saveProject(false);int token=loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);loading=true;status.setText("Abrindo imagem…");updateActions();
         importTask=files.submit(()->{String id=ProjectStore.newId();try{File path=store.importOriginal(uri,id);ImageSource decoded=ImageSource.open(path,Math.min(maxTexture,1600));if(Thread.currentThread().isInterrupted()){decoded.preview.recycle();store.delete(id);return;}
@@ -430,8 +471,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         }catch(Exception|OutOfMemoryError e){try{store.delete(id);}catch(Exception ignored){}loadFailed(token,"Não foi possível abrir. Confira o formato e o espaço disponível.");}});
     }
     private void loadFailed(int token,String msg){runOnUiThread(()->{if(!destroyed&&token==loads.get()){loading=false;updateActions();status.setText(msg);toast(msg);}});}
-    private void setSource(ImageSource s){hideStudioTabs();source=s;original=s.preview;loading=false;preview.setImage(original,s.width,s.height);empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();getPreferences(0).edit().putString("lastProject",projectId).apply();}
-    void setImage(Bitmap bitmap){hideStudioTabs();source=null;original=bitmap;preview.setImage(bitmap);loading=false;empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();}
+    private void setSource(ImageSource s){closeImagePicker();hideStudioTabs();source=s;original=s.preview;loading=false;preview.setImage(original,s.width,s.height);empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();getPreferences(0).edit().putString("lastProject",projectId).apply();}
+    void setImage(Bitmap bitmap){closeImagePicker();hideStudioTabs();source=null;original=bitmap;preview.setImage(bitmap);loading=false;empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();}
     private void loadProject(String id,boolean retain){int token=loads.incrementAndGet();loading=true;updateActions();status.setText("Abrindo projeto…");files.execute(()->{try{ProjectStore.Project p=store.read(id);ImageSource decoded=ImageSource.open(p.source,Math.min(maxTexture,1600));runOnUiThread(()->{if(destroyed||token!=loads.get()){decoded.preview.recycle();return;}projectId=p.id;projectName=p.name;if(!retain){document=p.document;try{history.restore(p.history);}catch(JSONException ignored){history.clear();}}setSource(decoded);});}catch(Exception|OutOfMemoryError e){loadFailed(token,"Projeto indisponível ou arquivo inválido.");}});}
     private void saveProject(boolean explicit){if(projectId==null||original==null){if(explicit)toast("Abra uma foto para criar um projeto");return;}final String id=projectId,name=projectName;final EditorDocument snapshot=document.copy();final JSONObject h;try{h=history.toJson();}catch(JSONException e){return;}
         files.execute(()->{try{
@@ -605,7 +646,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                     document.outputWidth=w==nativeSize[0]&&h==nativeSize[1]?0:w;
                     document.outputHeight=w==nativeSize[0]&&h==nativeSize[1]?0:h;
                     document.outputLongEdge=0;
-                    document.jpeg=jpeg;document.jpegQuality=quality;
+                    document.exportFormat=exportScreen!=null?
+                        exportScreen.selectedFormat():(jpeg?"jpeg":"png");
+                    document.jpeg=document.exportFormat.equals("jpeg");
+                    document.jpegQuality=quality;
                 });
                 sizeStatus();
                 exportScreen=null;
@@ -668,10 +712,12 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void showExportResult(Uri uri,boolean jpeg){
         hideExportResult();
         exportResult=new ExportResultOverlay(this,this::hideExportResult,()->{
-            hideExportResult();share(uri,jpeg);
+            hideExportResult();shareGallery(uri);
         });
         appBackground.addView(exportResult,new FrameLayout.LayoutParams(-1,-1));
         exportResult.bringToFront();
+        final ExportResultOverlay shown=exportResult;
+        shown.postDelayed(()->{if(exportResult==shown)hideExportResult();},4300);
     }
     private void hideExportResult(){
         if(exportResult!=null){
@@ -682,7 +728,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         String type=getContentResolver().getType(uri);
         share(uri,type!=null&&type.equalsIgnoreCase("image/jpeg"));
     }
-    private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
+    private void share(Uri uri,boolean jpeg){String detected=getContentResolver().getType(uri);
+        Intent i=new Intent(Intent.ACTION_SEND).setType(detected!=null?detected:
+            (jpeg?"image/jpeg":"image/png")).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
@@ -690,7 +738,17 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==1)load(data.getData());
         else if(request==VAULT_REQUEST)connectProjectVault(data.getData());
     }
-    @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION&&galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());if(request==CAMERA_PERMISSION){
+    @Override public void onRequestPermissionsResult(int request,String[] names,int[] grants){super.onRequestPermissionsResult(request,names,grants);if(request==GALLERY_PERMISSION){
+            if(galleryScreen!=null)galleryScreen.refresh(hasGalleryPermission());
+            if(imagePickerScreen!=null)imagePickerScreen.refresh(hasGalleryPermission());
+        }
+        if(request==GALLERY_COPY_PERMISSION){
+            MediaLibrary.Photo requested=pendingGalleryCopy;pendingGalleryCopy=null;
+            if(requested!=null&&grants.length>0
+                &&grants[0]==PackageManager.PERMISSION_GRANTED&&galleryScreen!=null)
+                galleryScreen.downloadPhoto(requested);
+            return;
+        }if(request==CAMERA_PERMISSION){
             if(cameraScreen!=null){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)cameraScreen.start();else toast("Acesso à câmera não autorizado");}
             return;
         }
@@ -698,6 +756,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(imagePickerScreen!=null){closeImagePicker();return;}
         // The save transaction is not cancellable; keep progress visible.
         if(exporting)return;
         if(exportResult!=null){hideExportResult();return;}
@@ -733,5 +792,5 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(exportScreen!=null){exportScreen.dismiss();exportScreen=null;}
         hideExportResult();hideExportProgress();closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
-        closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
+        closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();closeImagePicker();super.onDestroy();}
 }

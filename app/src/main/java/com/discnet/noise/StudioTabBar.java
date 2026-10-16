@@ -25,8 +25,8 @@ final class StudioTabBar extends LinearLayout {
         super(context);this.callback=callback;
         setOrientation(HORIZONTAL);setGravity(Gravity.CENTER_VERTICAL);
         setPadding(dp(5),dp(5),dp(5),dp(5));
-        setBackground(shape(OrbitalMaterial.BLACK,OrbitalMaterial.DARK_PURPLE,5));
-        setElevation(dp(8));
+        setBackground(shape(0xea111016,0xf020132a,17));
+        setElevation(dp(13));
         for(int i=0;i<3;i++){
             final int index=i;
             LinearLayout item=new LinearLayout(context);
@@ -57,7 +57,7 @@ final class StudioTabBar extends LinearLayout {
             tabs[i].setBackground(new RippleDrawable(
                 ColorStateList.valueOf(current?0x237235ae:0x3cffffff),
                 shape(current?OrbitalMaterial.WHITE:OrbitalMaterial.DEEP_PURPLE,
-                      current?0xfff3ebfc:OrbitalMaterial.PURPLE,4),null));
+                      current?0xfff3ebfc:0xd43b2857,11),null));
             icons[i].setImageDrawable(new IconArt(drawings[i],
                 current?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE));
             titles[i].setTextColor(current?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);

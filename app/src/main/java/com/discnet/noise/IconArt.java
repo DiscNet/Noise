@@ -9,12 +9,13 @@ import android.widget.ImageView;
 /** Device-independent drawn vector pictograms, not Unicode/emoji font glyphs. */
 final class IconArt extends Drawable {
     static final int SETTINGS=30, GALLERY=31, RESIZE=32, SAVE=33, BACK=34,
-        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41, UNDO=42, REDO=43, MORE=44, FULL=45, CAMERA=46;
+        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41, UNDO=42, REDO=43, MORE=44, FULL=45, CAMERA=46, SHARE=47;
     private final int symbol;
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path=new Path();
     private int color=0xffeee5ff;
     IconArt(int symbol,int color){this.symbol=symbol;this.color=color;p.setStrokeWidth(1.8f);}
+    void tint(int next){if(color!=next){color=next;invalidateSelf();}}
     static ImageView button(Context context,int symbol,String description){
         ImageView view=new ImageView(context);
         view.setImageDrawable(new IconArt(symbol,EditorTheme.INK));
@@ -75,6 +76,9 @@ final class IconArt extends Drawable {
             case RESIZE:
                 poly(canvas,4,10,4,4,10,4);poly(canvas,14,20,20,20,20,14);
                 ln(canvas,4,4,10,10);ln(canvas,20,20,14,14);break;
+            case SHARE:
+                circle(canvas,6,12,2.6f);circle(canvas,18,6,2.6f);circle(canvas,18,18,2.6f);
+                ln(canvas,8.5f,10.8f,15.5f,7.3f);ln(canvas,8.5f,13.2f,15.5f,16.7f);break;
             case SAVE:
                 poly(canvas,12,3,12,16);poly(canvas,7,11,12,16,17,11);ln(canvas,4,20,20,20);break;
             case BACK:poly(canvas,15,4,7,12,15,20);break;

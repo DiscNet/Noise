@@ -14,6 +14,7 @@ final class EditorDocument {
     int outputLongEdge=0,jpegQuality=95;
     int outputWidth=0,outputHeight=0; // V1.28 optional; legacy outputLongEdge retained
     boolean jpeg=false;
+    String exportFormat="";
     // Six stops per editable curve: H→H, H→S, S→S. Zero is the identity curve.
     final float[] colorCurves=new float[18];
     // Three separate chromatic wheels: shadow, midtone, highlight (XY vectors).
@@ -34,6 +35,33 @@ final class EditorDocument {
         System.arraycopy(from.colorWheels,0,colorWheels,0,colorWheels.length);
         blendMode=from.blendMode;
     }
+    /** Real non-destructive preset strength; geometry/output settings stay unchanged. */
+    static EditorDocument blendLook(EditorDocument base,EditorDocument look,float amount){
+        float t=Math.max(0f,Math.min(1f,amount));
+        EditorDocument result=base.copy();
+        for(int i=0;i<result.values.length;i++){
+            float start=base.value(i),target=look.value(i);
+            result.values[i]=AdjustmentSpec.clamp(i,start+(target-start)*t);
+            result.disabled[i]=false;
+        }
+        for(int i=0;i<result.colorCurves.length;i++)
+            result.colorCurves[i]=base.colorCurves[i]+
+                (look.colorCurves[i]-base.colorCurves[i])*t;
+        for(int i=0;i<result.colorWheels.length;i++)
+            result.colorWheels[i]=base.colorWheels[i]+
+                (look.colorWheels[i]-base.colorWheels[i])*t;
+        if(t>.01f){
+            // Discrete operations cannot be interpolated; enable at midpoint.
+            if(t>=.50f){
+                result.invert=look.invert;result.asciiEnabled=look.asciiEnabled;
+                result.asciiColored=look.asciiColored;result.asciiDither=look.asciiDither;
+                result.asciiSymbols=look.asciiSymbols;result.grainColored=look.grainColored;
+                result.ditherMethod=look.ditherMethod;result.ditherPalette=look.ditherPalette;
+                result.blendMode=look.blendMode;
+            }
+        }
+        return result;
+    }
     JSONObject toJson() throws JSONException {
         JSONObject o=new JSONObject();o.put("schema",1);
         JSONArray v=new JSONArray(),d=new JSONArray();
@@ -50,7 +78,8 @@ final class EditorDocument {
         for(float v1:colorCurves)curves.put((double)v1);
         for(float v1:colorWheels)wheels.put((double)v1);
         o.put("colorCurves",curves);o.put("colorWheels",wheels);
-        o.put("jpeg",jpeg);o.put("jpegQuality",jpegQuality);return o;
+        o.put("jpeg",jpeg);o.put("exportFormat",exportFormat);
+        o.put("jpegQuality",jpegQuality);return o;
     }
     static EditorDocument fromJson(JSONObject o)throws JSONException{
         if(o.optInt("schema",1)!=1)throw new JSONException("Versão de projeto não suportada");
@@ -82,7 +111,12 @@ final class EditorDocument {
             double n=wheels.optDouble(i,0);d.colorWheels[i]=Double.isFinite(n)?
                 (float)Math.max(-1,Math.min(1,n)):0f;
         }
-        d.jpeg=o.optBoolean("jpeg");d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
+        d.jpeg=o.optBoolean("jpeg");
+        String requested=o.optString("exportFormat","");
+        d.exportFormat=(requested.equals("webp")||requested.equals("jpeg")||requested.equals("png"))
+            ?requested:"";
+        if(!d.exportFormat.isEmpty())d.jpeg=d.exportFormat.equals("jpeg");
+        d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
     }
     private static float bounded(double n){return Double.isFinite(n)?(float)Math.max(0,Math.min(1,n)):0;}
     boolean same(EditorDocument d){try{return toJson().toString().equals(d.toJson().toString());}catch(JSONException e){return false;}}

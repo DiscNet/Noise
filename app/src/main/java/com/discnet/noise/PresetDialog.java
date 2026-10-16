@@ -20,6 +20,7 @@ final class PresetDialog extends FrameLayout {
     private final ArrayList<ProjectStore.Preset> presets;
     private final Listener listener;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ExecutorService previewWorker=Executors.newSingleThreadExecutor();
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final HashMap<String,Bitmap> thumbnails=new HashMap<>();
     private final ArrayList<Bitmap> owned=new ArrayList<>();
@@ -27,7 +28,10 @@ final class PresetDialog extends FrameLayout {
     private int selection=-1;
     private FrameLayout owner;
     private final ImageView preview;
-    private final TextView caption,apply;
+    private final TextView caption,apply,strengthLabel;
+    private final SeekBar strength;
+    private Bitmap intensityPreview;
+    private int previewToken;
     private View modal;
     private final boolean compact;
     private final LinearLayout cards;
@@ -60,6 +64,24 @@ final class PresetDialog extends FrameLayout {
         caption=text("Selecione um estilo para visualizar e aplicar",12,false);
         caption.setGravity(Gravity.CENTER_VERTICAL);
         page.addView(caption,new LinearLayout.LayoutParams(-1,dp(compact?29:42)));
+        LinearLayout intensityRow=new LinearLayout(activity);
+        intensityRow.setGravity(Gravity.CENTER_VERTICAL);
+        strengthLabel=text("Intensidade 100%",12,false);
+        strengthLabel.setTextColor(OrbitalMaterial.WHITE);
+        intensityRow.addView(strengthLabel,new LinearLayout.LayoutParams(-1,dp(24)));
+        page.addView(intensityRow,new LinearLayout.LayoutParams(-1,dp(24)));
+        strength=new SeekBar(activity);
+        strength.setMax(100);strength.setProgress(100);
+        strength.setEnabled(false);
+        page.addView(strength,new LinearLayout.LayoutParams(-1,dp(38)));
+        strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar,int progress,boolean user){
+                strengthLabel.setText("Intensidade "+progress+"%");
+                if(user)scheduleIntensityPreview();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar){}
+            @Override public void onStopTrackingTouch(SeekBar bar){}
+        });
         ScrollView scroll=new ScrollView(activity);scroll.setVerticalScrollBarEnabled(false);
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         cards=new LinearLayout(activity);cards.setOrientation(LinearLayout.VERTICAL);
@@ -69,8 +91,10 @@ final class PresetDialog extends FrameLayout {
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,dp(52));
         bp.topMargin=dp(8);page.addView(apply,bp);
         apply.setOnClickListener(v->{
-            if(selection<0||!thumbnails.containsKey(presets.get(selection).id))return;
-            listener.apply(presets.get(selection).document);dismiss();
+            if(selection<0)return;
+            EditorDocument mixed=EditorDocument.blendLook(base,
+                presets.get(selection).document,strength.getProgress()/100f);
+            listener.apply(mixed);dismiss();
         });
     }
     private int dp(float x){return EditorTheme.dp(activity,x);}
@@ -93,9 +117,22 @@ final class PresetDialog extends FrameLayout {
     }
     private void reload(){
         cards.removeAllViews();
-        boolean listedCameras=false;
+        boolean listedCameras=false,listedCustom=false,listedStyles=false;
         for(int i=0;i<presets.size();i++){
             final int index=i;ProjectStore.Preset p=presets.get(i);
+            if(!p.id.startsWith("builtin")&&!listedCustom){
+                listedCustom=true;
+                TextView category=text("MEUS PRESETS",12,true);
+                category.setTextColor(OrbitalMaterial.WHITE);
+                cards.addView(category,new LinearLayout.LayoutParams(-1,dp(37)));
+            }
+            if(p.id.startsWith("builtin")&&!p.id.startsWith("builtin-camera-")
+                &&!listedStyles){
+                listedStyles=true;
+                TextView category=text("ESTILOS",12,true);
+                category.setTextColor(OrbitalMaterial.WHITE);
+                cards.addView(category,new LinearLayout.LayoutParams(-1,dp(37)));
+            }
             if(p.id.startsWith("builtin-camera-")&&!listedCameras){
                 listedCameras=true;
                 TextView category=text("CÂMERAS & FILMES",12,true);
@@ -138,8 +175,8 @@ final class PresetDialog extends FrameLayout {
                 try{
                     if(closed)return;
                     EditorDocument d=base.copy();d.copyLook(p.document);
-                    int w=336,h=Math.max(1,Math.round(w/d.aspect(original.getWidth(),original.getHeight())));
-                    if(h>336){w=Math.max(1,Math.round(w*336f/h));h=336;}
+                    int w=240,h=Math.max(1,Math.round(w/d.aspect(original.getWidth(),original.getHeight())));
+                    if(h>240){w=Math.max(1,Math.round(w*240f/h));h=240;}
                     b=GpuExporter.render(activity.getApplicationContext(),original,d.gpu(false),w,h);
                     Bitmap ready=b;
                     ui.post(()->{
@@ -156,11 +193,48 @@ final class PresetDialog extends FrameLayout {
     }
     private void select(int index){
         if(closed||index<0||index>=presets.size())return;
-        selection=index;ProjectStore.Preset p=presets.get(index);
-        Bitmap b=thumbnails.get(p.id);
-        if(b!=null){preview.setImageBitmap(b);apply.setEnabled(true);apply.setAlpha(1f);
-            apply.setText("Aplicar "+p.name);caption.setText("Prévia · "+p.name);}
-        else{apply.setEnabled(false);apply.setAlpha(.55f);caption.setText("Gerando prévia · "+p.name);}
+        selection=index;
+        ProjectStore.Preset p=presets.get(index);
+        strength.setEnabled(true);
+        apply.setEnabled(true);apply.setAlpha(1f);
+        apply.setText("Aplicar "+p.name);
+        caption.setText("Prévia · "+p.name);
+        scheduleIntensityPreview();
+    }
+    private final Runnable intensityTask=()->renderIntensity();
+    private void scheduleIntensityPreview(){
+        if(closed||selection<0)return;
+        ++previewToken;
+        ui.removeCallbacks(intensityTask);
+        ui.postDelayed(intensityTask,140);
+    }
+    private void renderIntensity(){
+        if(closed||selection<0)return;
+        int token=previewToken;
+        int selected=selection;
+        EditorDocument mix=EditorDocument.blendLook(base,
+            presets.get(selected).document,strength.getProgress()/100f);
+        previewWorker.execute(()->{
+            Bitmap rendered=null;
+            try{
+                int w=360,h=Math.max(1,Math.round(
+                    w/mix.aspect(original.getWidth(),original.getHeight())));
+                if(h>360){w=Math.max(1,Math.round(w*360f/h));h=360;}
+                rendered=GpuExporter.render(activity.getApplicationContext(),
+                    original,mix.gpu(false),w,h);
+            }catch(Exception|OutOfMemoryError ignored){}
+            final Bitmap bitmap=rendered;
+            ui.post(()->{
+                if(closed||token!=previewToken||selected!=selection){
+                    if(bitmap!=null)bitmap.recycle();return;
+                }
+                if(bitmap==null){caption.setText("Prévia indisponível");return;}
+                preview.setImageBitmap(bitmap);
+                Bitmap old=intensityPreview;
+                intensityPreview=bitmap;
+                if(old!=null&&!old.isRecycled())old.recycle();
+            });
+        });
     }
     private LinearLayout modal(String title,String detail){
         hideModal();
@@ -192,6 +266,15 @@ final class PresetDialog extends FrameLayout {
     }
     private void manage(ProjectStore.Preset p){
         LinearLayout sheet=modal("Gerenciar preset",p.name);
+        addButton(sheet,"Substituir pelos ajustes atuais",false,()->{
+            p.document=base.copy();
+            persist(p);
+            selection=-1;
+            preview.setImageBitmap(original);
+            apply.setEnabled(false);
+            apply.setAlpha(.55f);
+            reload();
+        });
         addButton(sheet,"Renomear",false,()->editName(p));
         addButton(sheet,p.favorite?"Remover favorito":"Marcar favorito",false,()->{
             p.favorite=!p.favorite;persist(p);
@@ -245,9 +328,12 @@ final class PresetDialog extends FrameLayout {
     boolean onBack(){if(modal!=null){hideModal();return true;}dismiss();return true;}
     void dismiss(){
         if(closed)return;
-        closed=true;worker.shutdownNow();hideModal();
+        closed=true;++previewToken;
+        ui.removeCallbacks(intensityTask);
+        previewWorker.shutdownNow();worker.shutdownNow();hideModal();
         if(owner!=null)owner.removeView(this);
         preview.setImageDrawable(null);
+        if(intensityPreview!=null&&!intensityPreview.isRecycled())intensityPreview.recycle();
         for(Bitmap b:owned)if(!b.isRecycled())b.recycle();
         owned.clear();thumbnails.clear();
     }

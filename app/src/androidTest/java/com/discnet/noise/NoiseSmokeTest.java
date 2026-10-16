@@ -75,9 +75,15 @@ public class NoiseSmokeTest extends Instrumentation {
             StudioTabBar tabsUI=(StudioTabBar)field(activity,"studioTabs");
             require(tabsUI!=null&&tabsUI.selectedTab()==StudioTabBar.HOME,
                 "Studio has one persistent readable bottom bar on Home");
+            require(MediaLibrary.dateTitle(System.currentTimeMillis()/1000L).equals("Hoje"),
+                "Photo grouping names today's photographs correctly");
+            require(MediaLibrary.dateTitle(System.currentTimeMillis()/1000L-86400)
+                    .equals("Ontem") || !MediaLibrary.dateTitle(
+                    System.currentTimeMillis()/1000L-86400).isEmpty(),
+                "Photo grouping assigns a real calendar title to yesterday");
             require(GalleryScreen.isNoisePhoto("Pictures/Noise!/","Noise!")
                 &&!GalleryScreen.isNoisePhoto("Pictures/Other/","Other"),
-                "Gallery includes only photos produced by Noise");
+                "Legacy Noise album classification remains available, without filtering Gallery");
             View atmosphere=home.getChildAt(0);
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
@@ -1507,12 +1513,78 @@ public class NoiseSmokeTest extends Instrumentation {
             });
             require(field(activity,"exportProgress")==null,
                 "Saving overlay disappears when export ends");
-            stage("public PNG and JPEG export");
+            stage("V1.39.0: functional preset intensity and full-device gallery");
+            EditorDocument presetBase=new EditorDocument();
+            EditorDocument presetLook=new EditorDocument();
+            presetLook.values[2]=AdjustmentSpec.clamp(2,1.2f);
+            EditorDocument blended=EditorDocument.blendLook(presetBase,presetLook,.5f);
+            require(Math.abs(blended.values[2]-
+                (presetBase.values[2]+presetLook.values[2])*.5f)<.03f,
+                "Preset slider interpolates actual editor parameters");
+            require(blended.left==presetBase.left&&blended.outputWidth==presetBase.outputWidth,
+                "Preset intensity never changes original crop or output resolution");
+            stage("public PNG, JPEG and WebP export");
             EditorDocument outDoc=new EditorDocument();outDoc.outputLongEdge=64;outDoc.asciiEnabled=true;outDoc.asciiDither=true;
             Uri savedUri=ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,null);require(savedUri!=null,"MediaStore publishes PNG");
             try(Cursor cursor=getTargetContext().getContentResolver().query(savedUri,new String[]{MediaStore.Images.Media.RELATIVE_PATH,MediaStore.Images.Media.IS_PENDING},null,null,null)){require(cursor!=null&&cursor.moveToFirst()&&cursor.getString(0).equals("Pictures/Noise!/")&&cursor.getInt(1)==0,"Public path and completed transaction");}
-            try(InputStream in=getTargetContext().getContentResolver().openInputStream(savedUri)){Bitmap saved=BitmapFactory.decodeStream(in);require(saved.getWidth()==64&&saved.getHeight()==48,"PNG selected resolution/aspect");Bitmap expected=GpuExporter.render(getTargetContext(),controlsFixture,outDoc.gpu(false),64,48);for(int y=0;y<48;y+=5)for(int x=0;x<64;x+=5)closeColor(saved.getPixel(x,y),expected.getPixel(x,y),"Export keeps ASCII settings");saved.recycle();expected.recycle();}getTargetContext().getContentResolver().delete(savedUri,null,null);
+            try(InputStream in=getTargetContext().getContentResolver().openInputStream(savedUri)){Bitmap saved=BitmapFactory.decodeStream(in);require(saved.getWidth()==64&&saved.getHeight()==48,"PNG selected resolution/aspect");Bitmap expected=GpuExporter.render(getTargetContext(),controlsFixture,outDoc.gpu(false),64,48);for(int y=0;y<48;y+=5)for(int x=0;x<64;x+=5)closeColor(saved.getPixel(x,y),expected.getPixel(x,y),"Export keeps ASCII settings");saved.recycle();expected.recycle();}
+            MediaLibrary media=new MediaLibrary(getTargetContext());
+            MediaLibrary.Page galleryPage=media.page("",null);
+            require(galleryPage.items.stream().anyMatch(p->p.uri.equals(savedUri)),
+                "Gallery indexes real saved MediaStore images rather than restricting to Noise folder");
+            MediaLibrary.Photo savedPhoto=new MediaLibrary.Photo(
+                android.content.ContentUris.parseId(savedUri),System.currentTimeMillis()/1000L,
+                "Noise!","noise!","image/png","Test.png");
+            Uri copied=MediaLibrary.duplicate(getTargetContext(),savedPhoto);
+            require(copied!=null,"Viewer download creates a lossless public copy");
+            try(InputStream gallerySourceBytes=getTargetContext().getContentResolver().openInputStream(savedUri);
+                InputStream copyBytes=getTargetContext().getContentResolver().openInputStream(copied)){
+                byte[] srcBuf=new byte[4096],dstBuf=new byte[4096];int n;
+                while((n=gallerySourceBytes.read(srcBuf))!=-1){
+                    int off=0;while(off<n){
+                        int got=copyBytes.read(dstBuf,off,n-off);
+                        require(got>0,"Download copy must preserve every original byte");
+                        off+=got;
+                    }
+                    for(int i=0;i<n;i++)require(srcBuf[i]==dstBuf[i],
+                        "Download preserves original format and bytes");
+                }
+                require(copyBytes.read()==-1,"Download does not append extra data");
+            }
+            final PhotoViewer[] viewer={null};
+            runOnMainSync(()->{
+                FrameLayout host=activity.findViewById(android.R.id.content);
+                viewer[0]=new PhotoViewer(activity,media,
+                    java.util.Arrays.asList(savedPhoto,savedPhoto),0,new PhotoViewer.Actions(){
+                    public void back(){} public void edit(Uri uri){}
+                    public void share(Uri uri){}
+                    public void download(MediaLibrary.Photo p){}
+                    public void nearingEnd(){}
+                });
+                host.addView(viewer[0],new FrameLayout.LayoutParams(-1,-1));
+                viewer[0].move(1);
+            });
+            require(viewer[0].position()==1 && viewer[0].count()==2,
+                "Viewer switches images without reopening the gallery grid");
+            runOnMainSync(()->{
+                ((android.view.ViewGroup)viewer[0].getParent()).removeView(viewer[0]);
+                viewer[0].close();
+            });
+            media.close();
+            getTargetContext().getContentResolver().delete(copied,null,null);
+            getTargetContext().getContentResolver().delete(savedUri,null,null);
             outDoc.asciiEnabled=false;outDoc.jpeg=true;outDoc.jpegQuality=75;File jpg=new File(getTargetContext().getFilesDir(),"export.jpg");ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,Uri.fromFile(jpg));Bitmap jpeg=BitmapFactory.decodeFile(jpg.getPath());require(jpeg!=null&&jpeg.getWidth()==64&&jpeg.getHeight()==48,"JPEG encoded at selected dimensions");jpeg.recycle();
+            outDoc.jpeg=false;outDoc.exportFormat="webp";
+            File webp=new File(getTargetContext().getFilesDir(),"export.webp");
+            ExportManager.save(getTargetContext(),controlsFixture,outDoc,128,96,4096,
+                Uri.fromFile(webp));
+            try(InputStream webpInput=new FileInputStream(webp)){
+                byte[] header=new byte[12];
+                require(webpInput.read(header)==12
+                    &&new String(header,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF")
+                    &&new String(header,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP"),
+                    "WebP option invokes a real encoder and writes WebP bytes");
+            }
             stage("crop touch and cancel");runOnMainSync(()->activity.action("Recortar"));waitForIdleSync();CropEditor crop=(CropEditor)field(activity,"cropEditor");require(crop!=null,"Crop opens");Rect beforeCrop=crop.currentRect();View gesture=(View)field(crop,"canvas");float scale=Math.min((gesture.getWidth()-20f)/900f,(gesture.getHeight()-40f)/900f);float sx=(gesture.getWidth()-900*scale)/2+1,sy=(gesture.getHeight()-900*scale)/2+1;long now=SystemClock.uptimeMillis();runOnMainSync(()->{gesture.dispatchTouchEvent(MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,sx,sy,0));gesture.dispatchTouchEvent(MotionEvent.obtain(now,now+80,MotionEvent.ACTION_MOVE,sx+60,sy+60,0));gesture.dispatchTouchEvent(MotionEvent.obtain(now,now+100,MotionEvent.ACTION_UP,sx+60,sy+60,0));});require(crop.currentRect().width()<beforeCrop.width(),"Corner gesture changes selection");runOnMainSync(activity::onBackPressed);require(activity.document().left==0,"Cancel leaves geometry unchanged");
             stage("invalid file keeps working image");File invalid=new File(getTargetContext().getFilesDir(),"invalid.bin");try(FileOutputStream out=new FileOutputStream(invalid)){out.write(new byte[]{1,2,3});}Bitmap old=(Bitmap)field(activity,"original");runOnMainSync(()->activity.load(Uri.fromFile(invalid)));deadline=SystemClock.uptimeMillis()+10000;while((Boolean)field(activity,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(20);require(field(activity,"original")==old,"Invalid import preserves working image");
             stage("activity recreation retains recipe and source");EditorDocument retained=activity.document().copy();ActivityMonitor monitor=addMonitor(MainActivity.class.getName(),null,false);runOnMainSync(activity::recreate);MainActivity recreated=(MainActivity)monitor.waitForActivityWithTimeout(15000);removeMonitor(monitor);require(recreated!=null,"Activity recreated");deadline=SystemClock.uptimeMillis()+15000;while((Boolean)field(recreated,"loading")&&SystemClock.uptimeMillis()<deadline)SystemClock.sleep(30);require(retained.same(recreated.document()),"Recipe survives recreation");EditorSurface restoredSurface=(EditorSurface)field(recreated,"preview");long previous=restoredSurface.frameCount;runOnMainSync(()->recreated.change(3,.3f));long renderDeadline=SystemClock.uptimeMillis()+10000;
