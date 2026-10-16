@@ -46,8 +46,11 @@ final class GalleryScreen extends FrameLayout {
     static final class Item {
         final String section;
         final MediaLibrary.Photo photo;
-        Item(String heading){section=heading;photo=null;}
-        Item(MediaLibrary.Photo p){section=null;photo=p;}
+        final boolean featured;
+        Item(String heading){section=heading;photo=null;featured=false;}
+        Item(MediaLibrary.Photo p,boolean featured){
+            section=null;photo=p;this.featured=featured;
+        }
     }
     GalleryScreen(Activity a,Listener listener){this(a,listener,false);}
     GalleryScreen(Activity a,Listener listener,boolean picker){
@@ -102,7 +105,10 @@ final class GalleryScreen extends FrameLayout {
         layout=new GridLayoutManager(a,columns);
         layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup(){
             @Override public int getSpanSize(int position){
-                return position>=0&&position<rows.size()&&rows.get(position).photo==null?columns:1;
+                if(position<0||position>=rows.size())return 1;
+                Item item=rows.get(position);
+                if(item.photo==null)return columns;
+                return item.featured&&columns>=3?2:1;
             }
         });
         grid.setLayoutManager(layout);grid.setAdapter(adapter);
@@ -143,6 +149,9 @@ final class GalleryScreen extends FrameLayout {
         return t;
     }
     private int dp(float n){return EditorTheme.dp(activity,n);}
+    static boolean isFeatured(int imageIndex,boolean picker,int columns){
+        return !picker&&columns>=3&&imageIndex%11==0;
+    }
     @Override protected void onSizeChanged(int w,int h,int ow,int oh){
         super.onSizeChanged(w,h,ow,oh);
         int cols=w>=dp(375)?4:w>=dp(295)?3:2;
@@ -209,6 +218,7 @@ final class GalleryScreen extends FrameLayout {
             handler.post(()->{
                 if(closed||token!=generation)return;
                 loading=false;hasMore=page.hasMore;
+                if(!page.items.isEmpty())last=page.items.get(page.items.size()-1);
                 HashSet<Long> ids=new HashSet<>();
                 for(MediaLibrary.Photo p:photos)ids.add(p.id);
                 String prev=photos.isEmpty()?null:
@@ -219,7 +229,10 @@ final class GalleryScreen extends FrameLayout {
                     if(!ids.add(p.id))continue;
                     String section=MediaLibrary.dateTitle(p.added);
                     if(!section.equals(prev)){rows.add(new Item(section));prev=section;}
-                    photos.add(p);unique.add(p);rows.add(new Item(p));
+                    // Magazine rhythm: one larger photograph in each compact
+                    // sequence. Still a recycling grid, not a giant full bitmap.
+                    boolean featured=isFeatured(photos.size(),pickerMode,columns);
+                    photos.add(p);unique.add(p);rows.add(new Item(p,featured));
                 }
                 if(rows.size()>start)adapter.notifyItemRangeInserted(start,rows.size()-start);
                 if(viewer!=null)viewer.append(unique);
@@ -303,8 +316,10 @@ final class GalleryScreen extends FrameLayout {
                 return;
             }
             ImageView cell=(ImageView)h.itemView;
-            RecyclerView.LayoutParams p=new RecyclerView.LayoutParams(-1,
-                Math.max(dp(68),(getWidth()-dp(25))/columns-dp(5)));
+            int tileSize=Math.max(dp(68),(getWidth()-dp(25))/Math.max(1,columns)-dp(5));
+            int span=item.featured&&columns>=3?2:1;
+            int height=span==2?Math.round(tileSize*1.42f):tileSize;
+            RecyclerView.LayoutParams p=new RecyclerView.LayoutParams(-1,height);
             p.setMargins(dp(2),dp(2),dp(2),dp(2));
             cell.setLayoutParams(p);
             final MediaLibrary.Photo photo=item.photo;

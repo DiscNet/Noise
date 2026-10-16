@@ -37,7 +37,9 @@ void main() {
     }
     vec2 delta = p-uTouch.xy;
     float influence = exp(-dot(delta,delta)*15.0);
-    warp -= influence*(uTouch.zw + delta*uState.x*5.0);
+    // The finger gently displaces the material. Its actual erosion is
+    // applied to density later, avoiding a giant lens-like distortion.
+    warp -= influence*(uTouch.zw*.8 + delta*uState.x*.17);
     vec2 q = p+warp;
     float field = 0.0;
     vec3 pigment = vec3(0.0);
@@ -56,6 +58,27 @@ void main() {
             pigment += color*density;
         }
     }
+    // Physically remove mass around the touched point. Irregular noise
+    // creates disconnected edges and small islands as the field dissolves.
+    // The same point follows the finger; on release its strength decays
+    // continuously on the CPU, revealing the original flowing material.
+    float pressure = clamp(uState.x,0.0,1.0);
+    vec2 touchDelta = q-uTouch.xy;
+    float radial = length(touchDelta);
+    vec2 flecks = noise2(q*64.0 + vec2(t*.12,-t*.08));
+    float jaggedRadius = .135 + .026*flecks.x + .013*flecks.y;
+    float dissolved = pressure *
+        (1.0-smoothstep(jaggedRadius*.48,jaggedRadius,radial));
+    float beforeErosion=field;
+    field *= 1.0-dissolved;
+    pigment *= 1.0-dissolved;
+    float annulus = smoothstep(jaggedRadius*.7,jaggedRadius,radial) *
+        (1.0-smoothstep(jaggedRadius,jaggedRadius*1.8,radial));
+    float fragments=smoothstep(.45,.82,noise2(q*108.0 +
+        vec2(t*.23,t*.17)).x);
+    float grains = pressure*annulus*fragments * min(1.0,beforeErosion)*.53;
+    field += grains;
+    pigment += grains*vec3(.037,.025,.056);
     float edge = uState.y;
     // Actual silhouette erosion: the ink/paper boundary is defined by a
     // locally varying isovalue of the SAME fluid density, not by a grain

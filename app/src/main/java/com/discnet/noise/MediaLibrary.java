@@ -16,11 +16,15 @@ import java.util.concurrent.*;
 final class MediaLibrary {
     static final int PAGE_SIZE=96;
     static final class Photo {
-        final long id, added;
+        final long id, added,sortAdded;
         final String folder,bucket,mime,name;
         final Uri uri;
         Photo(long id,long added,String folder,String bucket,String mime,String name){
-            this.id=id;this.added=added;this.folder=folder==null?"":folder;
+            this(id,added,added,folder,bucket,mime,name);
+        }
+        Photo(long id,long sortAdded,long visibleDate,String folder,String bucket,String mime,String name){
+            this.id=id;this.sortAdded=sortAdded;this.added=visibleDate;
+            this.folder=folder==null?"":folder;
             this.bucket=bucket==null?"":bucket;
             this.mime=mime==null?"image/jpeg":mime;this.name=name==null?"Imagem":name;
             uri=ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,id);
@@ -60,7 +64,8 @@ final class MediaLibrary {
         final String date=MediaStore.Images.Media.DATE_ADDED;
         final String[] projection={id,date,MediaStore.Images.Media.BUCKET_ID,
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Images.Media.MIME_TYPE,MediaStore.Images.Media.DISPLAY_NAME};
+            MediaStore.Images.Media.MIME_TYPE,MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.DATE_TAKEN};
         ArrayList<String> args=new ArrayList<>();
         StringBuilder where=new StringBuilder("1=1");
         if(bucket!=null&&!bucket.isEmpty()){
@@ -70,8 +75,8 @@ final class MediaLibrary {
         if(after!=null){
             where.append(" AND (").append(date).append("<? OR (")
                 .append(date).append("=? AND ").append(id).append("<?))");
-            args.add(String.valueOf(after.added));
-            args.add(String.valueOf(after.added));
+            args.add(String.valueOf(after.sortAdded));
+            args.add(String.valueOf(after.sortAdded));
             args.add(String.valueOf(after.id));
         }
         ArrayList<Photo> found=new ArrayList<>();
@@ -82,7 +87,11 @@ final class MediaLibrary {
             if(cursor!=null){
                 while(cursor.moveToNext()){
                     if(closed||Thread.currentThread().isInterrupted())break;
-                    Photo p=new Photo(cursor.getLong(0),cursor.getLong(1),
+                    long sort=cursor.getLong(1);
+                    long taken=cursor.isNull(6)?0:cursor.getLong(6)/1000L;
+                    // Group by actual capture timestamp while preserving the
+                    // stable indexed MediaStore pagination key DATE_ADDED + ID.
+                    Photo p=new Photo(cursor.getLong(0),sort,taken>0?taken:sort,
                         cursor.getString(3),cursor.getString(2),
                         cursor.getString(4),cursor.getString(5));
                     if(found.size()>=PAGE_SIZE){more=true;break;}
