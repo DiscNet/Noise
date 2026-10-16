@@ -14,6 +14,7 @@ import android.widget.*;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.view.PreviewView;
 import java.util.Locale;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +50,8 @@ final class CameraScreen extends FrameLayout {
     private final CameraRuler ruler;
     private final LinearLayout cameraBody;
     private final TextView valueLabel,titleLabel,status,flashButton,timerButton,ratioButton;
-    private final TextView lastThumbnail,editButton;
+    private final ImageView lastThumbnail;
+    private final TextView editButton;
     private final FrameLayout shutterButton;
     private final Handler mainHandler=new Handler(Looper.getMainLooper());
     private final ExecutorService pictures=Executors.newSingleThreadExecutor();
@@ -62,6 +64,7 @@ final class CameraScreen extends FrameLayout {
     private int deviceOrientationDegrees,timerSeconds,ratioIndex=0,flashIndex=0;
     private float nativeAspect=.75f,maxFrameZoom=4f;
     private int jpegQuality=98;
+    private boolean showGrid=true;
     private boolean nativeEv;
     private float residualExposure;
     private String resolution="MAX";
@@ -72,6 +75,8 @@ final class CameraScreen extends FrameLayout {
         super(context);
         this.activity=context;this.listener=listener;
         setBackgroundColor(0xff0b0a0e);
+        jpegQuality=context.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).getInt("jpeg_quality",98);
+        showGrid=context.getSharedPreferences("noise_camera",Context.MODE_PRIVATE).getBoolean("show_grid",true);
         setFocusableInTouchMode(true);
         deviceOrientationListener=new OrientationEventListener(context,SensorManager.SENSOR_DELAY_UI){
             @Override public void onOrientationChanged(int orientation){
@@ -102,34 +107,41 @@ final class CameraScreen extends FrameLayout {
         });
         cameraPanel.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
         frameGuide.exactAspect(1f);
+        frameGuide.grid(showGrid);
 
         LinearLayout top=new LinearLayout(context);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(8),dp(6),dp(8),dp(6));
         FrameLayout.LayoutParams topPosition=new FrameLayout.LayoutParams(-1,dp(62),Gravity.TOP);
         cameraPanel.addView(top,topPosition);
-        TextView back=chip("‹",44);
+        TextView back=chip("‹",40);
         back.setContentDescription("Fechar câmera");
-        top.addView(back,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        top.addView(back,new LinearLayout.LayoutParams(dp(40),dp(44)));
         back.setOnClickListener(v->listener.close());
         addSpace(top);
-        flashButton=chip("Flash · Off",83);
-        top.addView(flashButton,new LinearLayout.LayoutParams(dp(83),dp(40)));
+        flashButton=chip("Off",65);
+        top.addView(flashButton,new LinearLayout.LayoutParams(dp(65),dp(40)));
+        flashButton.setContentDescription("Flash desligado");
         flashButton.setOnClickListener(v->cycleFlash());
-        timerButton=chip("0s",47);
-        LinearLayout.LayoutParams timerP=new LinearLayout.LayoutParams(dp(47),dp(40));
+        timerButton=chip("0s",40);
+        LinearLayout.LayoutParams timerP=new LinearLayout.LayoutParams(dp(40),dp(40));
         timerP.leftMargin=dp(5);top.addView(timerButton,timerP);
         timerButton.setContentDescription("Temporizador de captura");
         timerButton.setOnClickListener(v->cycleTimer());
-        ratioButton=chip("1:1",57);
-        LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(57),dp(40));
+        ratioButton=chip("1:1",50);
+        LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(50),dp(40));
         ratioP.leftMargin=dp(5);top.addView(ratioButton,ratioP);
         ratioButton.setOnClickListener(v->cycleRatio());
-        TextView flip=chip("⇄",44);
-        LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(44),dp(40));
+        TextView flip=chip("⇄",40);
+        LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(40),dp(40));
         flipP.leftMargin=dp(5);top.addView(flip,flipP);
         flip.setContentDescription("Alternar câmera frontal e traseira");
         flip.setOnClickListener(v->{if(!capturing)engine.flip();});
+        TextView options=chip("⋯",34);
+        LinearLayout.LayoutParams optionsP=new LinearLayout.LayoutParams(dp(34),dp(40));
+        optionsP.leftMargin=dp(4);top.addView(options,optionsP);
+        options.setContentDescription("Configurações da câmera");
+        options.setOnClickListener(v->showCameraOptions(options));
 
         status=label("Preparando câmera…",11,0xffeae5ee);
         status.setGravity(Gravity.CENTER);
@@ -179,10 +191,21 @@ final class CameraScreen extends FrameLayout {
         actions.setPadding(dp(4),dp(5),dp(4),0);
         lower.addView(actions,new LinearLayout.LayoutParams(-1,dp(77)));
 
+        FrameLayout galleryArea=new FrameLayout(context);
+        actions.addView(galleryArea,new LinearLayout.LayoutParams(0,dp(53),1));
         TextView gallery=sideButton("Galeria");
         gallery.setContentDescription("Abrir galeria do Noise");
-        actions.addView(gallery,new LinearLayout.LayoutParams(0,dp(53),1));
-        gallery.setOnClickListener(v->listener.gallery());
+        galleryArea.addView(gallery,new FrameLayout.LayoutParams(-1,-1));
+        lastThumbnail=new ImageView(context);
+        lastThumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        lastThumbnail.setBackground(EditorTheme.buttonSurface(context,8,false));
+        FrameLayout.LayoutParams thumbPosition=new FrameLayout.LayoutParams(
+            dp(39),dp(39),Gravity.LEFT|Gravity.CENTER_VERTICAL);
+        thumbPosition.leftMargin=dp(4);
+        galleryArea.addView(lastThumbnail,thumbPosition);
+        galleryArea.setClickable(true);galleryArea.setFocusable(true);
+        galleryArea.setContentDescription("Ver fotografias da galeria Noise");
+        galleryArea.setOnClickListener(v->listener.gallery());
 
         shutterButton=new FrameLayout(context);
         shutterButton.setContentDescription("Capturar fotografia");
@@ -205,9 +228,6 @@ final class CameraScreen extends FrameLayout {
         actions.addView(editButton,new LinearLayout.LayoutParams(0,dp(53),1));
         editButton.setOnClickListener(v->{if(latestPhoto!=null)listener.edit(latestPhoto);});
 
-        lastThumbnail=label("",11,EditorTheme.MUTED);
-        lastThumbnail.setGravity(Gravity.CENTER);
-        // Accessible captured-thumbnail action shares the existing Edit slot.
         editButton.setContentDescription("Abrir última fotografia no editor Noise");
 
         engine=new NoiseCameraX(context,preview,new NoiseCameraX.Listener(){
