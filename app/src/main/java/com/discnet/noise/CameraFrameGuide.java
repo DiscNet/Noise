@@ -21,7 +21,7 @@ final class CameraFrameGuide extends View {
     private final RectF frame=new RectF();
     private final ScaleGestureDetector pinch;
     private float ratio=1f,zoom=1f,touchX,touchY,focusX=-1,focusY=-1;
-    private float exactAspect=1f,offsetX,offsetY;
+    private float exactAspect=1f,offsetX,offsetY,alignmentDegrees;
     private boolean draggingFrame;
     private long touchAt,focusAt;
     private boolean multiple,moved,gridEnabled=true;
@@ -47,6 +47,10 @@ final class CameraFrameGuide extends View {
     }
     float exactAspect(){return exactAspect;}
     void grid(boolean enabled){gridEnabled=enabled;invalidate();}
+    void alignment(float degrees){
+        alignmentDegrees=Math.max(-15f,Math.min(15f,degrees));invalidate();
+    }
+    float alignment(){return alignmentDegrees;}
     void centerFrame(){offsetX=0;offsetY=0;invalidate();}
     static void geometryExact(int w,int h,float aspect,float zoom,float dx,float dy,RectF out){
         if(w<1||h<1){out.setEmpty();return;}
@@ -125,6 +129,21 @@ final class CameraFrameGuide extends View {
                 canvas.drawLine(x,frame.top,x,frame.bottom,paint);
                 canvas.drawLine(frame.left,y,frame.right,y,paint);
             }
+        }
+        // A temporary leveling guide indicates how the saved image will be aligned.
+        // It never rotates or zooms the live camera feed.
+        if(Math.abs(alignmentDegrees)>.01f){
+            int restore=canvas.save();
+            canvas.clipRect(frame);
+            canvas.rotate(-alignmentDegrees,frame.centerX(),frame.centerY());
+            paint.setColor(0xaee4bdfd);paint.setStrokeWidth(dp(1.1f));
+            float length=frame.width()*.43f;
+            canvas.drawLine(frame.centerX()-length,frame.centerY(),
+                frame.centerX()+length,frame.centerY(),paint);
+            float tip=dp(7);
+            canvas.drawLine(frame.centerX(),frame.centerY()-tip,
+                frame.centerX(),frame.centerY()+tip,paint);
+            canvas.restoreToCount(restore);
         }
         paint.setColor(0xffffffff);paint.setStrokeWidth(dp(2.4f));
         float corner=Math.min(dp(19),Math.min(frame.width(),frame.height())*.20f);
