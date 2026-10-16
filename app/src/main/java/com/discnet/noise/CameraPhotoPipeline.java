@@ -105,6 +105,28 @@ final class CameraPhotoPipeline {
         Matrix m=new Matrix();m.postRotate(angle);
         return Bitmap.createBitmap(bitmap,0,0,bitmap.getWidth(),bitmap.getHeight(),m,true);
     }
+    /**
+     * Straighten a cropped photo without black corners. Keeps the requested
+     * aspect ratio and pixel dimensions, trading a minimal edge crop for fill.
+     * Used only for explicit user alignment, never for zooming the preview.
+     */
+    static Bitmap alignCropFill(Bitmap source,float degrees){
+        float angle=Math.max(-15f,Math.min(15f,degrees));
+        if(Math.abs(angle)<.001f)return source;
+        float w=source.getWidth(),h=source.getHeight();
+        double radians=Math.toRadians(angle);
+        float cosine=(float)Math.abs(Math.cos(radians));
+        float sine=(float)Math.abs(Math.sin(radians));
+        float scale=Math.max((w*cosine+h*sine)/w,(w*sine+h*cosine)/h);
+        Bitmap out=Bitmap.createBitmap(source.getWidth(),source.getHeight(),Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(out);
+        canvas.translate(w*.5f,h*.5f);
+        canvas.rotate(angle);
+        canvas.scale(scale,scale);
+        Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG|Paint.DITHER_FLAG);
+        canvas.drawBitmap(source,-w*.5f,-h*.5f,paint);
+        return out;
+    }
     static Uri save(Context context,byte[] jpeg,Settings settings)throws Exception{
         if(jpeg==null||jpeg.length==0)throw new IOException("Captura vazia");
         BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;
@@ -137,7 +159,7 @@ final class CameraPhotoPipeline {
                 Matrix m=new Matrix();m.setScale(-1f,1f);
                 mirrored=Bitmap.createBitmap(turned,0,0,turned.getWidth(),turned.getHeight(),m,true);
             }else mirrored=turned;
-            aligned=rotate(mirrored,settings.alignment);
+            aligned=alignCropFill(mirrored,settings.alignment);
             // App UI remains portrait; only the saved photo rotates with the phone.
             Bitmap deviceOriented=CameraScreen.rotateForDevice(aligned,settings.orientation);
             if(deviceOriented!=aligned){

@@ -35,7 +35,9 @@ final class CameraScreen extends FrameLayout {
         SATURATION("Saturação","◉",0f,2f,.025f,1f),
         WARMTH("Temperatura","◐",-1f,1f,.025f,0f),
         HUE("Matiz","◈",-180f,180f,2f,0f),
-        CONTRAST("Contraste","◕",.5f,1.5f,.025f,1f);
+        CONTRAST("Contraste","◕",.5f,1.5f,.025f,1f),
+        SHARPNESS("Nitidez JPEG","◇",0f,.25f,.005f,0f),
+        ALIGNMENT("Alinhar","⟳",-15f,15f,.25f,0f);
         final String name,symbol;
         final float min,max,step,neutral;
         Tool(String name,String symbol,float min,float max,float step,float neutral){
@@ -85,12 +87,12 @@ final class CameraScreen extends FrameLayout {
         };
         cameraBody=new LinearLayout(context);
         cameraBody.setOrientation(LinearLayout.VERTICAL);
-        cameraBody.setPadding(dp(10),dp(5),dp(10),dp(4));
+        cameraBody.setPadding(dp(8),dp(5),dp(8),dp(4));
         addView(cameraBody,new FrameLayout.LayoutParams(-1,-1));
 
         FrameLayout cameraPanel=new FrameLayout(context);
         GradientDrawable cameraCorner=new GradientDrawable();
-        cameraCorner.setColor(0xff121014);cameraCorner.setCornerRadius(dp(19));
+        cameraCorner.setColor(0xff121014);cameraCorner.setCornerRadius(dp(23));
         cameraPanel.setBackground(cameraCorner);
         cameraPanel.setClipToOutline(true);
         cameraBody.addView(cameraPanel,new LinearLayout.LayoutParams(-1,0,1));
@@ -111,35 +113,35 @@ final class CameraScreen extends FrameLayout {
 
         LinearLayout top=new LinearLayout(context);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(8),dp(6),dp(8),dp(6));
+        top.setPadding(dp(4),dp(6),dp(4),dp(6));
         FrameLayout.LayoutParams topPosition=new FrameLayout.LayoutParams(-1,dp(62),Gravity.TOP);
         cameraPanel.addView(top,topPosition);
-        TextView back=chip("‹",40);
+        TextView back=chip("‹",36);
         back.setContentDescription("Fechar câmera");
-        top.addView(back,new LinearLayout.LayoutParams(dp(40),dp(44)));
+        top.addView(back,new LinearLayout.LayoutParams(dp(36),dp(40)));
         back.setOnClickListener(v->listener.close());
         addSpace(top);
-        flashButton=chip("Off",65);
-        top.addView(flashButton,new LinearLayout.LayoutParams(dp(65),dp(40)));
+        flashButton=chip("Off",48);
+        top.addView(flashButton,new LinearLayout.LayoutParams(dp(48),dp(38)));
         flashButton.setContentDescription("Flash desligado");
         flashButton.setOnClickListener(v->cycleFlash());
-        timerButton=chip("0s",40);
-        LinearLayout.LayoutParams timerP=new LinearLayout.LayoutParams(dp(40),dp(40));
-        timerP.leftMargin=dp(5);top.addView(timerButton,timerP);
+        timerButton=chip("0s",35);
+        LinearLayout.LayoutParams timerP=new LinearLayout.LayoutParams(dp(35),dp(38));
+        timerP.leftMargin=dp(3);top.addView(timerButton,timerP);
         timerButton.setContentDescription("Temporizador de captura");
         timerButton.setOnClickListener(v->cycleTimer());
-        ratioButton=chip("1:1",50);
-        LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(50),dp(40));
-        ratioP.leftMargin=dp(5);top.addView(ratioButton,ratioP);
-        ratioButton.setOnClickListener(v->cycleRatio());
-        TextView flip=chip("⇄",40);
-        LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(40),dp(40));
-        flipP.leftMargin=dp(5);top.addView(flip,flipP);
+        ratioButton=chip("1:1",46);
+        LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(46),dp(38));
+        ratioP.leftMargin=dp(3);top.addView(ratioButton,ratioP);
+        ratioButton.setOnClickListener(v->showRatios(ratioButton));
+        TextView flip=chip("⇄",36);
+        LinearLayout.LayoutParams flipP=new LinearLayout.LayoutParams(dp(36),dp(38));
+        flipP.leftMargin=dp(3);top.addView(flip,flipP);
         flip.setContentDescription("Alternar câmera frontal e traseira");
         flip.setOnClickListener(v->{if(!capturing)engine.flip();});
         TextView options=chip("⋯",34);
-        LinearLayout.LayoutParams optionsP=new LinearLayout.LayoutParams(dp(34),dp(40));
-        optionsP.leftMargin=dp(4);top.addView(options,optionsP);
+        LinearLayout.LayoutParams optionsP=new LinearLayout.LayoutParams(dp(34),dp(38));
+        optionsP.leftMargin=dp(3);top.addView(options,optionsP);
         options.setContentDescription("Configurações da câmera");
         options.setOnClickListener(v->showCameraOptions(options));
 
@@ -167,7 +169,7 @@ final class CameraScreen extends FrameLayout {
         tools.addView(row);
         for(Tool tool:Tool.values()){
             TextView icon=toolIcon(tool);
-            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(49),dp(49));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(45),dp(45));
             lp.setMargins(dp(5),0,dp(5),0);
             row.addView(icon,lp);
             icon.setOnClickListener(v->selectTool(tool));
@@ -277,7 +279,7 @@ final class CameraScreen extends FrameLayout {
         return button;
     }
     private TextView toolIcon(Tool tool){
-        TextView icon=label(tool.symbol,24,0xffb1a8b8);
+        TextView icon=label(tool.symbol,21,0xffb1a8b8);
         icon.setGravity(Gravity.CENTER);
         icon.setBackground(EditorTheme.panel(activity,0xff24212a,0,28,0xff45404b));
         icon.setContentDescription(tool.name);
@@ -297,6 +299,7 @@ final class CameraScreen extends FrameLayout {
                 activeTool?0xffefe6f9:0xff37323c);
             button.setBackground(shape);
             button.setScaleX(activeTool?1.04f:1f);button.setScaleY(activeTool?1.04f:1f);
+            if(activeTool&&android.os.Build.VERSION.SDK_INT>=26)button.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         }
         titleLabel.setText(tool.name);
         ruler.configure(tool.min,tool==Tool.ZOOM?maxFrameZoom:tool.max,tool.step,toolValue(tool),tool.neutral);
@@ -310,6 +313,8 @@ final class CameraScreen extends FrameLayout {
             case WARMTH:return temperature;
             case HUE:return hue;
             case CONTRAST:return contrast;
+            case SHARPNESS:return sharpness;
+            case ALIGNMENT:return alignment;
         }
         return 0;
     }
@@ -326,6 +331,8 @@ final class CameraScreen extends FrameLayout {
             case WARMTH:temperature=clamped;break;
             case HUE:hue=clamped;break;
             case CONTRAST:contrast=clamped;break;
+            case SHARPNESS:sharpness=clamped;break;
+            case ALIGNMENT:alignment=clamped;frameGuide.alignment(alignment);break;
         }
         if(selected==tool){
             if(emitToRuler)ruler.setValue(clamped,false);
@@ -342,6 +349,8 @@ final class CameraScreen extends FrameLayout {
             case SATURATION:text=String.format(Locale.US,"%.0f%%",v*100f);break;
             case WARMTH:text=String.format(Locale.US,"%+.0f",v*100f);break;
             case HUE:text=String.format(Locale.US,"%+.0f°",v);break;
+            case SHARPNESS:text=String.format(Locale.US,"%.0f%%",v*400f);break;
+            case ALIGNMENT:text=String.format(Locale.US,"%+.2f°",v);break;
             default:text=String.format(Locale.US,"%.0f%%",v*100f);
         }
         valueLabel.setText(text);
@@ -401,6 +410,23 @@ final class CameraScreen extends FrameLayout {
         timerSeconds=seconds[(current+1)%seconds.length];
         timerButton.setText(timerSeconds+"s");
     }
+    /** Select any aspect ratio in one tap rather than seven sequential toggles. */
+    private void showRatios(View anchor){
+        PopupMenu menu=new PopupMenu(activity,anchor);
+        for(int i=0;i<RATIO_NAMES.length;i++){
+            final int index=i;
+            menu.getMenu().add(0,i,i,RATIO_NAMES[i])
+                .setCheckable(true).setChecked(index==ratioIndex);
+        }
+        menu.getMenu().setGroupCheckable(0,true,true);
+        menu.setOnMenuItemClickListener(item->{
+            ratioIndex=item.getItemId();
+            ratioButton.setText(RATIO_NAMES[ratioIndex]);
+            frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+            return true;
+        });
+        menu.show();
+    }
     private void cycleRatio(){
         ratioIndex=(ratioIndex+1)%RATIOS.length;
         ratioButton.setText(RATIO_NAMES[ratioIndex]);
@@ -437,6 +463,7 @@ final class CameraScreen extends FrameLayout {
         settings.sat=saturation;settings.warm=temperature;
         settings.exposure=residualExposure;
         settings.hue=hue;settings.contrast=contrast;
+        settings.sharpness=sharpness;settings.alignment=alignment;
         pendingSettings=settings;
         status.setText("Fotografando…");
         engine.shoot();
