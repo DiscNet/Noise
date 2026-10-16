@@ -220,7 +220,39 @@ public class NoiseSmokeTest extends Instrumentation {
                     "CameraX owns the live preview, not a media picker");
                 require(field(cameraUi[0],"engine") instanceof NoiseCameraX,
                     "CameraX owns the actual capture and autofocus");
-                runOnMainSync(()->cameraUi[0].dispose());
+                stage("CameraX: bind virtual lens, focus and capture a real emulator JPEG");
+                final FrameLayout cameraHost=(FrameLayout)activity.findViewById(android.R.id.content);
+                runOnMainSync(()->{
+                    cameraHost.addView(cameraUi[0],new FrameLayout.LayoutParams(-1,-1));
+                    cameraUi[0].start();
+                });
+                NoiseCameraX cameraEngine=(NoiseCameraX)field(cameraUi[0],"engine");
+                for(int attempt=0;attempt<80&&!cameraEngine.ready();attempt++)
+                    SystemClock.sleep(250);
+                require(cameraEngine.ready(),"CameraX successfully opens virtual camera and preview");
+                SystemClock.sleep(850);
+                View photoButton=(View)field(cameraUi[0],"shutterButton");
+                runOnMainSync(()->photoButton.performClick());
+                Uri captured=null;
+                for(int attempt=0;attempt<100;attempt++){
+                    captured=(Uri)field(cameraUi[0],"latestPhoto");
+                    if(captured!=null)break;
+                    SystemClock.sleep(250);
+                }
+                require(captured!=null,"CameraX delivers a JPEG through the full photo pipeline");
+                BitmapFactory.Options photoInfo=new BitmapFactory.Options();
+                photoInfo.inJustDecodeBounds=true;
+                try(InputStream in=activity.getContentResolver().openInputStream(captured)){
+                    BitmapFactory.decodeStream(in,null,photoInfo);
+                }
+                require(photoInfo.outWidth>0&&photoInfo.outHeight>0
+                    &&Math.abs(photoInfo.outWidth-photoInfo.outHeight)<=2,
+                    "Captured high-resolution JPEG matches the selected square frame");
+                activity.getContentResolver().delete(captured,null,null);
+                runOnMainSync(()->{
+                    cameraUi[0].dispose();
+                    cameraHost.removeView(cameraUi[0]);
+                });
                 // Fast regression gate for pull requests. Full GPU/control
                 // exhaustive suite remains available without -e noise_test_mode.
                 stage("V1.30.2 targeted presets + circle + GPU");
