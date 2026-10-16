@@ -21,8 +21,8 @@ final class HomeScreen extends FrameLayout {
         super(c);
         onImport=importAction;onCamera=cameraAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;
         setBackgroundColor(0xff0c0b10);
-        // Decorative animated stock-art: reusable radial shaders simulate
-        // defocused light smears and floating color clouds, no bitmaps/video.
+        // A printed, stippled monochrome ink composition replaces the
+        // previous textured-glass and cloudy translucent artwork.
         backdrop=new StockAtmosphere(c);
         addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
@@ -30,8 +30,9 @@ final class HomeScreen extends FrameLayout {
         page.setPadding(dp(20),dp(11),dp(20),dp(8));
         addView(page,new FrameLayout.LayoutParams(-1,-1));
 
-        // The identity is built from one visual vocabulary:
-        // deep graphite, lilac photographic light, thin orbital traces and warm-white type.
+        // Clear black-on-white editorial typography complements the ink
+        // artwork; the dark central circle and lower studio panel carry
+        // their own high-contrast white text.
         LinearLayout header=new LinearLayout(c);
         header.setGravity(Gravity.CENTER_VERTICAL);
         page.addView(header,new LinearLayout.LayoutParams(-1,dp(82)));
@@ -39,13 +40,13 @@ final class HomeScreen extends FrameLayout {
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(brand,new LinearLayout.LayoutParams(0,-1,1));
-        TextView eyebrow=text("FOTOGRAFIA  ·  EDIÇÃO  ·  EXPERIMENTAÇÃO",9,0xffbba7cc);
+        TextView eyebrow=text("FOTOGRAFIA  ·  EDIÇÃO  ·  EXPERIMENTAÇÃO",9,0xff49464d);
         eyebrow.setLetterSpacing(.12f);
         brand.addView(eyebrow);
-        TextView logo=text("Noise!",34,EditorTheme.INK);
+        TextView logo=text("Noise!",34,0xff17171c);
         logo.setTypeface(NoiseTypography.bold(c));logo.setLetterSpacing(-.055f);
         brand.addView(logo);
-        TextView subtitle=text("Ferramentas criativas para sua imagem.",12,0xffb1a8b8);
+        TextView subtitle=text("Ferramentas criativas para sua imagem.",12,0xff51515b);
         brand.addView(subtitle);
         ImageView folders=IconArt.button(c,IconArt.FOLDER,"Meus projetos");
         LinearLayout.LayoutParams folderParams=new LinearLayout.LayoutParams(dp(44),dp(44));
@@ -107,7 +108,12 @@ final class HomeScreen extends FrameLayout {
         LinearLayout lower=new LinearLayout(c);
         lower.setOrientation(LinearLayout.VERTICAL);
         lower.setPadding(dp(15),dp(12),dp(15),dp(13));
-        lower.setBackground(new TexturedGlass(c,backdrop,lower,8,0xff211b29,.46f));
+        GradientDrawable panel=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{0xf41a1a1f,0xf5222229,0xf516171d});
+        panel.setCornerRadius(dp(7));
+        panel.setStroke(Math.max(1,dp(1)),0x7e77737e);
+        lower.setBackground(panel);
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
 
         LinearLayout sectionHeader=new LinearLayout(c);
@@ -156,7 +162,7 @@ final class HomeScreen extends FrameLayout {
         resume.setTypeface(NoiseTypography.medium(c));
         resume.setGravity(Gravity.CENTER_VERTICAL);
         resume.setPadding(dp(13),0,dp(13),0);
-        resume.setBackground(new TexturedGlass(c,backdrop,resume,6,0xff24202c,.43f));
+        resume.setBackground(homeSurface(0xff292930,6));
         resume.setMinHeight(dp(43));
         resume.setSingleLine(true);
         resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -166,14 +172,15 @@ final class HomeScreen extends FrameLayout {
 
         LinearLayout nav=new LinearLayout(c);
         nav.setGravity(Gravity.CENTER);
+        nav.setBackground(homeSurface(0xf51d1d23,7));
         LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(49));
-        navParams.topMargin=dp(5);
+        navParams.topMargin=dp(8);
         page.addView(nav,navParams);
         navButton(nav,"Início",IconArt.PHOTO,()->{},true);
         navButton(nav,"Biblioteca",IconArt.GALLERY,onImport,false);
         navButton(nav,"Projetos",IconArt.FOLDER,onProjects,false);
     }
-    /** Structural Home components use 6-8dp, preserving the central circle. */
+    /** Home surfaces use opaque graphite, with no glass or noise overlay. */
     private GradientDrawable homeSurface(int color,float radius){
         GradientDrawable d=new GradientDrawable();
         d.setColor(color);d.setCornerRadius(dp(radius));
@@ -181,18 +188,20 @@ final class HomeScreen extends FrameLayout {
         return d;
     }
     private void homeHeaderButton(ImageView icon){
-        icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x24ffffff),
-            new TexturedGlass(icon.getContext(),backdrop,icon,7,0xff201d28,.41f),null));
+        icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28ffffff),
+            homeSurface(0xff22222a,7),null));
     }
     private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
                                    boolean primary,Runnable action){
         FrameLayout tile=new FrameLayout(c);
-        // A shared material grammar: sampled blurred artwork, micro-refraction,
-        // subdued warm/cool reflections. No unrelated translucent rectangles.
-        TexturedGlass material=new TexturedGlass(c,backdrop,tile,7,
-            primary?0xff4b405b:0xff24202b,primary?.43f:.56f);
+        GradientDrawable material=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            primary?new int[]{0xff55475e,0xff413747}
+                   :new int[]{0xff303037,0xff24242b});
+        material.setCornerRadius(dp(7));
+        material.setStroke(Math.max(1,dp(1)),primary?0x8abbafc7:0x665b5962);
         tile.setBackground(new RippleDrawable(
-            ColorStateList.valueOf(primary?0x29ffffff:0x1bffffff),material,null));
+            ColorStateList.valueOf(primary?0x26ffffff:0x1bffffff),material,null));
         tile.setClickable(true);
         tile.setFocusable(true);
         tile.setContentDescription(title+": "+subtitle);
