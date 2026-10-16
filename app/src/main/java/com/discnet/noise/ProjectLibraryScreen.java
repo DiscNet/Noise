@@ -47,7 +47,7 @@ final class ProjectLibraryScreen extends FrameLayout {
         super(context);this.listener=listener;
         cache=new File(context.getCacheDir(),"noise-project-covers");
         cache.mkdirs();
-        setBackgroundColor(0xff0c0b10);
+        setBackground(surface(OrbitalMaterial.BLACK,OrbitalMaterial.DARK_PURPLE,0f));
         setClickable(true);setFocusableInTouchMode(true);
         LinearLayout page=new LinearLayout(context);page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(16),dp(10),dp(16),dp(8));
@@ -56,6 +56,8 @@ final class ProjectLibraryScreen extends FrameLayout {
         LinearLayout bar=new LinearLayout(context);bar.setGravity(Gravity.CENTER_VERTICAL);
         page.addView(bar,new LinearLayout.LayoutParams(-1,dp(62)));
         ImageView back=IconArt.button(context,IconArt.BACK,"Fechar meus projetos");
+        back.setImageDrawable(new IconArt(IconArt.BACK,OrbitalMaterial.BLACK));
+        back.setBackground(surface(OrbitalMaterial.WHITE,0xffece3f4,4f));
         bar.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         back.setOnClickListener(v->listener.close());
         LinearLayout titleBox=new LinearLayout(context);titleBox.setOrientation(LinearLayout.VERTICAL);
@@ -99,16 +101,28 @@ final class ProjectLibraryScreen extends FrameLayout {
             "Escolher pasta compartilhada para preservar projetos após desinstalar");
     }
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
+    private GradientDrawable surface(int first,int second,float radius){
+        GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{first,second});
+        d.setCornerRadius(dp(radius));
+        d.setStroke(Math.max(1,dp(1)),first==OrbitalMaterial.WHITE?0xffd2bfdf:0xff653b88);
+        return d;
+    }
     private TextView text(String value,float size,boolean prominent){
         TextView t=new TextView(getContext());t.setText(value);t.setTextSize(size);
-        t.setTextColor(prominent?EditorTheme.INK:EditorTheme.MUTED);
+        t.setTextColor(prominent?OrbitalMaterial.WHITE:OrbitalMaterial.MUTED);
         t.setTypeface(prominent?NoiseTypography.bold(getContext()):NoiseTypography.regular(getContext()));
         t.setGravity(Gravity.CENTER_VERTICAL);return t;
     }
     private TextView button(String text,boolean primary){
         TextView t=text(text,12.5f,true);t.setGravity(Gravity.CENTER);
-        t.setTextColor(primary?0xff211526:EditorTheme.INK);
-        t.setBackground(EditorTheme.buttonSurface(getContext(),14,primary));
+        t.setTextColor(primary?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);
+        GradientDrawable plate=primary?
+            surface(OrbitalMaterial.WHITE,0xffe9dcf4,4f):
+            surface(OrbitalMaterial.PURPLE,OrbitalMaterial.DARK_PURPLE,4f);
+        t.setBackground(new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(primary?0x267235ae:0x32ffffff),
+            plate,null));
         t.setClickable(true);t.setFocusable(true);t.setContentDescription(text);return t;
     }
     void showLoading(){
@@ -129,8 +143,8 @@ final class ProjectLibraryScreen extends FrameLayout {
             LinearLayout empty=new LinearLayout(getContext());empty.setOrientation(LinearLayout.VERTICAL);
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(dp(22),dp(40),dp(22),dp(40));
-            empty.setBackground(EditorTheme.surface(getContext(),23));
-            TextView mark=text("◈",44,true);mark.setTextColor(EditorTheme.LIME);
+            empty.setBackground(surface(OrbitalMaterial.DARK_PURPLE,OrbitalMaterial.DEEP_PURPLE,6f));
+            TextView mark=text("◈",44,true);mark.setTextColor(OrbitalMaterial.WHITE);
             mark.setGravity(Gravity.CENTER);empty.addView(mark);
             TextView title=text("Sua biblioteca começa aqui",17,true);
             title.setGravity(Gravity.CENTER);empty.addView(title);
@@ -152,16 +166,16 @@ final class ProjectLibraryScreen extends FrameLayout {
             final ProjectStore.Project p=projects.get(i);
             LinearLayout card=new LinearLayout(getContext());card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(dp(8),dp(8),dp(8),dp(8));
-            card.setBackground(EditorTheme.panel(getContext(),0xff1a1821,0,18,0));
+            card.setBackground(surface(OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.DARK_PURPLE,6f));
             LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);
             cp.setMargins(dp(3),dp(3),dp(3),dp(7));row.addView(card,cp);
             FrameLayout cover=new FrameLayout(getContext());
-            cover.setBackground(EditorTheme.panel(getContext(),0xff2a2233,0,14,0));
+            cover.setBackground(surface(0xff522877,OrbitalMaterial.BLACK,4f));
             cover.setClipToOutline(true);
             ImageView image=new ImageView(getContext());image.setScaleType(ImageView.ScaleType.CENTER_CROP);
             cover.addView(image,new LayoutParams(-1,-1));
             TextView placeholder=text("◈",28,true);placeholder.setGravity(Gravity.CENTER);
-            placeholder.setTextColor(0xffac8abb);cover.addView(placeholder,new LayoutParams(-1,-1));
+            placeholder.setTextColor(OrbitalMaterial.WHITE);cover.addView(placeholder,new LayoutParams(-1,-1));
             LinearLayout.LayoutParams imageParams=new LinearLayout.LayoutParams(-1,dp(133));
             card.addView(cover,imageParams);
             TextView name=text(p.name,13,true);name.setSingleLine(true);
@@ -249,7 +263,7 @@ final class ProjectLibraryScreen extends FrameLayout {
         name.setSingleLine(true);name.setText(project.name);
         name.setSelectAllOnFocus(true);name.setTextColor(EditorTheme.INK);
         name.setTypeface(NoiseTypography.medium(getContext()));name.setTextSize(16);
-        name.setBackground(EditorTheme.panel(getContext(),0xff292332,0,12,0));
+        name.setBackground(surface(OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.DARK_PURPLE,4f));
         name.setPadding(dp(12),0,dp(12),0);
         content.addView(name,new LinearLayout.LayoutParams(-1,dp(53)));
         TextView confirm=button("Salvar nome",true);
@@ -278,7 +292,7 @@ final class ProjectLibraryScreen extends FrameLayout {
         layer.setOnClickListener(v->hideModal());
         LinearLayout content=new LinearLayout(getContext());content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20),dp(20),dp(20),dp(20));
-        content.setBackground(EditorTheme.panel(getContext(),0xff1c1924,0,24,0));
+        content.setBackground(surface(OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.BLACK,6f));
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
         lp.leftMargin=dp(19);lp.rightMargin=dp(19);layer.addView(content,lp);
         content.setClickable(true);content.setOnClickListener(v->{});
