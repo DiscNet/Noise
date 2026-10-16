@@ -592,6 +592,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        // The save transaction is not cancellable; keep progress visible.
+        if(exporting)return;
         if(cameraScreen!=null){closeCamera();showHome();return;}
         if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
