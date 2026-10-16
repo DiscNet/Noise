@@ -17,7 +17,7 @@ import java.util.*;
 final class CameraPhotoPipeline {
     static final class Settings {
         float sat=1f,warm=0f,exposure=0f,hue=0f,contrast=1f,sharpness=0f,alignment=0f;
-        int orientation;
+        int orientation,jpegRotation=-1,jpegQuality=98;
         boolean mirror;
         android.graphics.RectF frame=new android.graphics.RectF();
         int viewWidth,viewHeight;
@@ -25,7 +25,8 @@ final class CameraPhotoPipeline {
             Settings c=new Settings();
             c.sat=sat;c.warm=warm;c.exposure=exposure;c.hue=hue;
             c.contrast=contrast;c.sharpness=sharpness;c.alignment=alignment;
-            c.orientation=orientation;c.mirror=mirror;c.frame=new RectF(frame);
+            c.orientation=orientation;c.jpegRotation=jpegRotation;c.jpegQuality=jpegQuality;
+            c.mirror=mirror;c.frame=new RectF(frame);
             c.viewWidth=viewWidth;c.viewHeight=viewHeight;return c;
         }
     }
@@ -111,7 +112,8 @@ final class CameraPhotoPipeline {
         if(bounds.outWidth<1||bounds.outHeight<1)throw new IOException("JPEG inválido");
         ExifInterface exif=new ExifInterface(new ByteArrayInputStream(jpeg));
         int o=exif.getAttributeInt(ExifInterface.TAG_ORIENTATION,ExifInterface.ORIENTATION_NORMAL);
-        int degrees=exifDegrees(o),orientedW=degrees%180!=0?bounds.outHeight:bounds.outWidth;
+        int degrees=settings.jpegRotation>=0?settings.jpegRotation:exifDegrees(o);
+        int orientedW=degrees%180!=0?bounds.outHeight:bounds.outWidth;
         int orientedH=degrees%180!=0?bounds.outWidth:bounds.outHeight;
         Rect desired=CameraFrameGuide.photoCrop(orientedW,orientedH,
             settings.viewWidth,settings.viewHeight,settings.frame,settings.mirror);
@@ -146,7 +148,7 @@ final class CameraPhotoPipeline {
                 settings.hue,settings.contrast,settings.sharpness);
             temp=File.createTempFile("noise-camera-",".jpg",context.getCacheDir());
             try(OutputStream out=new BufferedOutputStream(new FileOutputStream(temp))){
-                if(!processed.compress(Bitmap.CompressFormat.JPEG,98,out))
+                if(!processed.compress(Bitmap.CompressFormat.JPEG,Math.max(90,Math.min(100,settings.jpegQuality)),out))
                     throw new IOException("Codificação JPEG falhou");
             }
             ExifInterface outputExif=new ExifInterface(temp.getAbsolutePath());
