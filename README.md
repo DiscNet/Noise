@@ -55,7 +55,7 @@ O **Noise!** combina os ajustes essenciais de fotografia com ferramentas criativ
 
 ### ◌ Estúdio e interface orbital
 
-Home com **tinta procedural na GPU**: massas que se deformam, fundem e se separam, com reflexos violeta e resposta suave ao toque. Perfis Alto, Equilibrado e Econômico, ajuste automático e redução de movimento nas configurações. **Cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. No editor, as rodas laterais têm **crossfade contínuo de ícones** e ligação líquida por metaballs.
+Home com **tinta procedural na GPU**: massas que se deformam, fundem e se separam, com bordas de tinta granuladas e reflexos violeta, além de resposta suave ao toque. Perfis Alto, Equilibrado e Econômico, ajuste automático e redução de movimento nas configurações. **Cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. No editor, as rodas laterais têm **crossfade contínuo de ícones** e ligação líquida por metaballs.
 
 </td>
 <td valign="top">
@@ -186,7 +186,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.36.2](docs/RELEASE-1.36.2.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.37.1](docs/RELEASE-1.37.1.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -202,7 +202,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.36.2.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.37.1.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
