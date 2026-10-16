@@ -467,21 +467,21 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             box.setStrength(active?strength:0f);
             box.draw(canvas);
             if(!active||strength<=.001f)return;
-            float cx=(l+right)*.5f,cy=(t+bottom)*.5f;
-            float w=(right-l)*.5f,h=(bottom-t)*.5f;
-            // Subtle Bézier meniscus during the final settle.
+            // The classic meniscus is retained but wraps the new near-square
+            // button instead of drawing an oversized rounded liquid disk.
             float pulse=(float)Math.sin(Math.PI*liquid);
-            float wave=scale*2.5f*pulse;
+            float wave=scale*2.8f*pulse;
+            float corner=scale*4f;
             path.reset();
-            path.moveTo(cx,cy-h-wave*.65f);
-            path.cubicTo(cx+w*.60f,cy-h-wave*.5f,
-                cx+w+wave*.2f,cy-h*.68f,cx+w,cy);
-            path.cubicTo(cx+w-wave*.04f,cy+h*.65f,
-                cx+w*.53f,cy+h+wave*.40f,cx,cy+h+wave*.28f);
-            path.cubicTo(cx-w*.65f,cy+h+wave*.30f,
-                cx-w-wave*.22f,cy+h*.56f,cx-w-wave*.10f,cy);
-            path.cubicTo(cx-w-wave*.18f,cy-h*.69f,
-                cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
+            path.moveTo(l+corner,t-wave*.18f);
+            path.lineTo(right-corner,t-wave*.18f);
+            path.quadTo(right+wave*.28f,t-wave*.16f,right+wave*.30f,t+corner);
+            path.lineTo(right+wave*.55f,bottom-corner);
+            path.quadTo(right+wave*.25f,bottom+wave*.16f,right-corner,bottom+wave*.18f);
+            path.lineTo(l+corner,bottom+wave*.18f);
+            path.quadTo(l-wave*.25f,bottom+wave*.16f,l-wave*.30f,bottom-corner);
+            path.lineTo(l-wave*.30f,t+corner);
+            path.quadTo(l-wave*.25f,t-wave*.16f,l+corner,t-wave*.18f);
             path.close();
             // Premultiplied alpha: a neighboring icon gains its highlight
             // as it approaches center, while the previous fades out.
