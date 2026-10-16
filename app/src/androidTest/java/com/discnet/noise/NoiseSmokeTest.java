@@ -1103,6 +1103,7 @@ public class NoiseSmokeTest extends Instrumentation {
             }
             stage("V1.36: real gesture-driven metaball bridge between icons");
             LiquidSelectorLayer bridge=(LiquidSelectorLayer)field(orbitStage,"liquidBridge");
+            require(!bridge.connected(), "Actual orbital renderer never draws the removed liquid");
             final Bitmap[] flowA={null},flowB={null};
             runOnMainSync(()->{
                 flowA[0]=Bitmap.createBitmap(240,140,Bitmap.Config.ARGB_8888);
@@ -1138,8 +1139,7 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid connection fades continuously at both ends without a white flash");
             }
             early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
-            stage("V1.38.0: no liquid is drawn by the orbital stage");
-            require(!bridge.connected(),"Removed liquid connector never renders while wheel rests");
+            stage("V1.38.0: no liquid connector is drawn during wheel scrolling");
             stage("V1.37.5: orbital dock is a gradient without a full square panel");
             LinearLayout dock=(LinearLayout)field(orbital,"content");
             require(dock.getBackground() instanceof android.graphics.drawable.ColorDrawable
