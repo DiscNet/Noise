@@ -84,6 +84,32 @@ public class NoiseSmokeTest extends Instrumentation {
             require(GalleryScreen.isNoisePhoto("Pictures/Noise!/","Noise!")
                 &&!GalleryScreen.isNoisePhoto("Pictures/Other/","Other"),
                 "Legacy Noise album classification remains available, without filtering Gallery");
+            stage("V1.39.1: editorial gallery, complete presets and launcher art");
+            require(GalleryScreen.isFeatured(0,false,4)&&GalleryScreen.isFeatured(11,false,4)
+                &&!GalleryScreen.isFeatured(0,true,4)
+                &&!GalleryScreen.isFeatured(0,false,2),
+                "Gallery gives selected photos larger cells without changing direct-edit picker");
+            Bitmap launcher=BitmapFactory.decodeResource(
+                getTargetContext().getResources(),R.drawable.noise_launcher_art);
+            require(launcher!=null&&launcher.getWidth()==192&&launcher.getHeight()==192,
+                "User-provided N artwork is compiled as actual adaptive launcher resource");
+            launcher.recycle();
+            FluidInteractionController erodingTouch=new FluidInteractionController();
+            long touchNow=SystemClock.uptimeMillis();
+            MotionEvent press=MotionEvent.obtain(touchNow,touchNow,
+                MotionEvent.ACTION_DOWN,150,220,0);
+            erodingTouch.observe(press,400,800);press.recycle();
+            float[] pressField=new float[5];
+            erodingTouch.sample(.016f,pressField);
+            require(pressField[4]>.75f,
+                "Touch produces strong localized ink erosion, not weak cosmetic displacement");
+            MotionEvent release=MotionEvent.obtain(touchNow,touchNow+30,
+                MotionEvent.ACTION_UP,150,220,0);
+            erodingTouch.observe(release,400,800);release.recycle();
+            float[] recovered=new float[5];
+            erodingTouch.sample(.9f,recovered);
+            require(recovered[4]<pressField[4]*.1f,
+                "Eroded material gradually heals after pointer release");
             View atmosphere=home.getChildAt(0);
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
@@ -1078,6 +1104,14 @@ public class NoiseSmokeTest extends Instrumentation {
                 SystemClock.sleep(90);
             require(field(activity,"presetLibrary") instanceof PresetDialog,
                 "Preset library uses custom Noise overlay, not AlertDialog");
+            PresetDialog responsive=(PresetDialog)field(activity,"presetLibrary");
+            ViewGroup responsiveRoot=(ViewGroup)responsive.getChildAt(0);
+            require(responsiveRoot.getChildCount()==3
+                &&responsiveRoot.getChildAt(1) instanceof ScrollView,
+                "Presets keeps only header and Apply fixed; thumbnail/intensity/cards scroll together");
+            ScrollView catalog=(ScrollView)responsiveRoot.getChildAt(1);
+            require(((ViewGroup)catalog.getChildAt(0)).getChildCount()>=5,
+                "All preset content is inside the viewport-bounded scrolling region");
             saveScreenshot("noise-presets.png");
             runOnMainSync(activity::onBackPressed);
             stage("orbital tool gesture and functional effect routing");
@@ -1566,6 +1600,8 @@ public class NoiseSmokeTest extends Instrumentation {
             });
             require(viewer[0].position()==1 && viewer[0].count()==2,
                 "Viewer switches images without reopening the gallery grid");
+            require(viewer[0].getChildCount()>4,
+                "Viewer actually animates a separate outgoing photo horizontally");
             runOnMainSync(()->{
                 ((android.view.ViewGroup)viewer[0].getParent()).removeView(viewer[0]);
                 viewer[0].close();
