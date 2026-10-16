@@ -463,19 +463,26 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             if(!active||strength<=.001f)return;
             float cx=(l+right)*.5f,cy=(t+bottom)*.5f;
             float w=(right-l)*.5f,h=(bottom-t)*.5f;
-            // Subtle Bézier meniscus during the final settle.
+            // The rim is a sampled, chipped superellipse. Its fine-scale
+            // displacement uses the SAME coherent ink lattice as the orbit
+            // membrane, and liquid phase follows the fractional wheel offset.
             float pulse=(float)Math.sin(Math.PI*liquid);
-            float wave=scale*2.5f*pulse;
+            float phase=android.os.SystemClock.uptimeMillis()*.00023f;
             path.reset();
-            path.moveTo(cx,cy-h-wave*.65f);
-            path.cubicTo(cx+w*.60f,cy-h-wave*.5f,
-                cx+w+wave*.2f,cy-h*.68f,cx+w,cy);
-            path.cubicTo(cx+w-wave*.04f,cy+h*.65f,
-                cx+w*.53f,cy+h+wave*.40f,cx,cy+h+wave*.28f);
-            path.cubicTo(cx-w*.65f,cy+h+wave*.30f,
-                cx-w-wave*.22f,cy+h*.56f,cx-w-wave*.10f,cy);
-            path.cubicTo(cx-w-wave*.18f,cy-h*.69f,
-                cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
+            for(int i=0;i<=96;i++){
+                float angle=(float)(Math.PI*2.0*i/96.0);
+                float xx=(float)Math.cos(angle),yy=(float)Math.sin(angle);
+                float square=(float)Math.pow(
+                    Math.pow(Math.abs(xx),4.0)+Math.pow(Math.abs(yy),4.0),-.25);
+                float wave=LiquidSelectorLayer.coherentNoise(
+                    7.4f*xx+phase+3.1f,7.4f*yy-2.8f);
+                float chips=LiquidSelectorLayer.coherentNoise(
+                    17.8f*xx+8.2f,17.8f*yy-4.5f);
+                float wear=Math.max(0f,chips-.10f)*.045f;
+                float radial=square*(1f+(.022f+.060f*pulse)*wave-wear);
+                float px=cx+w*xx*radial,py=cy+h*yy*radial;
+                if(i==0)path.moveTo(px,py);else path.lineTo(px,py);
+            }
             path.close();
             // Premultiplied alpha: a neighboring icon gains its highlight
             // as it approaches center, while the previous fades out.
@@ -715,7 +722,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 focusFrames[i].setStrength(intensity);
                 // Keep geometry attached to wheel movement rather than
                 // restarting a 455ms animator at each snapped icon.
-                focusFrames[i].setLiquid(1f);
+                focusFrames[i].setLiquid(intensity);
             }
         }
         private void cancelMotion(){
