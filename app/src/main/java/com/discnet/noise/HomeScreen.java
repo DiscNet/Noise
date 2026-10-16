@@ -91,6 +91,19 @@ final class HomeScreen extends FrameLayout {
         toolTag.setMargins(dp(2),0,0,dp(13));
         orbArea.addView(filmTag,toolTag);
 
+        // On compact displays keep the artwork legible rather than packing
+        // ornamental labels and large type around a smaller hero circle.
+        orbArea.addOnLayoutChangeListener((view,l,t,r,b,ol,ot,oright,obottom)->{
+            int available=b-t;
+            boolean compact=available<dp(245);
+            boolean veryCompact=available<dp(175);
+            orbitLabel.setVisibility(compact?View.GONE:View.VISIBLE);
+            filmTag.setVisibility(compact?View.GONE:View.VISIBLE);
+            start.setTextSize(veryCompact?23:compact?27:31);
+            small.setVisibility(veryCompact?View.GONE:View.VISIBLE);
+            hint.setVisibility(veryCompact?View.GONE:View.VISIBLE);
+        });
+
         orbArea.setClickable(true);orbArea.setFocusable(true);
         orbArea.setContentDescription("Nova criação: importar imagem para edição");
         orbArea.setOnClickListener(v->{
