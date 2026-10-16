@@ -1126,9 +1126,7 @@ public class NoiseSmokeTest extends Instrumentation {
                     for(int p=0;p<2;p++){
                         changeLiquid.invoke(fluid,p==0?0f:.5f);
                         Bitmap frame=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888);
-                        fluid.getClass().getMethod("setBounds",
-                            int.class,int.class,int.class,int.class)
-                            .invoke(fluid,0,0,128,128);
+                        ((android.graphics.drawable.Drawable)fluid).setBounds(0,0,128,128);
                         ((android.graphics.drawable.Drawable)fluid).draw(new Canvas(frame));
                         liquidStates[p]=frame;
                     }
