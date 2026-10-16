@@ -9,7 +9,7 @@ import android.widget.ImageView;
 /** Device-independent drawn vector pictograms, not Unicode/emoji font glyphs. */
 final class IconArt extends Drawable {
     static final int SETTINGS=30, GALLERY=31, RESIZE=32, SAVE=33, BACK=34,
-        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41, UNDO=42, REDO=43, MORE=44, FULL=45;
+        ORIGINAL=35, RESET=36, FOLDER=37, PLUS=38, MINUS=39, PHOTO=40, SHUFFLE=41, UNDO=42, REDO=43, MORE=44, FULL=45, CAMERA=46;
     private final int symbol;
     private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path=new Path();
@@ -67,6 +67,11 @@ final class IconArt extends Drawable {
             case GALLERY:case PHOTO:
                 rect(canvas,3,4,21,20);circle(canvas,8.2f,9,1.7f);
                 poly(canvas,4,18,10,12,14,15,17,11,20,16);break;
+            case CAMERA:
+                rect(canvas,2.5f,6.5f,21.5f,19.5f);
+                poly(canvas,6,6.5f,8,4,16,4,18,6.5f);
+                circle(canvas,12,13,4.2f);circle(canvas,12,13,2f);
+                circle(canvas,18.2f,9,0.8f);break;
             case RESIZE:
                 poly(canvas,4,10,4,4,10,4);poly(canvas,14,20,20,20,20,14);
                 ln(canvas,4,4,10,10);ln(canvas,20,20,14,14);break;
