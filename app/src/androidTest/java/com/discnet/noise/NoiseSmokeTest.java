@@ -220,6 +220,36 @@ public class NoiseSmokeTest extends Instrumentation {
                     "CameraX owns the live preview, not a media picker");
                 require(field(cameraUi[0],"engine") instanceof NoiseCameraX,
                     "CameraX owns the actual capture and autofocus");
+                stage("V1.34: precise alignment and real JPEG sharpness");
+                Bitmap alignmentPlate=Bitmap.createBitmap(120,80,Bitmap.Config.ARGB_8888);
+                alignmentPlate.eraseColor(Color.rgb(120,90,70));
+                Bitmap alignedPlate=CameraPhotoPipeline.alignCropFill(alignmentPlate,12.5f);
+                require(alignedPlate.getWidth()==120&&alignedPlate.getHeight()==80,
+                    "Alignment retains chosen photo resolution and aspect ratio");
+                for(int[] point:new int[][]{{0,0},{119,0},{0,79},{119,79}}){
+                    int pixel=alignedPlate.getPixel(point[0],point[1]);
+                    require(Color.red(pixel)>100&&Color.green(pixel)>70&&Color.blue(pixel)>50,
+                        "No black or transparent triangles after fine alignment");
+                }
+                alignedPlate.recycle();alignmentPlate.recycle();
+                Bitmap detail=Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888);
+                detail.eraseColor(Color.rgb(100,100,100));
+                detail.setPixel(8,8,Color.rgb(140,140,140));
+                Bitmap soft=CameraPhotoPipeline.processPhoto(detail,1f,0f,0f,0f,1f,0f);
+                Bitmap sharp=CameraPhotoPipeline.processPhoto(detail,1f,0f,0f,0f,1f,.20f);
+                require(Color.red(sharp.getPixel(8,8))>Color.red(soft.getPixel(8,8))+10,
+                    "Sharpness tool changes captured image detail, not just button appearance");
+                soft.recycle();sharp.recycle();detail.recycle();
+                CameraFrameGuide alignedGuide=new CameraFrameGuide(activity,
+                    new CameraFrameGuide.Gestures(){
+                        @Override public void focus(float x,float y){}
+                        @Override public void zoom(float factor){}
+                    });
+                alignedGuide.alignment(-7.5f);
+                require(Math.abs(alignedGuide.alignment()+7.5f)<.01f,
+                    "Leveling guide responds to exact camera ruler adjustment");
+                require(((java.util.ArrayList<?>)field(cameraUi[0],"toolButtons")).size()>=8,
+                    "Camera exposes working sharpening and alignment selectors");
                 stage("CameraX: bind virtual lens, focus and capture a real emulator JPEG");
                 final FrameLayout cameraHost=(FrameLayout)activity.findViewById(android.R.id.content);
                 runOnMainSync(()->{
