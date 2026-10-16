@@ -27,7 +27,8 @@ final class PhotoViewer extends FrameLayout {
     private final ArrayList<MediaLibrary.Photo> items=new ArrayList<>();
     private final ZoomPhotoView image;
     private final LinearLayout header,footer;
-    private final TextView title,counter,feedback;
+    private final TextView title,counter;
+    private TextView feedback;
     private final ExecutorService decode=Executors.newFixedThreadPool(2);
     private final android.util.LruCache<String,Bitmap> full=new android.util.LruCache<String,Bitmap>(42*1024*1024){
         @Override protected int sizeOf(String key,Bitmap value){return value.getByteCount();}
