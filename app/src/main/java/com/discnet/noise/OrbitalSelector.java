@@ -119,7 +119,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         continueButton=label(c,"Selecionar "+names[orbit.selected()],16,EditorTheme.INK);
         continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
-        continueButton.setBackground(new TexturedGlass(c,null,continueButton,10,
+        continueButton.setBackground(new TexturedGlass(c,null,continueButton,8,
             0xff31283a,.22f));
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
@@ -302,7 +302,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
 
         // Analytic critically damped spring. Unlike a view animation tied
         // to the pointer, this never jumps when a touch MOVE or UP arrives.
-        final float omega=11f; // soft, critically-damped settling; no overshoot
+        final float omega=9.5f; // longer continuous settle for the whole menu
         float displacement=content.getTranslationX()-targetX;
         float carry=horizontalVelocity+omega*displacement;
         float decay=(float)Math.exp(-omega*dt);
@@ -453,7 +453,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Halfway through the transition, asymmetric bezier bulges create
             // the liquid snap without attaching glow to neighboring icons.
             float pulse=(float)Math.sin(Math.PI*liquid);
-            float wave=scale*5.8f*pulse;
+            float wave=scale*2.7f*pulse; // restrained meniscus instead of a hard pop
             path.reset();
             path.moveTo(cx,cy-h-wave*.65f);
             path.cubicTo(cx+w*.60f,cy-h-wave*.50f,
@@ -466,12 +466,13 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
                 cx-w*.62f,cy-h-wave*.25f,cx,cy-h-wave*.65f);
             path.close();
             p.setStyle(Paint.Style.FILL);
-            p.setColor(0xffb194ca);
+            p.setColor(0xff8c789d);
             canvas.drawPath(path,p);
             // The white hairline is drawn ONCE, on this aligned icon only.
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(scale*1.3f);
-            p.setColor(0xe7ffffff);
+            p.setColor(Color.argb(Math.round(237f*(.24f+.76f*liquid)),
+                252,248,255));
             canvas.drawPath(path,p);
             // A restrained inner glint follows the deformation.
             p.setStrokeWidth(scale*.8f);
@@ -713,8 +714,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
             final IconGlowFrame frame=focusedFrame;
             liquidAnimator=ValueAnimator.ofFloat(0f,1f);
-            liquidAnimator.setDuration(285);
-            liquidAnimator.setInterpolator(new PathInterpolator(.23f,.71f,.31f,1f));
+            liquidAnimator.setDuration(455);
+            liquidAnimator.setInterpolator(new PathInterpolator(.19f,.76f,.28f,1f));
             liquidAnimator.addUpdateListener(a->{
                 if(framedIndex==aligned && icons[aligned].getBackground()==frame)
                     frame.setLiquid((Float)a.getAnimatedValue());
@@ -746,7 +747,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             // Analytic critically-damped spring, smooth in both drag and
             // coast-to-item phases. Unlike an interpolator reset at ACTION_UP,
             // it preserves angular velocity across the transition.
-            float omega=settling?13.5f:19f;
+            float omega=settling?9.6f:13.2f; // smooth 400-500ms settling without oscillation
             float displacement=offset-targetOffset;
             float carry=angularVelocity+omega*displacement;
             float decay=(float)Math.exp(-omega*dt);
@@ -762,8 +763,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         }
         private void settle(float velocityY){
             float pixelsPerItem=Math.max(dp(60),radius*STEP);
-            float momentum=Math.max(-2.3f,Math.min(2.3f,
-                -velocityY*.14f/pixelsPerItem));
+            float momentum=Math.max(-1.65f,Math.min(1.65f,
+                -velocityY*.10f/pixelsPerItem));
             targetOffset=Math.max(0,Math.min(names.length-1,
                 Math.round(targetOffset+momentum)));
             settling=true;
