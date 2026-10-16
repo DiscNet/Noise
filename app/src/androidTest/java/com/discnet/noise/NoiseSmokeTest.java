@@ -79,6 +79,46 @@ public class NoiseSmokeTest extends Instrumentation {
                 float current=(Float)field(atmosphere,"phase");
                 require(current!=previous,"Home gradient must advance animation frames");
             }
+            stage("V1.35: functional home studio, hero composition and responsive layout");
+            final HomeScreen[] studio={null};
+            final int[] called={0,0,0,0,0};
+            runOnMainSync(()->{
+                studio[0]=new HomeScreen(activity,()->called[0]++,
+                    ()->called[1]++,()->called[2]++,()->called[3]++,()->called[4]++);
+                int dp320=Math.round(320*activity.getResources().getDisplayMetrics().density);
+                int dp570=Math.round(570*activity.getResources().getDisplayMetrics().density);
+                studio[0].measure(View.MeasureSpec.makeMeasureSpec(dp320,View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(dp570,View.MeasureSpec.EXACTLY));
+                studio[0].layout(0,0,dp320,dp570);
+                studio[0].setRecent(null);
+            });
+            ViewGroup studioPage=(ViewGroup)studio[0].getChildAt(1);
+            ViewGroup studioOrb=(ViewGroup)studioPage.getChildAt(1);
+            require(studioOrb.getChildAt(0).getClass().getSimpleName().equals("Sphere"),
+                "New home keeps the one-piece animated Noise sphere");
+            require(studioOrb.getHeight()>0,"Hero remains visible on 320dp compact display");
+            ViewGroup entrySurface=(ViewGroup)studioPage.getChildAt(2);
+            ViewGroup actionRow=(ViewGroup)entrySurface.getChildAt(1);
+            require(actionRow.getChildCount()==2,"Only two coherent primary actions");
+            View editCard=actionRow.getChildAt(0),cameraCard=actionRow.getChildAt(1);
+            require(editCard.isClickable()&&cameraCard.isClickable()
+                &&editCard.getContentDescription().toString().contains("Editar foto")
+                &&cameraCard.getContentDescription().toString().contains("Câmera"),
+                "New photo and camera cards expose accessible real actions");
+            LinearLayout recentGroup=(LinearLayout)field(studio[0],"resumeGroup");
+            require(recentGroup.getVisibility()==View.GONE,
+                "No giant empty recent-project placeholder on first launch");
+            runOnMainSync(()->{
+                editCard.performClick();cameraCard.performClick();
+                studio[0].setRecent("Experimento em cores");
+            });
+            require(called[0]==1&&called[1]==1,
+                "Primary cards open the real import flow and live camera");
+            require(recentGroup.getVisibility()==View.VISIBLE,
+                "Real project enables contextual continue card");
+            runOnMainSync(()->studio[0].setRecent(""));
+            require(recentGroup.getVisibility()==View.GONE,
+                "Removing the last project also removes unused placeholder UI");
             if(targeted){
                 stage("Camera: focus touch, framed aspect ratio, capture crop and zoom");
                 RectF square=new RectF(),portrait=new RectF(),wide=new RectF();
