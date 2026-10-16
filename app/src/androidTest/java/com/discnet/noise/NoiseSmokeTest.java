@@ -1143,23 +1143,23 @@ public class NoiseSmokeTest extends Instrumentation {
             }
             flowA[0].recycle();flowB[0].recycle();
             stage("V1.36.1: metaball fades smoothly and respects gesture direction");
-            final Bitmap[] early={null},middle={null},late={null};
+            final Bitmap[] early={null},liquidMiddle={null},late={null};
             runOnMainSync(()->{
                 early[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
-                middle[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
+                liquidMiddle[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
                 late[0]=Bitmap.createBitmap(250,140,Bitmap.Config.ARGB_8888);
                 bridge.draw(new Canvas(early[0]),60,70,172,70,.04f,31f);
-                bridge.draw(new Canvas(middle[0]),60,70,172,70,.50f,31f);
+                bridge.draw(new Canvas(liquidMiddle[0]),60,70,172,70,.50f,31f);
                 bridge.draw(new Canvas(late[0]),60,70,172,70,.96f,31f);
             });
             if(ValueAnimator.areAnimatorsEnabled()){
                 int a=Color.alpha(early[0].getPixel(110,70));
-                int b=Color.alpha(middle[0].getPixel(110,70));
+                int b=Color.alpha(liquidMiddle[0].getPixel(110,70));
                 int c=Color.alpha(late[0].getPixel(110,70));
                 require(b>a&&b>c,
                     "Liquid connection fades continuously at both ends without a white flash");
             }
-            early[0].recycle();middle[0].recycle();late[0].recycle();
+            early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
