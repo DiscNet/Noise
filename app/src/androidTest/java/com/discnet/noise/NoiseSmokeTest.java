@@ -127,6 +127,41 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Turning the phone saves landscape photo while the camera UI remains portrait");
                 if(landscapePhoto!=portraitPhoto)landscapePhoto.recycle();
                 portraitPhoto.recycle();
+                stage("V1.33: movable frame and capture geometry");
+                RectF selectedFrame=new RectF();
+                CameraFrameGuide.geometryExact(720,1100,3f/4f,2f,100f,-85f,selectedFrame);
+                require(selectedFrame.centerX()>360&&selectedFrame.centerY()<550,
+                    "The crop guide can be repositioned without moving the preview");
+                require(Math.abs(selectedFrame.width()/selectedFrame.height()-.75f)<.01f,
+                    "Portrait 3:4 uses the actual selected aspect");
+                for(float aspect:new float[]{1f,4f/3f,3f/4f,16f/9f,9f/16f,3f/2f}){
+                    CameraFrameGuide.geometryExact(720,1100,aspect,2f,0,0,selectedFrame);
+                    require(Math.abs(selectedFrame.width()/selectedFrame.height()-aspect)<.02f,
+                        "Selected photo ratios are exact and not stretched");
+                    Rect region=CameraFrameGuide.photoCrop(3000,4000,720,1100,selectedFrame);
+                    require(region.left>=0&&region.top>=0
+                        &&region.right<=3000&&region.bottom<=4000,
+                        "Crop remains within the original full-resolution JPEG");
+                }
+                RectF offCenter=new RectF(40,130,320,390);
+                Rect frontCrop=CameraFrameGuide.photoCrop(3000,4000,720,1100,offCenter,true);
+                Rect rearCrop=CameraFrameGuide.photoCrop(3000,4000,720,1100,offCenter,false);
+                require(frontCrop.width()==rearCrop.width()
+                    &&frontCrop.left!=rearCrop.left,
+                    "Mirrored front-camera framing is mapped to sensor coordinates");
+                Rect sensorCrop=new Rect(120,230,620,740);
+                Rect transformed=CameraPhotoPipeline.mapOrientedCropToSensor(sensorCrop,1200,1800,90);
+                require(transformed.left==230&&transformed.top==1180&&transformed.right==740,
+                    "90-degree sensor orientation maps source pixels correctly");
+                final CameraRuler[] rulerTest=new CameraRuler[1];
+                runOnMainSync(()->{
+                    rulerTest[0]=new CameraRuler(activity);
+                    rulerTest[0].configure(-2,2,.05f,0,0);
+                    rulerTest[0].setValue(1.65f,false);
+                    rulerTest[0].reset();
+                });
+                require(Math.abs(rulerTest[0].value())<.01f,
+                    "Ruler can restore neutral exposure precisely");
                 final int[] taps={0};
                 final CameraFrameGuide[] guide={null};
                 runOnMainSync(()->{
@@ -177,8 +212,14 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(((LinearLayout)field(cameraUi[0],"cameraBody")).getOrientation()
                         ==LinearLayout.VERTICAL,
                     "Camera controls and viewfinder never rotate or rearrange to landscape");
-                require(((java.util.ArrayList<?>)field(cameraUi[0],"bars")).size()==3,
-                    "Camera includes exactly three live controls");
+                require(((java.util.ArrayList<?>)field(cameraUi[0],"toolButtons")).size()>=6,
+                    "Camera includes real circular tool selectors");
+                require(field(cameraUi[0],"ruler") instanceof CameraRuler,
+                    "Camera presents a native precision control");
+                require(field(cameraUi[0],"preview") instanceof androidx.camera.view.PreviewView,
+                    "CameraX owns the live preview, not a media picker");
+                require(field(cameraUi[0],"engine") instanceof NoiseCameraX,
+                    "CameraX owns the actual capture and autofocus");
                 runOnMainSync(()->cameraUi[0].dispose());
                 // Fast regression gate for pull requests. Full GPU/control
                 // exhaustive suite remains available without -e noise_test_mode.
