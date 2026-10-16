@@ -146,8 +146,27 @@ final class PhotoViewer extends FrameLayout {
                 .withEndAction(()->image.animate().translationX(0).setDuration(135).start()).start();
             return;
         }
+        // Keep the outgoing bitmap on a temporary image layer while the
+        // incoming image actually travels across the width of the viewport.
+        // This makes the transition spatial, not a tiny fade on one ImageView.
+        image.animate().cancel();
+        final int distance=Math.max(getWidth(),dp(300));
+        ImageView outgoing=new ImageView(activity);
+        outgoing.setBackgroundColor(0xff080808);
+        outgoing.setImageDrawable(image.getDrawable());
+        outgoing.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        addView(outgoing,1,new LayoutParams(-1,-1));
         index=next;
         render();
+        image.setTranslationX((delta>0?1:-1)*distance);
+        image.setAlpha(1f);
+        android.view.animation.Interpolator easing=
+            new android.view.animation.DecelerateInterpolator(1.35f);
+        outgoing.animate().translationX((delta>0?-1:1)*distance)
+            .setInterpolator(easing).setDuration(280)
+            .withEndAction(()->removeView(outgoing)).start();
+        image.animate().translationX(0).setInterpolator(easing)
+            .setDuration(280).start();
     }
     private void render(){
         if(closed||items.isEmpty())return;
@@ -156,10 +175,9 @@ final class PhotoViewer extends FrameLayout {
         counter.setText((index+1)+" / "+items.size()+"  ·  "+
             MediaLibrary.dateTitle(p.added));
         final int token=++serial;
-        image.animate().cancel();
-        image.setTranslationX(dp(10));image.setAlpha(.75f);
+        // Move() owns the slide transform; render only swaps photo content.
+        // Preloaded neighbours appear immediately without an empty frame.
         image.setImageBitmap(null);
-        image.animate().translationX(0).alpha(1f).setDuration(160).start();
         Bitmap ready=full.get(p.uri.toString());
         if(ready!=null)image.setImageBitmap(ready);
         else{
