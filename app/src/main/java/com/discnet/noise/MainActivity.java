@@ -44,6 +44,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private boolean homeHostResumed;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
+    private boolean projectsFromEditor;
     private StudioTabBar studioTabs;
     private int activeStudioTab=-1;
     private float studioSwipeX,studioSwipeY;
@@ -442,9 +443,14 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     private void showProjects(){
         if(projectLibrary!=null){revealStudioTabs(StudioTabBar.PROJECTS);return;}
+        projectsFromEditor=activeStudioTab<0
+            &&(homeScreen==null||homeScreen.getVisibility()!=View.VISIBLE);
         closeGallery();
         final ProjectLibraryScreen screen=new ProjectLibraryScreen(this,new ProjectLibraryScreen.Listener(){
-            @Override public void close(){switchStudioTab(StudioTabBar.HOME);}
+            @Override public void close(){
+                if(projectsFromEditor){closeProjectLibrary();hideStudioTabs();}
+                else switchStudioTab(StudioTabBar.HOME);
+            }
             @Override public void create(){closeProjectLibrary();showGallery();}
             @Override public void chooseVault(){chooseProjectVault();}
             @Override public void open(ProjectStore.Project project){
@@ -699,7 +705,13 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(cameraScreen!=null){closeCamera();showHome();return;}
         if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
-        if(projectLibrary!=null){if(!projectLibrary.dismissModal())switchStudioTab(StudioTabBar.HOME);return;}
+        if(projectLibrary!=null){
+            if(!projectLibrary.dismissModal()){
+                if(projectsFromEditor){closeProjectLibrary();hideStudioTabs();}
+                else switchStudioTab(StudioTabBar.HOME);
+            }
+            return;
+        }
         if(cropEditor!=null){closeCrop();return;}
         if(orbital!=null&&orbital.getParent()!=null){closeOrbital();return;}
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE){super.onBackPressed();return;}
