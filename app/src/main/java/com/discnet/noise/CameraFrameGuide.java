@@ -24,7 +24,7 @@ final class CameraFrameGuide extends View {
     private float exactAspect=1f,offsetX,offsetY;
     private boolean draggingFrame;
     private long touchAt,focusAt;
-    private boolean multiple,moved;
+    private boolean multiple,moved,gridEnabled=true;
 
     CameraFrameGuide(Context context,Gestures gestures){
         super(context);
@@ -46,6 +46,7 @@ final class CameraFrameGuide extends View {
         offsetX=0;offsetY=0;invalidate();
     }
     float exactAspect(){return exactAspect;}
+    void grid(boolean enabled){gridEnabled=enabled;invalidate();}
     void centerFrame(){offsetX=0;offsetY=0;invalidate();}
     static void geometryExact(int w,int h,float aspect,float zoom,float dx,float dy,RectF out){
         if(w<1||h<1){out.setEmpty();return;}
@@ -116,12 +117,14 @@ final class CameraFrameGuide extends View {
         paint.setColor(0xf0ffffff);paint.setStrokeWidth(dp(1.2f));
         paint.setStyle(Paint.Style.STROKE);
         canvas.drawRoundRect(frame,dp(2),dp(2),paint);
-        paint.setColor(0x45ffffff);paint.setStrokeWidth(dp(0.6f));
-        for(int i=1;i<=2;i++){
-            float x=frame.left+frame.width()*i/3f;
-            float y=frame.top+frame.height()*i/3f;
-            canvas.drawLine(x,frame.top,x,frame.bottom,paint);
-            canvas.drawLine(frame.left,y,frame.right,y,paint);
+        if(gridEnabled){
+            paint.setColor(0x45ffffff);paint.setStrokeWidth(dp(0.6f));
+            for(int i=1;i<=2;i++){
+                float x=frame.left+frame.width()*i/3f;
+                float y=frame.top+frame.height()*i/3f;
+                canvas.drawLine(x,frame.top,x,frame.bottom,paint);
+                canvas.drawLine(frame.left,y,frame.right,y,paint);
+            }
         }
         paint.setColor(0xffffffff);paint.setStrokeWidth(dp(2.4f));
         float corner=Math.min(dp(19),Math.min(frame.width(),frame.height())*.20f);
