@@ -38,10 +38,11 @@ final class PresetDialog extends FrameLayout {
         this.base=base.copy();this.presets=presets;this.listener=listener;
         setBackgroundColor(0xff0c0b10);setClickable(true);setFocusableInTouchMode(true);
         LinearLayout page=new LinearLayout(activity);page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16),dp(10),dp(16),dp(10));
+        boolean compact=getResources().getDisplayMetrics().heightPixels<dp(690);
+        page.setPadding(dp(12),dp(8),dp(12),dp(10));
         addView(page,new LayoutParams(-1,-1));
         LinearLayout top=new LinearLayout(activity);top.setGravity(Gravity.CENTER_VERTICAL);
-        page.addView(top,new LinearLayout.LayoutParams(-1,dp(58)));
+        page.addView(top,new LinearLayout.LayoutParams(-1,dp(compact?48:58)));
         ImageView back=IconArt.button(activity,IconArt.BACK,"Voltar ao editor");
         top.addView(back,new LinearLayout.LayoutParams(dp(48),dp(48)));
         back.setOnClickListener(v->dismiss());
@@ -54,10 +55,10 @@ final class PresetDialog extends FrameLayout {
 
         preview=new ImageView(activity);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
         preview.setImageBitmap(original);preview.setBackground(EditorTheme.panel(activity,0xff1d1a24,0,18,0));
-        page.addView(preview,new LinearLayout.LayoutParams(-1,dp(174)));
+        page.addView(preview,new LinearLayout.LayoutParams(-1,dp(compact?94:174)));
         caption=text("Selecione um estilo para visualizar e aplicar",12,false);
         caption.setGravity(Gravity.CENTER_VERTICAL);
-        page.addView(caption,new LinearLayout.LayoutParams(-1,dp(42)));
+        page.addView(caption,new LinearLayout.LayoutParams(-1,dp(compact?29:42)));
         ScrollView scroll=new ScrollView(activity);scroll.setVerticalScrollBarEnabled(false);
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         cards=new LinearLayout(activity);cards.setOrientation(LinearLayout.VERTICAL);
@@ -105,12 +106,12 @@ final class PresetDialog extends FrameLayout {
             LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(8),dp(8),dp(8),dp(8));
             row.setBackground(EditorTheme.panel(activity,0xff1c1a24,0,16,0));
-            LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(92));
+            LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(compact?76:92));
             rp.bottomMargin=dp(8);cards.addView(row,rp);
             ImageView thumb=new ImageView(activity);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackground(EditorTheme.panel(activity,0xff292232,0,12,0));
-            row.addView(thumb,new LinearLayout.LayoutParams(dp(94),dp(74)));
+            row.addView(thumb,new LinearLayout.LayoutParams(dp(compact?70:94),dp(compact?60:74)));
             LinearLayout info=new LinearLayout(activity);info.setOrientation(LinearLayout.VERTICAL);
             info.setGravity(Gravity.CENTER_VERTICAL);info.setPadding(dp(12),0,dp(6),0);
             row.addView(info,new LinearLayout.LayoutParams(0,-1,1));
@@ -167,9 +168,16 @@ final class PresetDialog extends FrameLayout {
         shade.setOnClickListener(v->hideModal());
         LinearLayout content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20),dp(18),dp(20),dp(20));
-        content.setBackground(EditorTheme.panel(activity,0xff201b29,0,22,0));
-        FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
-        layout.leftMargin=dp(19);layout.rightMargin=dp(19);shade.addView(content,layout);
+        content.setBackground(EditorTheme.panel(activity,0xff201b29,0,6,0));
+        ScrollView modalScroll=new ScrollView(activity);
+        modalScroll.setFillViewport(false);
+        modalScroll.setVerticalScrollBarEnabled(false);
+        FrameLayout.LayoutParams layout=new FrameLayout.LayoutParams(-1,
+            Math.min(dp(430),Math.max(dp(165),
+                getResources().getDisplayMetrics().heightPixels-dp(95))),Gravity.CENTER);
+        layout.leftMargin=dp(16);layout.rightMargin=dp(16);
+        shade.addView(modalScroll,layout);
+        modalScroll.addView(content,new ScrollView.LayoutParams(-1,-2));
         content.setClickable(true);content.setOnClickListener(v->{});
         TextView head=text(title,19,true);content.addView(head,new LinearLayout.LayoutParams(-1,dp(37)));
         TextView subtitle=text(detail,12,false);subtitle.setPadding(0,0,0,dp(13));
