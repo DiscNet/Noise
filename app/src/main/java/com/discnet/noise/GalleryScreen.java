@@ -2,24 +2,16 @@ package com.discnet.noise;
 
 import android.app.Activity;
 import android.content.*;
-import android.database.Cursor;
 import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
-import android.provider.MediaStore;
-import android.util.LruCache;
-import android.util.Size;
 import android.view.*;
 import android.widget.*;
-import java.io.InputStream;
+import androidx.recyclerview.widget.*;
 import java.util.*;
-import java.util.concurrent.*;
 
-/**
- * Native MediaStore gallery: recent device images, album/folder dropdown, photo
- * grid with async thumbnails, and a direct platform photo-picker fallback.
- * No Internet access, no third-party gallery/thumbnail library.
- */
+/** All-device MediaStore gallery; pickerMode has an intentionally separate route. */
 final class GalleryScreen extends FrameLayout {
     interface Listener {
         void onPhoto(Uri uri);
@@ -28,328 +20,306 @@ final class GalleryScreen extends FrameLayout {
         void onClose();
         void onProjects();
         void onShare(Uri uri);
+        default void onViewerState(boolean showing){}
     }
-    private final Set<String> pendingThumbnails=Collections.synchronizedSet(new HashSet<>());
     private final Activity activity;
     private final Listener listener;
-    private final ExecutorService work=Executors.newFixedThreadPool(3);
-    private final LruCache<String,Bitmap> thumbnails=new LruCache<String,Bitmap>(14*1024*1024){
-        @Override protected int sizeOf(String k,Bitmap v){return v.getByteCount();}
-    };
-    private final ArrayList<Photo> photos=new ArrayList<>();
-    private final ArrayList<Photo> filtered=new ArrayList<>();
-    private int folderRequest=0;
-    private final ArrayList<String> albumNames=new ArrayList<>();
-    private final ArrayList<String> bucketKeys=new ArrayList<>();
+    private final boolean pickerMode;
+    private final MediaLibrary media;
+    private final RecyclerView grid;
+    private final GridLayoutManager layout;
+    private final GalleryAdapter adapter=new GalleryAdapter();
     private final Spinner albums;
-    private final GridView grid;
     private final TextView notice;
     private final LinearLayout actions;
-    private final PhotoAdapter adapter;
-    private View choiceOverlay;
-    private int generation=0;
-    private volatile boolean released=false;
-    private final Handler ui=new Handler(Looper.getMainLooper());
+    private final ArrayList<MediaLibrary.Photo> photos=new ArrayList<>();
+    private final ArrayList<Item> rows=new ArrayList<>();
+    private final ArrayList<String> keys=new ArrayList<>();
+    private final ArrayList<String> titles=new ArrayList<>();
+    private PhotoViewer viewer;
+    private MediaLibrary.Photo last;
+    private String selectedBucket="";
+    private int generation=0,columns=4;
+    private boolean loading,hasMore=true,ready,permission,closed,settingAlbums;
+    private final Handler handler=new Handler(Looper.getMainLooper());
 
-    private static final class Photo {
-        final Uri uri;
-        final String bucket, album;
-        Photo(Uri uri,String bucket,String album){this.uri=uri;this.bucket=bucket;this.album=album;}
+    static final class Item {
+        final String section;
+        final MediaLibrary.Photo photo;
+        Item(String heading){section=heading;photo=null;}
+        Item(MediaLibrary.Photo p){section=null;photo=p;}
     }
-    GalleryScreen(Activity activity,Listener listener){
-        super(activity);this.activity=activity;this.listener=listener;
-        setBackground(EditorTheme.panel(activity,0xff101216,0xff101216,0,0));
-        setPadding(dp(15),dp(8),dp(15),dp(75));
-        LinearLayout root=new LinearLayout(activity);
-        root.setOrientation(LinearLayout.VERTICAL);
-        addView(root,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout heading=new LinearLayout(activity);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(heading,new LinearLayout.LayoutParams(-1,dp(56)));
-        ImageView close=IconArt.button(activity,IconArt.BACK,"Voltar para edição");
-        heading.addView(close,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        close.setOnClickListener(v->listener.onClose());
-        TextView title=txt("Galeria",20,EditorTheme.INK);
-        title.setTypeface(Typeface.create("sans-serif-medium",Typeface.BOLD));
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,dp(48),1);
-        tp.leftMargin=dp(12);heading.addView(title,tp);
-        ImageView system=IconArt.button(activity,IconArt.GALLERY,"Abrir galeria padrão do celular");
-        heading.addView(system,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        TextView projects=button("Projetos");heading.addView(projects,new LinearLayout.LayoutParams(dp(80),dp(48)));projects.setOnClickListener(v->listener.onProjects());
-        system.setOnClickListener(v->listener.onSystemGallery());
-        TextView label=txt("FOTOS / ÁLBUNS E PASTAS",11,EditorTheme.MUTED);
-        label.setLetterSpacing(.10f);root.addView(label,new LinearLayout.LayoutParams(-1,dp(28)));
-        albums=new Spinner(activity);
-        albums.setContentDescription("Escolher álbum ou pasta");
-        albums.setBackground(EditorTheme.surface(activity,18));
-        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,dp(48));
-        ap.bottomMargin=dp(12);root.addView(albums,ap);
+    GalleryScreen(Activity a,Listener listener){this(a,listener,false);}
+    GalleryScreen(Activity a,Listener listener,boolean picker){
+        super(a);activity=a;this.listener=listener;pickerMode=picker;
+        media=new MediaLibrary(a);
+        setBackgroundColor(0xff080808);
+        LinearLayout page=new LinearLayout(a);
+        page.setPadding(dp(10),dp(7),dp(10),dp(picker?12:75));
+        page.setOrientation(LinearLayout.VERTICAL);
+        addView(page,new LayoutParams(-1,-1));
+        LinearLayout head=new LinearLayout(a);head.setGravity(Gravity.CENTER_VERTICAL);
+        page.addView(head,new LinearLayout.LayoutParams(-1,dp(55)));
+        ImageView back=IconArt.button(a,IconArt.BACK,"Voltar");
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setImageDrawable(new IconArt(IconArt.BACK,0xffffffff));
+        head.addView(back,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        back.setOnClickListener(v->listener.onClose());
+        TextView title=label(picker?"Escolher imagem":"Galeria",24,0xffffffff);
+        title.setTypeface(NoiseTypography.bold(a));
+        LinearLayout.LayoutParams titleLp=new LinearLayout.LayoutParams(0,-1,1);
+        titleLp.leftMargin=dp(9);head.addView(title,titleLp);
+        ImageView sys=IconArt.button(a,IconArt.GALLERY,"Selecionar pelo Android");
+        sys.setBackgroundColor(Color.TRANSPARENT);
+        sys.setImageDrawable(new IconArt(IconArt.GALLERY,0xffdedede));
+        head.addView(sys,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        sys.setOnClickListener(v->listener.onSystemGallery());
+
+        albums=new Spinner(a);
+        albums.setContentDescription("Álbuns e pastas");
+        GradientDrawable pick=new GradientDrawable();
+        pick.setColor(0xff202020);pick.setCornerRadius(dp(8));
+        albums.setBackground(pick);
+        LinearLayout.LayoutParams al=new LinearLayout.LayoutParams(-1,dp(45));
+        al.bottomMargin=dp(7);page.addView(albums,al);
+        titles.add("Todas as fotos");keys.add("");
+        showAlbums();
         albums.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onNothingSelected(android.widget.AdapterView<?> parent){}
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
-                selectAlbum(position);
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p){}
+            @Override public void onItemSelected(android.widget.AdapterView<?> p,View view,int position,long id){
+                if(settingAlbums||position<0||position>=keys.size())return;
+                String bucket=keys.get(position);
+                if(!bucket.equals(selectedBucket)){selectedBucket=bucket;loadFirstPage(true);}
             }
         });
-        notice=txt("Carregando imagens...",14,EditorTheme.MUTED);
-        notice.setGravity(Gravity.CENTER);notice.setMinHeight(dp(44));root.addView(notice,new LinearLayout.LayoutParams(-1,-2));
-        grid=new GridView(activity);
-        grid.setNumColumns(GridView.AUTO_FIT);grid.setColumnWidth(dp(108));grid.setVerticalSpacing(dp(5));grid.setHorizontalSpacing(dp(5));
-        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
-        grid.setClipToPadding(false);grid.setPadding(0,dp(5),0,dp(12));
-        grid.setVerticalScrollBarEnabled(false);
-        adapter=new PhotoAdapter();grid.setAdapter(adapter);
-        root.addView(grid,new LinearLayout.LayoutParams(-1,0,1));
-        grid.setOnItemClickListener((parent,view,position,id)->{
-            if(position>=0&&position<filtered.size())showPhotoActions(filtered.get(position).uri);
+        notice=label("Carregando fotografias…",13,0xffb4b4b4);
+        notice.setGravity(Gravity.CENTER);
+        page.addView(notice,new LinearLayout.LayoutParams(-1,dp(35)));
+        grid=new RecyclerView(a);
+        grid.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        grid.setItemAnimator(null);
+        grid.setClipToPadding(false);
+        layout=new GridLayoutManager(a,columns);
+        layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup(){
+            @Override public int getSpanSize(int position){
+                return position>=0&&position<rows.size()&&rows.get(position).photo==null?columns:1;
+            }
         });
-        actions=new LinearLayout(activity);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        root.addView(actions,new LinearLayout.LayoutParams(-1,dp(61)));
-        TextView permit=button("Permitir acesso às fotos");
-        actions.addView(permit,new LinearLayout.LayoutParams(0,dp(48),1));
-        permit.setOnClickListener(v->listener.onGrantPermission());
-        TextView openPicker=button("Galeria do celular");
-        LinearLayout.LayoutParams pickParams=new LinearLayout.LayoutParams(0,dp(48),1);
-        pickParams.leftMargin=dp(8);actions.addView(openPicker,pickParams);
-        openPicker.setOnClickListener(v->listener.onSystemGallery());
+        grid.setLayoutManager(layout);grid.setAdapter(adapter);
+        grid.addOnScrollListener(new RecyclerView.OnScrollListener(){
+            @Override public void onScrolled(RecyclerView v,int dx,int dy){
+                if(dy>=0&&layout.findLastVisibleItemPosition()>=rows.size()-13)
+                    loadNextPage();
+            }
+        });
+        page.addView(grid,new LinearLayout.LayoutParams(-1,0,1));
+        actions=new LinearLayout(a);actions.setGravity(Gravity.CENTER_VERTICAL);
+        TextView grant=button("Permitir acesso");
+        TextView external=button("Seletor do Android");
+        LinearLayout.LayoutParams weight=new LinearLayout.LayoutParams(0,dp(50),1);
+        actions.addView(grant,weight);
+        LinearLayout.LayoutParams wt2=new LinearLayout.LayoutParams(0,dp(50),1);
+        wt2.leftMargin=dp(7);actions.addView(external,wt2);
+        grant.setOnClickListener(v->listener.onGrantPermission());
+        external.setOnClickListener(v->listener.onSystemGallery());
+        page.addView(actions,new LinearLayout.LayoutParams(-1,dp(55)));
         refresh(false);
     }
-    private int dp(float size){return EditorTheme.dp(activity,size);}
-    private void showPhotoActions(Uri uri){
-        hidePhotoActions();
-        FrameLayout overlay=new FrameLayout(activity);
-        overlay.setBackgroundColor(0xe909070e);
-        overlay.setClickable(true);
-        overlay.setOnClickListener(v->hidePhotoActions());
-        LinearLayout panel=new LinearLayout(activity);
-        panel.setPadding(dp(22),dp(19),dp(22),dp(19));
-        panel.setOrientation(LinearLayout.VERTICAL);
-        android.graphics.drawable.GradientDrawable surface=new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.BLACK});
-        surface.setCornerRadius(dp(6));
-        panel.setBackground(surface);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
-        lp.leftMargin=dp(22);lp.rightMargin=dp(22);
-        overlay.addView(panel,lp);
-        panel.setOnClickListener(v->{});
-        TextView heading=txt("Imagem selecionada",19,OrbitalMaterial.WHITE);
-        panel.addView(heading,new LinearLayout.LayoutParams(-1,dp(46)));
-        TextView edit=button("Editar imagem");
-        edit.setTextColor(OrbitalMaterial.BLACK);
-        edit.setBackground(EditorTheme.buttonSurface(activity,4,true));
-        panel.addView(edit,new LinearLayout.LayoutParams(-1,dp(50)));
-        edit.setOnClickListener(v->{hidePhotoActions();listener.onPhoto(uri);});
-        TextView share=button("Compartilhar");
-        LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(50));
-        sp.topMargin=dp(10);panel.addView(share,sp);
-        share.setOnClickListener(v->{hidePhotoActions();listener.onShare(uri);});
-        TextView cancel=button("Cancelar");
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(43));
-        cp.topMargin=dp(10);panel.addView(cancel,cp);
-        cancel.setOnClickListener(v->hidePhotoActions());
-        choiceOverlay=overlay;addView(overlay,new FrameLayout.LayoutParams(-1,-1));
-        overlay.bringToFront();
+    static boolean isNoisePhoto(String path,String album){
+        String folder=path==null?"":path.toLowerCase(Locale.ROOT);
+        String label=album==null?"":album.toLowerCase(Locale.ROOT);
+        return folder.startsWith("pictures/noise!/")||folder.startsWith("dcim/noise!/")
+            ||label.equals("noise!");
     }
-    void hidePhotoActions(){if(choiceOverlay!=null){removeView(choiceOverlay);choiceOverlay=null;}}
-    boolean dismissPhotoActions(){if(choiceOverlay==null)return false;hidePhotoActions();return true;}
-    boolean dismissPhotoActionsPending(){return choiceOverlay!=null;}
-    private TextView txt(String s,int size,int color){
-        TextView v=new TextView(activity);v.setText(s);v.setTextSize(size);v.setTextColor(color);
-        v.setGravity(Gravity.CENTER_VERTICAL);return v;
+    private TextView label(String value,int size,int color){
+        TextView text=new TextView(activity);
+        text.setText(value);text.setTextSize(size);text.setTextColor(color);
+        text.setGravity(Gravity.CENTER_VERTICAL);
+        return text;
     }
-    private TextView button(String name){
-        TextView v=txt(name,13,EditorTheme.INK);v.setGravity(Gravity.CENTER);
-        EditorTheme.button(v,false);return v;
+    private TextView button(String title){
+        TextView t=label(title,13,0xffffffff);
+        t.setGravity(Gravity.CENTER);t.setBackgroundColor(0xff242424);
+        return t;
     }
-    void refresh(boolean hasAccess){
-        if(released)return;
-        int token=++generation;
-        folderRequest++;
-        if(!hasAccess){
-            photos.clear();filtered.clear();adapter.notifyDataSetChanged();
-            albumNames.clear();bucketKeys.clear();albumNames.add("Todas as fotos");
-            bucketKeys.add("");
-            updateAlbums();
-            notice.setText("Permita o acesso para ver suas fotos e pastas aqui.\nOu use a galeria padrão.");
-            notice.setVisibility(VISIBLE);
-            actions.setVisibility(VISIBLE);return;
+    private int dp(float n){return EditorTheme.dp(activity,n);}
+    @Override protected void onSizeChanged(int w,int h,int ow,int oh){
+        super.onSizeChanged(w,h,ow,oh);
+        int cols=w>=dp(375)?4:w>=dp(295)?3:2;
+        if(cols!=columns){
+            columns=cols;layout.setSpanCount(cols);
+            adapter.notifyDataSetChanged();
         }
-        actions.setVisibility(GONE);
-        notice.setText("Carregando imagens...");
-        notice.setVisibility(VISIBLE);
-        work.execute(()->{
-            ArrayList<Photo> found=new ArrayList<>();
-            LinkedHashMap<String,String> discovered=new LinkedHashMap<>();
-            try{
-                String[] columns=Build.VERSION.SDK_INT>=29?
-                    new String[]{MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
-                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH}:
-                    new String[]{MediaStore.Images.Media._ID,MediaStore.Images.Media.BUCKET_ID,
-                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
-                try(Cursor cursor=activity.getContentResolver().query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,columns,null,null,
-                    MediaStore.Images.Media.DATE_ADDED+" DESC")){
-                    if(cursor!=null){
-                        int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
-                        int bucket=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID);
-                        int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
-                        int path=cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH);
-                        // Iterate all rows to discover every album, even ones
-                        // whose latest image falls outside the recent-500 view.
-                        while(cursor.moveToNext()){
-                            String key=cursor.getString(bucket);
-                            String label=cursor.getString(name);
-                            String location=path<0?null:cursor.getString(path);
-                            if(!isNoisePhoto(location,label))continue;
-                            Uri uri=ContentUris.withAppendedId(
-                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id));
-                            Photo photo=new Photo(uri,key==null?"":key,
-                                label==null||label.isEmpty()?"Sem álbum":label);
-                            found.add(photo);
-                            discovered.put(photo.bucket,photo.album);
-                        }
-                    }
-                }
-            }catch(SecurityException | IllegalArgumentException ignored){}
-            if(released)return;
-            ui.post(()->{
-                if(released||token!=generation)return;
-                photos.clear();photos.addAll(found);
-                albumNames.clear();bucketKeys.clear();
-                albumNames.add("Todas as fotos");bucketKeys.add("");
-                for(Map.Entry<String,String> item:discovered.entrySet()){
-                    bucketKeys.add(item.getKey());
-                    albumNames.add(item.getValue());
-                }
-                updateAlbums();
-                showRecent();
-                notice.setText(found.isEmpty()?"Nenhuma foto editada ou capturada no Noise! encontrada.":"");
-                notice.setVisibility(found.isEmpty()?VISIBLE:GONE);
-            });
-        });
     }
-    private void updateAlbums(){
-        ArrayAdapter<String> list=new ArrayAdapter<String>(activity,
-            android.R.layout.simple_spinner_dropdown_item,albumNames){
-            @Override public View getView(int pos,View convert,android.view.ViewGroup parent){
-                TextView v=(TextView)super.getView(pos,convert,parent);
-                v.setTextColor(EditorTheme.INK);v.setPadding(dp(14),0,dp(12),0);
-                return v;
+    private void showAlbums(){
+        settingAlbums=true;
+        ArrayAdapter<String> adapter=new ArrayAdapter<String>(activity,
+            android.R.layout.simple_spinner_dropdown_item,titles){
+            @Override public View getView(int pos,View v,android.view.ViewGroup parent){
+                TextView label=(TextView)super.getView(pos,v,parent);
+                label.setTextColor(Color.WHITE);
+                label.setPadding(dp(13),0,dp(10),0);
+                return label;
             }
         };
-        albums.setAdapter(list);
+        albums.setAdapter(adapter);
+        albums.setSelection(Math.max(0,keys.indexOf(selectedBucket)),false);
+        settingAlbums=false;
     }
-    /** All images in a selected folder, not the recent subset. */
-    private void selectAlbum(int index){
-        if(index<0||index>=bucketKeys.size())return;
-        if(index==0){showRecent();return;}
-        final String selectedBucket=bucketKeys.get(index);
-        final int token=++folderRequest;
-        final int galleryToken=generation;
-        notice.setVisibility(VISIBLE);
-        notice.setText("Carregando todas as fotos da pasta...");
-        work.execute(()->{
-            ArrayList<Photo> folder=new ArrayList<>();
-            try{
-                String[] projection=Build.VERSION.SDK_INT>=29?
-                    new String[]{MediaStore.Images.Media._ID,
-                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH}:
-                    new String[]{MediaStore.Images.Media._ID,
-                        MediaStore.Images.Media.BUCKET_DISPLAY_NAME};
-                try(Cursor cursor=activity.getContentResolver().query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    projection,
-                    MediaStore.Images.Media.BUCKET_ID+"=?",
-                    new String[]{selectedBucket},
-                    MediaStore.Images.Media.DATE_ADDED+" DESC")){
-                    if(cursor!=null){
-                        int id=cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
-                        int name=cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME);
-                        int path=cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH);
-                        while(cursor.moveToNext()){
-                            String album=cursor.getString(name);
-                            if(!isNoisePhoto(path<0?null:cursor.getString(path),album))continue;
-                            folder.add(new Photo(ContentUris.withAppendedId(
-                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,cursor.getLong(id)),
-                                selectedBucket,album==null?"Sem álbum":album));
-                        }
-                    }
+    void refresh(boolean hasAccess){
+        if(closed)return;
+        boolean changed=!ready||permission!=hasAccess;
+        permission=hasAccess;
+        if(!changed)return; // preserves scroll position and decoded thumbnails between tabs
+        ready=true;actions.setVisibility(hasAccess?GONE:VISIBLE);
+        if(!hasAccess){
+            rows.clear();photos.clear();adapter.notifyDataSetChanged();
+            notice.setText("Permita acesso às fotografias ou use o seletor Android.");
+            notice.setVisibility(VISIBLE);return;
+        }
+        media.execute(()->{
+            LinkedHashMap<String,String> found=media.buckets();
+            handler.post(()->{
+                if(closed||!permission)return;
+                keys.clear();titles.clear();
+                keys.add("");titles.add("Todas as fotos");
+                for(Map.Entry<String,String> b:found.entrySet()){
+                    keys.add(b.getKey());titles.add(b.getValue());
                 }
-            }catch(SecurityException | IllegalArgumentException ignored){}
-            ui.post(()->{
-                if(released||galleryToken!=generation||token!=folderRequest)return;
-                filtered.clear();filtered.addAll(folder);adapter.notifyDataSetChanged();
-                notice.setText(folder.isEmpty()?"Esta pasta não tem fotos acessíveis.":"");
-                notice.setVisibility(folder.isEmpty()?VISIBLE:GONE);
+                showAlbums();
+            });
+        });
+        loadFirstPage(false);
+    }
+    private void loadFirstPage(boolean scrollTop){
+        ++generation;loading=false;hasMore=true;last=null;
+        photos.clear();rows.clear();adapter.notifyDataSetChanged();
+        if(scrollTop)grid.scrollToPosition(0);
+        notice.setText("Carregando fotografias…");notice.setVisibility(VISIBLE);
+        loadNextPage();
+    }
+    private void loadNextPage(){
+        if(closed||!permission||!hasMore||loading)return;
+        loading=true;
+        final int token=generation;
+        final MediaLibrary.Photo after=last;
+        final String bucket=selectedBucket;
+        media.execute(()->{
+            MediaLibrary.Page page=media.page(bucket,after);
+            handler.post(()->{
+                if(closed||token!=generation)return;
+                loading=false;hasMore=page.hasMore;
+                HashSet<Long> ids=new HashSet<>();
+                for(MediaLibrary.Photo p:photos)ids.add(p.id);
+                String prev=photos.isEmpty()?null:
+                    MediaLibrary.dateTitle(photos.get(photos.size()-1).added);
+                int start=rows.size();
+                ArrayList<MediaLibrary.Photo> unique=new ArrayList<>();
+                for(MediaLibrary.Photo p:page.items){
+                    if(!ids.add(p.id))continue;
+                    String section=MediaLibrary.dateTitle(p.added);
+                    if(!section.equals(prev)){rows.add(new Item(section));prev=section;}
+                    photos.add(p);unique.add(p);rows.add(new Item(p));
+                }
+                if(rows.size()>start)adapter.notifyItemRangeInserted(start,rows.size()-start);
+                if(viewer!=null)viewer.append(unique);
+                notice.setText(photos.isEmpty()?
+                    "Nenhuma fotografia disponível para as permissões atuais.":"");
+                notice.setVisibility(photos.isEmpty()?VISIBLE:GONE);
             });
         });
     }
-    static boolean isNoisePhoto(String path,String album){
-        // ExportManager and CameraPhotoPipeline both publish to Pictures/Noise!.
-        String normalized=path==null?"":path.toLowerCase(java.util.Locale.ROOT);
-        String bucket=album==null?"":album.toLowerCase(java.util.Locale.ROOT);
-        return normalized.startsWith("pictures/noise!/") ||
-            normalized.startsWith("dcim/noise!/") ||
-            bucket.equals("noise!");
-    }
-    private void showRecent(){
-        folderRequest++;
-        filtered.clear();filtered.addAll(photos);adapter.notifyDataSetChanged();
-        notice.setVisibility(filtered.isEmpty()?VISIBLE:GONE);
-        notice.setText(filtered.isEmpty()?"Nenhuma foto do Noise! encontrada.":"");
-    }
-    private final class PhotoAdapter extends BaseAdapter {
-        @Override public int getCount(){return filtered.size();}
-        @Override public Object getItem(int pos){return filtered.get(pos);}
-        @Override public long getItemId(int pos){return pos;}
-        @Override public View getView(int pos,View old,android.view.ViewGroup parent){
-            ImageView view=old instanceof ImageView?(ImageView)old:new ImageView(activity);
-            view.setLayoutParams(new android.widget.AbsListView.LayoutParams(-1,dp(124)));
-            view.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            view.setBackground(EditorTheme.panel(activity,0xff251f35,0xff181523,9,0x28ffffff));
-            if(pos>=filtered.size())return view;
-            Uri uri=filtered.get(pos).uri;
-            String key=uri.toString();
-            view.setTag(key);view.setContentDescription("Abrir imagem de "+filtered.get(pos).album);
-            Bitmap cached=thumbnails.get(key);
-            view.setImageBitmap(cached);
-            if(cached==null&&!released&&pendingThumbnails.add(key)){
-                work.execute(()->{
-                    Bitmap bmp=null;
-                    try{
-                        if(Build.VERSION.SDK_INT>=29){
-                            bmp=activity.getContentResolver().loadThumbnail(uri,new Size(240,240),null);
-                        } else {
-                            android.graphics.BitmapFactory.Options bounds=new BitmapFactory.Options();
-                            bounds.inJustDecodeBounds=true;
-                            try(InputStream stream=activity.getContentResolver().openInputStream(uri)){
-                                BitmapFactory.decodeStream(stream,null,bounds);
-                            }
-                            bounds.inJustDecodeBounds=false;
-                            bounds.inSampleSize=1;
-                            while(Math.max(bounds.outWidth,bounds.outHeight)/bounds.inSampleSize>256)
-                                bounds.inSampleSize*=2;
-                            try(InputStream stream=activity.getContentResolver().openInputStream(uri)){
-                                bmp=BitmapFactory.decodeStream(stream,null,bounds);
-                            }
-                        }
-                    }catch(Exception | OutOfMemoryError ignored){}
-                    pendingThumbnails.remove(key);
-                    final Bitmap thumbnail=bmp;
-                    if(thumbnail!=null)ui.post(()->{
-                        if(released){thumbnail.recycle();return;}
-                        thumbnails.put(key,thumbnail);
-                        if(key.equals(view.getTag()))view.setImageBitmap(thumbnail);
-                    });
-                });
-            }
-            return view;
+    private void open(int index){
+        if(index<0||index>=photos.size())return;
+        if(pickerMode){
+            listener.onPhoto(photos.get(index).uri);
+            return;
         }
+        viewer=new PhotoViewer(activity,media,new ArrayList<>(photos),index,
+            new PhotoViewer.Actions(){
+                @Override public void back(){closeViewer();}
+                @Override public void edit(Uri uri){closeViewer();listener.onPhoto(uri);}
+                @Override public void share(Uri uri){listener.onShare(uri);}
+                @Override public void download(MediaLibrary.Photo photo){downloadPhoto(photo);}
+                @Override public void nearingEnd(){loadNextPage();}
+            });
+        addView(viewer,new LayoutParams(-1,-1));viewer.bringToFront();
+        listener.onViewerState(true);
+    }
+    void downloadPhoto(MediaLibrary.Photo p){
+        if(Build.VERSION.SDK_INT<29&&activity.checkSelfPermission(
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE)!=
+                android.content.pm.PackageManager.PERMISSION_GRANTED){
+            if(activity instanceof MainActivity)
+                ((MainActivity)activity).requestGalleryDownloadPermission(p);
+            return;
+        }
+        media.execute(()->{
+            String message;
+            try{
+                MediaLibrary.duplicate(activity.getApplicationContext(),p);
+                message="Cópia salva em Pictures/Noise!/Saved";
+            }catch(Exception error){
+                message="Não foi possível salvar: verifique espaço e permissões";
+            }
+            final String finalMessage=message;
+            handler.post(()->{
+                if(viewer!=null)viewer.showMessage(finalMessage);
+            });
+        });
+    }
+    private void closeViewer(){
+        if(viewer==null)return;
+        viewer.close();removeView(viewer);viewer=null;
+        listener.onViewerState(false);
+    }
+    boolean dismissPhotoActionsPending(){return viewer!=null;}
+    boolean dismissPhotoActions(){
+        if(viewer==null)return false;
+        closeViewer();return true;
+    }
+    void hidePhotoActions(){dismissPhotoActions();}
+    private final class GalleryAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder>{
+        @Override public int getItemViewType(int p){return rows.get(p).photo==null?0:1;}
+        @Override public RecyclerView.ViewHolder onCreateViewHolder(android.view.ViewGroup parent,int type){
+            if(type==0){
+                TextView t=label("",14,0xfff4f4f4);
+                t.setTypeface(NoiseTypography.medium(activity));
+                t.setPadding(dp(3),dp(10),0,dp(5));
+                return new RecyclerView.ViewHolder(t){};
+            }
+            ImageView view=new ImageView(activity);
+            view.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            GradientDrawable bg=new GradientDrawable();
+            bg.setColor(0xff222222);bg.setCornerRadius(dp(7));
+            view.setBackground(bg);view.setClipToOutline(true);
+            return new RecyclerView.ViewHolder(view){};
+        }
+        @Override public void onBindViewHolder(RecyclerView.ViewHolder h,int pos){
+            Item item=rows.get(pos);
+            if(item.photo==null){
+                ((TextView)h.itemView).setText(item.section);
+                h.itemView.setLayoutParams(new RecyclerView.LayoutParams(-1,dp(42)));
+                return;
+            }
+            ImageView cell=(ImageView)h.itemView;
+            RecyclerView.LayoutParams p=new RecyclerView.LayoutParams(-1,
+                Math.max(dp(68),(getWidth()-dp(25))/columns-dp(5)));
+            p.setMargins(dp(2),dp(2),dp(2),dp(2));
+            cell.setLayoutParams(p);
+            final MediaLibrary.Photo photo=item.photo;
+            final String key=photo.uri.toString();
+            cell.setTag(key);cell.setImageDrawable(null);
+            cell.setContentDescription("Visualizar "+photo.name);
+            cell.setOnClickListener(v->open(photos.indexOf(photo)));
+            media.thumbnail(photo,260,bitmap->{
+                if(!closed&&key.equals(cell.getTag()))cell.setImageBitmap(bitmap);
+            });
+        }
+        @Override public int getItemCount(){return rows.size();}
     }
     void dispose(){
-        hidePhotoActions();released=true;generation++;
-        work.shutdownNow();thumbnails.evictAll();
+        closed=true;++generation;closeViewer();
+        media.close();handler.removeCallbacksAndMessages(null);
     }
 }
