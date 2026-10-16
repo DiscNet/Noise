@@ -338,9 +338,12 @@ public class NoiseSmokeTest extends Instrumentation {
                 try(InputStream in=activity.getContentResolver().openInputStream(captured)){
                     BitmapFactory.decodeStream(in,null,photoInfo);
                 }
+                float previewAspect=((CameraFrameGuide)field(cameraUi[0],"frameGuide")).frame().width()/
+                    ((CameraFrameGuide)field(cameraUi[0],"frameGuide")).frame().height();
+                float photoAspect=photoInfo.outWidth/(float)Math.max(1,photoInfo.outHeight);
                 require(photoInfo.outWidth>0&&photoInfo.outHeight>0
-                    &&Math.abs(photoInfo.outWidth-photoInfo.outHeight)<=2,
-                    "Captured high-resolution JPEG matches the selected square frame");
+                    &&Math.abs(photoAspect-previewAspect)<.025f,
+                    "Captured high-resolution JPEG matches the full TELA preview aspect");
                 activity.getContentResolver().delete(captured,null,null);
                 runOnMainSync(()->{
                     cameraUi[0].dispose();
