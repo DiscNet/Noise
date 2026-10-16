@@ -71,12 +71,14 @@ void main() {
         (1.0-smoothstep(jaggedRadius*.48,jaggedRadius,radial));
     float beforeErosion=field;
     field *= 1.0-dissolved;
+    pigment *= 1.0-dissolved;
     float annulus = smoothstep(jaggedRadius*.7,jaggedRadius,radial) *
         (1.0-smoothstep(jaggedRadius,jaggedRadius*1.8,radial));
     float fragments=smoothstep(.45,.82,noise2(q*108.0 +
         vec2(t*.23,t*.17)).x);
     float grains = pressure*annulus*fragments * min(1.0,beforeErosion)*.53;
     field += grains;
+    pigment += grains*vec3(.037,.025,.056);
     float edge = uState.y;
     // Actual silhouette erosion: the ink/paper boundary is defined by a
     // locally varying isovalue of the SAME fluid density, not by a grain
