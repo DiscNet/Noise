@@ -96,6 +96,33 @@ final class PresetDialog extends FrameLayout {
                 presets.get(selection).document,strength.getProgress()/100f);
             listener.apply(mixed);dismiss();
         });
+        // The photo preview, instructions and intensity all belong to the
+        // SAME vertically scrolling region as the cards. On 5-inch phones
+        // none can push the presets off-screen or obscure the footer.
+        page.removeView(preview);
+        page.removeView(caption);
+        page.removeView(intensityRow);
+        page.removeView(strength);
+        page.removeView(scroll);
+        scroll.removeView(cards);
+        LinearLayout scrollingContent=new LinearLayout(activity);
+        scrollingContent.setOrientation(LinearLayout.VERTICAL);
+        scrollingContent.addView(preview,new LinearLayout.LayoutParams(
+            -1,dp(compact?106:136)));
+        scrollingContent.addView(caption,new LinearLayout.LayoutParams(-1,dp(33)));
+        scrollingContent.addView(intensityRow,new LinearLayout.LayoutParams(-1,dp(24)));
+        scrollingContent.addView(strength,new LinearLayout.LayoutParams(-1,dp(38)));
+        scrollingContent.addView(cards,new LinearLayout.LayoutParams(-1,-2));
+        scroll.setFillViewport(false);
+        scroll.addView(scrollingContent,new ScrollView.LayoutParams(-1,-2));
+        page.addView(scroll,1,new LinearLayout.LayoutParams(-1,0,1));
+        setOnApplyWindowInsetsListener((v,insets)->{
+            setPadding(insets.getSystemWindowInsetLeft(),
+                insets.getSystemWindowInsetTop(),
+                insets.getSystemWindowInsetRight(),
+                insets.getSystemWindowInsetBottom());
+            return insets;
+        });
     }
     private int dp(float x){return EditorTheme.dp(activity,x);}
     private TextView text(String label,float size,boolean strong){
@@ -113,7 +140,7 @@ final class PresetDialog extends FrameLayout {
     void show(){
         owner=activity.findViewById(android.R.id.content);
         owner.addView(this,new FrameLayout.LayoutParams(-1,-1));
-        bringToFront();reload();
+        bringToFront();requestApplyInsets();reload();
     }
     private void reload(){
         cards.removeAllViews();
