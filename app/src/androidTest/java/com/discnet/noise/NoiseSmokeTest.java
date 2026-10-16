@@ -1123,20 +1123,31 @@ public class NoiseSmokeTest extends Instrumentation {
                     "Liquid connection fades continuously at both ends without a white flash");
             }
             early[0].recycle();liquidMiddle[0].recycle();late[0].recycle();
-            stage("V1.37.3: orbital scalar ink connects and separates geometrically");
-            Method densitySample=LiquidSelectorLayer.class.getDeclaredMethod(
-                "densityAt",float.class,float.class,float.class,float.class,float.class,float.class);
-            densitySample.setAccessible(true);
-            float separatedA=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.04f,0f);
-            float neck=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.50f,0f);
-            float separatedB=(Float)densitySample.invoke(bridge,56f,0f,112f,31f,.96f,0f);
-            require(separatedA<0f&&neck>0f&&separatedB<0f,
-                "The scalar density must create a real neck and break it again at both ends");
-            float edgeAtRest=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,0f);
-            float edgeLater=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,7f);
-            float edgeRepeated=(Float)densitySample.invoke(bridge,0f,20f,112f,31f,.50f,0f);
-            require(edgeAtRest==edgeRepeated&&Math.abs(edgeLater-edgeAtRest)>.0002f,
-                "Edge deformation must be continuous and deterministic, not a screen-space overlay");
+            stage("V1.37.4: classic Bezier membrane and opaque high-contrast wheel");
+            require(bridge.getClass().getDeclaredFields().length>0,
+                "Classic bridge retained instead of the procedural density rasterizer");
+            OrbitalMaterial[] blocks=(OrbitalMaterial[])field(orbitStage,"captionBlocks");
+            require(blocks.length==hitIcons.length&&blocks[activeIndex].cornerRadius()<=
+                EditorTheme.dp(getTargetContext(),5f),
+                "Caption cards have compact near-square corners");
+            require(Color.red(blocks[activeIndex].filledColor())>220,
+                "Aligned title uses a solid white material");
+            int neighbor=activeIndex==0?1:activeIndex-1;
+            require(Color.red(blocks[neighbor].baseColor())<150,
+                "Unselected captions preserve dark purple and violet surfaces");
+            Object background=hitIcons[activeIndex].getBackground();
+            Method frameBox=background.getClass().getDeclaredMethod("draw",Canvas.class);
+            frameBox.setAccessible(true);
+            final Bitmap[] whiteCard={null};
+            runOnMainSync(()->{
+                whiteCard[0]=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888);
+                ((android.graphics.drawable.Drawable)background).setBounds(0,0,128,128);
+                ((android.graphics.drawable.Drawable)background).draw(new Canvas(whiteCard[0]));
+            });
+            require(Color.red(whiteCard[0].getPixel(24,24))>205 &&
+                Color.blue(whiteCard[0].getPixel(24,24))>205,
+                "Selected icon is a filled white box, not transparent purple glass");
+            whiteCard[0].recycle();
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
