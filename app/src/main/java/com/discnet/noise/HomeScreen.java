@@ -53,10 +53,12 @@ final class HomeScreen extends FrameLayout {
         LinearLayout.LayoutParams folderParams=new LinearLayout.LayoutParams(dp(44),dp(44));
         folderParams.rightMargin=dp(4);
         header.addView(folders,folderParams);
+        folders.setImageDrawable(new IconArt(IconArt.FOLDER,OrbitalMaterial.BLACK));
         homeHeaderButton(folders);
         folders.setOnClickListener(v->onProjects.run());
         ImageView settings=IconArt.button(c,IconArt.SETTINGS,"Configurações");
         header.addView(settings,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        settings.setImageDrawable(new IconArt(IconArt.SETTINGS,OrbitalMaterial.BLACK));
         homeHeaderButton(settings);
         settings.setOnClickListener(v->onSettings.run());
 
@@ -163,7 +165,8 @@ final class HomeScreen extends FrameLayout {
         resume.setTypeface(NoiseTypography.medium(c));
         resume.setGravity(Gravity.CENTER_VERTICAL);
         resume.setPadding(dp(13),0,dp(13),0);
-        resume.setBackground(homeSurface(0xff292930,6));
+        resume.setTextColor(OrbitalMaterial.BLACK);
+        resume.setBackground(homeSurface(OrbitalMaterial.WHITE,4));
         resume.setMinHeight(dp(43));
         resume.setSingleLine(true);
         resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -173,7 +176,7 @@ final class HomeScreen extends FrameLayout {
 
         LinearLayout nav=new LinearLayout(c);
         nav.setGravity(Gravity.CENTER);
-        nav.setBackground(homeSurface(0xf51d1d23,7));
+        nav.setBackground(homeSurface(OrbitalMaterial.DARK_PURPLE,5));
         LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(49));
         navParams.topMargin=dp(8);
         page.addView(nav,navParams);
@@ -189,18 +192,19 @@ final class HomeScreen extends FrameLayout {
         return d;
     }
     private void homeHeaderButton(ImageView icon){
-        icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28ffffff),
-            homeSurface(0xff22222a,7),null));
+        icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x237235ae),
+            homeSurface(OrbitalMaterial.WHITE,4),null));
     }
     private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
                                    boolean primary,Runnable action){
         FrameLayout tile=new FrameLayout(c);
         GradientDrawable material=new GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
-            primary?new int[]{0xff55475e,0xff413747}
-                   :new int[]{0xff303037,0xff24242b});
-        material.setCornerRadius(dp(7));
-        material.setStroke(Math.max(1,dp(1)),primary?0x8abbafc7:0x665b5962);
+            primary?new int[]{OrbitalMaterial.WHITE,0xffe9d9f7}
+                   :new int[]{OrbitalMaterial.PURPLE,OrbitalMaterial.DARK_PURPLE});
+        material.setCornerRadius(dp(4));
+        material.setStroke(Math.max(1,dp(1)),
+            primary?0xffe7d0fa:0xff9060ba);
         tile.setBackground(new RippleDrawable(
             ColorStateList.valueOf(primary?0x26ffffff:0x1bffffff),material,null));
         tile.setClickable(true);
@@ -214,16 +218,16 @@ final class HomeScreen extends FrameLayout {
         LinearLayout line=new LinearLayout(c);line.setGravity(Gravity.CENTER_VERTICAL);
         column.addView(line,new LinearLayout.LayoutParams(-1,dp(25)));
         ImageView glyph=new ImageView(c);
-        glyph.setImageDrawable(new IconArt(icon,primary?Color.WHITE:0xffd9bedf));
+        glyph.setImageDrawable(new IconArt(icon,primary?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE));
         glyph.setContentDescription(title);
         line.addView(glyph,new LinearLayout.LayoutParams(dp(18),dp(18)));
-        TextView arrow=text("↗",15,primary?0xfff4e9fa:0xffb89ec9);
+        TextView arrow=text("↗",15,primary?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);
         arrow.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
         line.addView(arrow,new LinearLayout.LayoutParams(0,-1,1));
-        TextView label=text(title,14,EditorTheme.INK);
+        TextView label=text(title,14,primary?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);
         label.setTypeface(NoiseTypography.bold(c));
         column.addView(label);
-        TextView detail=text(subtitle,10,primary?0xfff4e8fb:0xffb8aebf);
+        TextView detail=text(subtitle,10,primary?0xff39244e:0xffefe0ff);
         detail.setSingleLine(true);
         detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
         column.addView(detail);
@@ -242,11 +246,14 @@ final class HomeScreen extends FrameLayout {
     private void navButton(LinearLayout nav,String name,int icon,Runnable r,boolean selected){
         LinearLayout b=new LinearLayout(getContext());b.setGravity(Gravity.CENTER);b.setOrientation(LinearLayout.VERTICAL);
         ImageView image=new ImageView(getContext());
-        image.setImageDrawable(new IconArt(icon,selected?EditorTheme.LIME:EditorTheme.MUTED));
+        image.setImageDrawable(new IconArt(icon,selected?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE));
         b.addView(image,new LinearLayout.LayoutParams(dp(19),dp(19)));
-        TextView label=text(name,11,selected?EditorTheme.INK:EditorTheme.MUTED);label.setGravity(Gravity.CENTER);
+        TextView label=text(name,11,selected?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);label.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(24));b.addView(label,p);
-        nav.addView(b,new LinearLayout.LayoutParams(0,dp(54),1));
+        b.setBackground(homeSurface(selected?OrbitalMaterial.WHITE:OrbitalMaterial.DEEP_PURPLE,4));
+        LinearLayout.LayoutParams navItem=new LinearLayout.LayoutParams(0,dp(49),1);
+        navItem.setMargins(dp(2),dp(2),dp(2),0);
+        nav.addView(b,navItem);
         b.setClickable(true);b.setFocusable(true);b.setContentDescription(name);
         b.setOnClickListener(v->r.run());
     }
