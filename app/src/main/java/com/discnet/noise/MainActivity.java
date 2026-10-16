@@ -141,7 +141,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         // Physical edges are checked by SwipeNavigationHost. Horizontal
         // navigation may start anywhere in the editor EXCEPT actual editable
         // slider hit areas. Moving between tabs never disables this gate.
-        if(original==null||loading||orbital!=null||preview==null
+        if(original==null||loading||exporting||orbital!=null||preview==null
             ||workspace==null||cropEditor!=null||workspace.isFullscreen())return false;
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)return false;
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)return false;
