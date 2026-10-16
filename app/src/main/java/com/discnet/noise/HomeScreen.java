@@ -312,6 +312,8 @@ final class HomeScreen extends FrameLayout {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Matrix lightMatrix=new Matrix();
         private final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint orbitPaint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF orbitOval=new RectF();
         private RadialGradient base,atmosphere,highlight,reflectedLight;
         private SweepGradient rim;
         private ValueAnimator animator;
@@ -408,6 +410,27 @@ final class HomeScreen extends FrameLayout {
             canvas.drawCircle(x,y,r,contour);
             contour.setShader(null);contour.setAlpha(255);
             contour.setStyle(Paint.Style.FILL);
+            // A pair of slow orbital traces belongs to the same light system as
+            // the sphere rim. No scattered shapes, no extra View animations.
+            orbitPaint.setShader(null);
+            orbitPaint.setStyle(Paint.Style.STROKE);
+            orbitPaint.setStrokeCap(Paint.Cap.ROUND);
+            float outer=r*1.105f;
+            orbitOval.set(x-outer,y-outer,x+outer,y+outer);
+            orbitPaint.setStrokeWidth(Math.max(.65f,getResources().getDisplayMetrics().density*.85f));
+            orbitPaint.setColor(0x306f5a84);
+            canvas.drawArc(orbitOval,0,360,false,orbitPaint);
+            float rotation=(float)Math.sin(t*.70f)*14f;
+            orbitPaint.setColor(0xa1cda9e6);
+            orbitPaint.setStrokeWidth(Math.max(1f,r*.009f));
+            canvas.drawArc(orbitOval,206+rotation,49,false,orbitPaint);
+            orbitPaint.setColor(0x7dbb98d7);
+            canvas.drawArc(orbitOval,22+rotation,33,false,orbitPaint);
+            orbitPaint.setStyle(Paint.Style.FILL);
+            float dot=(float)Math.toRadians(229+rotation);
+            orbitPaint.setColor(0xffe4c9f8);
+            canvas.drawCircle(x+(float)Math.cos(dot)*outer,
+                y+(float)Math.sin(dot)*outer,Math.max(1.3f,r*.014f),orbitPaint);
         }
         private Path circleClip(float x,float y,float r){
             clip.reset();clip.addCircle(x,y,r,Path.Direction.CW);
