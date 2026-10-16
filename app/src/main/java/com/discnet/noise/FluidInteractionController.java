@@ -13,7 +13,7 @@ final class FluidInteractionController {
         if (action == MotionEvent.ACTION_DOWN) {
             pointer = event.getPointerId(0);
             x = event.getX() / unit; y = event.getY() / unit;
-            vx = vy = 0; strength = .042f; lastEvent = event.getEventTime();
+            vx = vy = 0; strength = .96f; lastEvent = event.getEventTime();
         } else if (action == MotionEvent.ACTION_MOVE && pointer != -1) {
             int p = event.findPointerIndex(pointer);
             if (p < 0) { pointer = -1; return; }
@@ -21,7 +21,9 @@ final class FluidInteractionController {
             float dt = Math.max(.008f, (event.getEventTime() - lastEvent) * .001f);
             vx = .65f * vx + .35f * clamp((nx - x) / dt * .025f, -.065f, .065f);
             vy = .65f * vy + .35f * clamp((ny - y) / dt * .025f, -.065f, .065f);
-            strength = Math.min(.085f, .035f + (float)Math.hypot(vx, vy));
+            // Real local ink breakup, not a cosmetic warp layer.
+            // Stays near the finger even if the gesture slows to a stop.
+            strength = Math.min(1f,.86f+(float)Math.hypot(vx,vy)*.7f);
             x = nx; y = ny; lastEvent = event.getEventTime();
         } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL
                 || (action == MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.getActionIndex()) == pointer)) {
