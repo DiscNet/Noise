@@ -286,7 +286,7 @@ final class ResizeDialog extends FrameLayout {
             long pixels=(long)Math.max(1,targetW)*Math.max(1,targetH);
             // Estimate only; compression depends on actual image content.
             long approx=format.equals("png")?pixels*2:
-                pixels*Math.max(.09f,.50f*(quality.getProgress()+1)/100f);
+                Math.round(pixels*Math.max(.09f,.50f*(quality.getProgress()+1)/100f));
             estimate.setText("Estimativa aproximada: "+
                 Math.max(1,approx/1024)+" KB (varia conforme a imagem)");
         }
