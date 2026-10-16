@@ -116,10 +116,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         current.setGravity(Gravity.CENTER);
         current.setLetterSpacing(.07f);
         column.addView(current,new LinearLayout.LayoutParams(-1,dp(32)));
-        continueButton=label(c,"Selecionar "+names[orbit.selected()],16,0xff17121d);
+        continueButton=label(c,"Selecionar "+names[orbit.selected()],16,EditorTheme.INK);
         continueButton.setTypeface(NoiseTypography.bold(c));
         continueButton.setGravity(Gravity.CENTER);
-        continueButton.setBackground(EditorTheme.buttonSurface(c,32,true));
+        continueButton.setBackground(new TexturedGlass(c,null,continueButton,10,
+            0xff31283a,.22f));
         continueButton.setClickable(true);continueButton.setFocusable(true);
         column.addView(continueButton,new LinearLayout.LayoutParams(-1,dp(58)));
         continueButton.setOnClickListener(v->commit());
@@ -490,6 +491,7 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
         private static final float STEP=.29f;
         private final Paint stroke=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint light=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final LiquidSelectorLayer liquidBridge=new LiquidSelectorLayer(getContext());
         private RadialGradient halo;
         private final LinearLayout[] rows=new LinearLayout[names.length];
         private final TextView[] captions=new TextView[names.length];
@@ -613,6 +615,17 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             float markerX=x+(effectsMode?-dp(54):dp(54));
             canvas.drawRoundRect(markerX-dp(5),y-dp(.75f),
                 markerX+dp(5),y+dp(.75f),dp(1),dp(1),light);
+            // Project the two moving icon centers onto the real orbital curve.
+            // One connected contour flows between them while the finger drags
+            // or the wheel springs into place; reversing offset reverses flow.
+            int from=(int)Math.floor(offset);
+            if(from>=0&&from<names.length-1){
+                float p=offset-from;
+                liquidBridge.draw(canvas,
+                    arcX((from-offset)*STEP),arcY((from-offset)*STEP),
+                    arcX((from+1-offset)*STEP),arcY((from+1-offset)*STEP),
+                    p,dp(27));
+            }
         }
         private void render(){
             if(getWidth()==0||getHeight()==0)return;
