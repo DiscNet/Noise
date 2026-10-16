@@ -55,7 +55,7 @@ O **Noise!** combina os ajustes essenciais de fotografia com ferramentas criativ
 
 ### ◌ Estúdio e interface orbital
 
-Home com esfera luminosa e órbitas discretas, cartões de **edição e câmera** e projetos contextuais. No editor, duas rodas laterais, rolagem com amortecimento, encaixe suave e transições com **fade in/out**.
+Home com esfera de luz discreta, cartões de **edição e câmera**, painéis com cantos de 12 dp e projetos contextuais. No editor, duas rodas laterais com **borda apenas no ícone central** e transição líquida entre seleções.
 
 </td>
 <td valign="top">
@@ -186,7 +186,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.35.0](docs/RELEASE-1.35.0.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.35.1](docs/RELEASE-1.35.1.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -202,7 +202,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.35.0.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.35.1.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
