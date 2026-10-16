@@ -82,21 +82,40 @@ public class NoiseSmokeTest extends Instrumentation {
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
             ViewGroup homePanel=(ViewGroup)homePage.getChildAt(2);
-            require(homePanel.getBackground() instanceof android.graphics.drawable.GradientDrawable,
-                "Home action panel uses one simple native gradient surface");
-            android.graphics.drawable.GradientDrawable panelSurface=
-                (android.graphics.drawable.GradientDrawable)homePanel.getBackground();
-            float homeDensity=homePanel.getResources().getDisplayMetrics().density;
-            require(Math.abs(panelSurface.getCornerRadius()/homeDensity-12f)<.2f,
-                "Home panel corners are 12dp, not old excessive rounding");
+            require(homePanel.getBackground() instanceof TexturedGlass,
+                "Home samples organic backdrop through a reusable textured glass surface");
+            TexturedGlass panelSurface=(TexturedGlass)homePanel.getBackground();
+            require(panelSurface.samplesBackground()&&Math.abs(panelSurface.radiusDp()-12f)<.2f,
+                "Home panel uses actual blurred background sampling at 12dp");
             for(int i=0;i<homeActions.getChildCount();i++){
                 android.graphics.drawable.RippleDrawable ripple=
                     (android.graphics.drawable.RippleDrawable)homeActions.getChildAt(i).getBackground();
-                android.graphics.drawable.GradientDrawable surface=
-                    (android.graphics.drawable.GradientDrawable)ripple.getDrawable(0);
-                require(Math.abs(surface.getCornerRadius()/homeDensity-12f)<.2f,
-                    "Each Home action card uses a consistent 12dp radius");
+                require(ripple.getDrawable(0) instanceof TexturedGlass,
+                    "Each Home action card uses consistent sampled glass");
+                TexturedGlass surface=(TexturedGlass)ripple.getDrawable(0);
+                require(surface.samplesBackground()&&Math.abs(surface.radiusDp()-10f)<.2f,
+                    "Cards have more architectural 10dp corners");
             }
+            stage("V1.36: organic background is blurred behind glass, not over photos");
+            require(atmosphere instanceof OrganicBackdrop,
+                "Home's backdrop renderer uses authored asymmetric ink shapes");
+            final Bitmap[] backgroundSample={null};
+            runOnMainSync(()->backgroundSample[0]=((OrganicBackdrop)atmosphere).blurredSnapshot());
+            require(backgroundSample[0]!=null&&backgroundSample[0].getWidth()>1,
+                "Glass source is a real low-resolution blurred rendering of the Home background");
+            final Bitmap[] glassSample={null};
+            runOnMainSync(()->{
+                TexturedGlass glass=(TexturedGlass)homePanel.getBackground();
+                glass.setBounds(0,0,300,110);
+                glassSample[0]=Bitmap.createBitmap(300,110,Bitmap.Config.ARGB_8888);
+                glass.draw(new Canvas(glassSample[0]));
+            });
+            int unique=0,reference=glassSample[0].getPixel(20,18);
+            for(int y=16;y<95;y+=9)for(int x=15;x<285;x+=11)
+                if(glassSample[0].getPixel(x,y)!=reference)unique++;
+            require(unique>25,
+                "Procedural glass micro-refraction changes transmission and light in different regions");
+            glassSample[0].recycle();
             try{
                 homeCircle.getClass().getDeclaredField("orbitPaint");
                 require(false,"Hero must not draw artificial decorative rings");
@@ -1088,6 +1107,25 @@ public class NoiseSmokeTest extends Instrumentation {
                 require(!(Boolean)outlined.invoke(hitIcons[i].getBackground()),
                     "Unaligned orbital icons never have a border, even while visible");
             }
+            stage("V1.36: real gesture-driven metaball bridge between icons");
+            LiquidSelectorLayer bridge=(LiquidSelectorLayer)field(orbitStage,"liquidBridge");
+            final Bitmap[] flowA={null},flowB={null};
+            runOnMainSync(()->{
+                flowA[0]=Bitmap.createBitmap(240,140,Bitmap.Config.ARGB_8888);
+                flowB[0]=Bitmap.createBitmap(240,140,Bitmap.Config.ARGB_8888);
+                bridge.draw(new Canvas(flowA[0]),65,70,168,70,.28f,31f);
+                bridge.draw(new Canvas(flowB[0]),65,70,168,70,.72f,31f);
+            });
+            if(android.animation.ValueAnimator.areAnimatorsEnabled()){
+                require(bridge.connected()&&Math.abs(bridge.progress()-.72f)<.01f,
+                    "Liquid bridge follows fractional gesture position directly");
+                int differentPixels=0;
+                for(int y=14;y<126;y+=2)for(int x=18;x<223;x+=2)
+                    if(flowA[0].getPixel(x,y)!=flowB[0].getPixel(x,y))differentPixels++;
+                require(differentPixels>75,
+                    "Liquid mass transfers and reshapes between icons instead of a static capsule");
+            }
+            flowA[0].recycle();flowB[0].recycle();
             stage("V1.35.1: liquid selection follows exact alignment");
             Field offsetField=orbitStage.getClass().getDeclaredField("offset");
             Field targetField=orbitStage.getClass().getDeclaredField("targetOffset");
