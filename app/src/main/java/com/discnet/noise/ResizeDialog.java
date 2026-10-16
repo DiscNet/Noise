@@ -23,10 +23,11 @@ final class ResizeDialog extends FrameLayout {
     private int targetW,targetH;
     private boolean locked=true,editing;
     private final EditText width,height;
-    private final TextView result,ratio,lock,png,jpeg,qualityTitle;
+    private final TextView result,ratio,lock,png,jpeg,webp,qualityTitle,estimate;
     private final LinearLayout qualityGroup;
     private final EditorTheme.Slider quality;
     private boolean jpegEnabled;
+    private String format;
     private final Result callback;
     private int dp(float n){return EditorTheme.dp(getContext(),n);}
     ResizeDialog(Context context,Bitmap preview,EditorDocument doc,int originalW,int originalH,
@@ -41,7 +42,15 @@ final class ResizeDialog extends FrameLayout {
         maximum=Math.max(1,Math.min(4096,maxTexture));
         int[] size=doc.outputSize(originalW,originalH,maximum);
         targetW=size[0];targetH=size[1];
-        jpegEnabled=doc.jpeg;
+        format=doc.exportFormat;
+        if(!format.equals("jpeg")&&!format.equals("webp")&&!format.equals("png"))
+            format=doc.jpeg?"jpeg":"png";
+        jpegEnabled=format.equals("jpeg");
+        setOnApplyWindowInsetsListener((v,insets)->{
+            setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),
+                insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+            return insets;
+        });
 
         LinearLayout body=new LinearLayout(context);body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(16),dp(12),dp(16),dp(17));
@@ -54,13 +63,15 @@ final class ResizeDialog extends FrameLayout {
         scroller.setVerticalScrollBarEnabled(false);
         scroller.addView(body);
 
-        TextView title=text("EXPORTAR IMAGEM",21,true);body.addView(title,new LinearLayout.LayoutParams(-1,dp(35)));
-        TextView subtitle=text("Redimensionar a resolução",12,false);
+        TextView title=text("CONFIGURAÇÕES",13,true);
+        title.setTextColor(OrbitalMaterial.MUTED);
+        body.addView(title,new LinearLayout.LayoutParams(-1,dp(28)));
+        TextView subtitle=text("Qualidade, dimensões e formato",12,false);
         body.addView(subtitle,new LinearLayout.LayoutParams(-1,dp(27)));
         ImageView picture=new ImageView(context);picture.setImageBitmap(preview);
         picture.setScaleType(ImageView.ScaleType.FIT_CENTER);
         picture.setBackground(EditorTheme.panel(context,0xff100e17,0,17,0));
-        body.addView(picture,new LinearLayout.LayoutParams(-1,dp(130)));
+        body.addView(picture,new LinearLayout.LayoutParams(-1,dp(105)));
         TextView original=text("Original  ·  "+sourceW+" × "+sourceH+" px",12,false);
         original.setGravity(Gravity.CENTER);body.addView(original,new LinearLayout.LayoutParams(-1,dp(35)));
         result=text("",16,true);result.setGravity(Gravity.CENTER);
@@ -113,11 +124,15 @@ final class ResizeDialog extends FrameLayout {
         TextView exportTitle=text("EXPORTAÇÃO",11,false);exportTitle.setLetterSpacing(.08f);
         body.addView(exportTitle,new LinearLayout.LayoutParams(-1,dp(32)));
         LinearLayout formats=new LinearLayout(context);
-        png=button("PNG · transparência",!jpegEnabled);jpeg=button("JPEG",jpegEnabled);
-        LinearLayout.LayoutParams left=new LinearLayout.LayoutParams(0,dp(43),1.4f);
-        left.rightMargin=dp(8);formats.addView(png,left);
-        formats.addView(jpeg,new LinearLayout.LayoutParams(0,dp(43),1));
-        body.addView(formats,new LinearLayout.LayoutParams(-1,dp(45)));
+        png=button("PNG",format.equals("png"));
+        jpeg=button("JPEG",format.equals("jpeg"));
+        webp=button("WebP",format.equals("webp"));
+        for(TextView chip:new TextView[]{png,jpeg,webp}){
+            LinearLayout.LayoutParams sizeLp=new LinearLayout.LayoutParams(0,dp(44),1);
+            sizeLp.rightMargin=dp(5);
+            formats.addView(chip,sizeLp);
+        }
+        body.addView(formats,new LinearLayout.LayoutParams(-1,dp(48)));
         qualityGroup=new LinearLayout(context);qualityGroup.setOrientation(LinearLayout.VERTICAL);
         qualityTitle=text("",12,false);qualityGroup.addView(qualityTitle,new LinearLayout.LayoutParams(-1,dp(25)));
         quality=new EditorTheme.Slider(context,EditorTheme.LIME);
@@ -125,19 +140,25 @@ final class ResizeDialog extends FrameLayout {
         quality.neutral(94);qualityGroup.addView(quality,new LinearLayout.LayoutParams(-1,dp(40)));
         quality.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar b,int value,boolean fromUser){
-                qualityTitle.setText("Qualidade JPEG  ·  "+(value+1)+"%");
+                qualityTitle.setText("Qualidade "+format.toUpperCase(java.util.Locale.ROOT)+
+                    "  ·  "+(value+1)+"%");
+                if(estimate!=null)updateSummary();
             }
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){}
         });
         qualityTitle.setText("Qualidade JPEG  ·  "+(quality.getProgress()+1)+"%");
         body.addView(qualityGroup,new LinearLayout.LayoutParams(-1,dp(66)));
-        png.setOnClickListener(v->changeFormat(false));
-        jpeg.setOnClickListener(v->changeFormat(true));changeFormat(jpegEnabled);
+        png.setOnClickListener(v->changeFormat("png"));
+        jpeg.setOnClickListener(v->changeFormat("jpeg"));
+        webp.setOnClickListener(v->changeFormat("webp"));
+        changeFormat(format);
 
         TextView folder=text("Destino: Pictures/Noise!  ·  Original preservado",11,false);
         folder.setPadding(dp(3),dp(7),0,dp(7));
         body.addView(folder,new LinearLayout.LayoutParams(-1,-2));
+        estimate=text("",11,false);
+        body.addView(estimate,new LinearLayout.LayoutParams(-1,dp(29)));
         LinearLayout actions=new LinearLayout(context);
         TextView cancel=button("Cancelar",false),apply=button("Aplicar",false),export=button("Exportar",true);
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(49),1);
@@ -153,6 +174,16 @@ final class ResizeDialog extends FrameLayout {
         LinearLayout screen=new LinearLayout(context);
         screen.setOrientation(LinearLayout.VERTICAL);
         screen.setBackgroundColor(OrbitalMaterial.BLACK);
+        LinearLayout topBar=new LinearLayout(context);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(dp(12),0,dp(12),0);
+        TextView back=button("Voltar",false);
+        topBar.addView(back,new LinearLayout.LayoutParams(dp(84),dp(46)));
+        back.setOnClickListener(v->dismiss());
+        TextView heading=text("Exportar",22,true);
+        LinearLayout.LayoutParams h=new LinearLayout.LayoutParams(0,-1,1);
+        h.leftMargin=dp(16);topBar.addView(heading,h);
+        screen.addView(topBar,new LinearLayout.LayoutParams(-1,dp(59)));
         screen.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout footer=new LinearLayout(context);
         footer.setPadding(dp(12),dp(8),dp(12),dp(12));
@@ -168,7 +199,9 @@ final class ResizeDialog extends FrameLayout {
         FrameLayout root=host.findViewById(android.R.id.content);
         root.addView(this,new FrameLayout.LayoutParams(-1,-1));
         bringToFront();
+        requestApplyInsets();
     }
+    String selectedFormat(){return format;}
     void dismiss(){
         if(!visible)return;
         visible=false;
@@ -223,13 +256,20 @@ final class ResizeDialog extends FrameLayout {
         editing=true;width.setText(String.valueOf(targetW));height.setText(String.valueOf(targetH));
         editing=false;updateSummary();
     }
-    private void changeFormat(boolean jpegOn){
-        jpegEnabled=jpegOn;
-        png.setBackground(EditorTheme.buttonSurface(getContext(),13,!jpegOn));
-        jpeg.setBackground(EditorTheme.buttonSurface(getContext(),13,jpegOn));
-        png.setTextColor(!jpegOn?0xff1e1325:EditorTheme.INK);
-        jpeg.setTextColor(jpegOn?0xff1e1325:EditorTheme.INK);
-        qualityGroup.setVisibility(jpegOn?View.VISIBLE:View.GONE);
+    private void changeFormat(String chosen){
+        format=chosen;
+        jpegEnabled="jpeg".equals(chosen);
+        TextView[] chips={png,jpeg,webp};
+        String[] formats={"png","jpeg","webp"};
+        for(int i=0;i<3;i++){
+            boolean current=chosen.equals(formats[i]);
+            chips[i].setBackground(EditorTheme.buttonSurface(getContext(),4,current));
+            chips[i].setTextColor(current?OrbitalMaterial.BLACK:OrbitalMaterial.WHITE);
+        }
+        qualityGroup.setVisibility(chosen.equals("png")?View.GONE:View.VISIBLE);
+        qualityTitle.setText("Qualidade "+chosen.toUpperCase(java.util.Locale.ROOT)+
+            "  ·  "+(quality.getProgress()+1)+"%");
+        if(estimate!=null)updateSummary();
     }
     private boolean valid(){
         try{
@@ -242,6 +282,14 @@ final class ResizeDialog extends FrameLayout {
     }
     private void updateSummary(){
         result.setText("Nova resolução  ·  "+targetW+" × "+targetH+" px");
+        if(estimate!=null){
+            long pixels=(long)Math.max(1,targetW)*Math.max(1,targetH);
+            // Estimate only; compression depends on actual image content.
+            long approx=format.equals("png")?pixels*2:
+                pixels*Math.max(.09f,.50f*(quality.getProgress()+1)/100f);
+            estimate.setText("Estimativa aproximada: "+
+                Math.max(1,approx/1024)+" KB (varia conforme a imagem)");
+        }
         ratio.setText("Original: "+sourceW+" × "+sourceH+
             "  •  "+(locked?"Proporção preservada":"Proporção livre")+
             "  •  limite "+maximum+" px");
