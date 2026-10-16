@@ -22,6 +22,7 @@ final class CameraFrameGuide extends View {
     private final ScaleGestureDetector pinch;
     private float ratio=1f,zoom=1f,touchX,touchY,focusX=-1,focusY=-1;
     private float exactAspect=1f,offsetX,offsetY,alignmentDegrees;
+    private boolean fullViewport;
     private boolean draggingFrame;
     private long touchAt,focusAt;
     private boolean multiple,moved,gridEnabled=true;
@@ -42,10 +43,15 @@ final class CameraFrameGuide extends View {
     void ratio(float wideToShort){ratio=Math.max(1f,Math.min(2f,wideToShort));invalidate();}
     void zoom(float value){zoom=Math.max(1f,Math.min(4f,value));invalidate();}
     void exactAspect(float widthToHeight){
+        fullViewport=false;
         exactAspect=Math.max(.4f,Math.min(2.5f,widthToHeight));
         offsetX=0;offsetY=0;invalidate();
     }
-    float exactAspect(){return exactAspect;}
+    float exactAspect(){return fullViewport && getHeight()>0?getWidth()/(float)getHeight():exactAspect;}
+    void fitToPreview(){
+        fullViewport=true;offsetX=0f;offsetY=0f;invalidate();
+    }
+    boolean isFitToPreview(){return fullViewport;}
     void grid(boolean enabled){gridEnabled=enabled;invalidate();}
     void alignment(float degrees){
         alignmentDegrees=Math.max(-15f,Math.min(15f,degrees));invalidate();
@@ -54,7 +60,8 @@ final class CameraFrameGuide extends View {
     void centerFrame(){offsetX=0;offsetY=0;invalidate();}
     static void geometryExact(int w,int h,float aspect,float zoom,float dx,float dy,RectF out){
         if(w<1||h<1){out.setEmpty();return;}
-        float maxW=w*.91f,maxH=h*.86f;
+        // No artificial 9%/14% margin at 1x: the guide can cover the entire preview.
+        float maxW=w,maxH=h;
         float width=Math.min(maxW,maxH*aspect),height=width/aspect;
         float z=Math.max(1f,Math.min(4f,zoom));
         float halfW=width/(z*2f),halfH=height/(z*2f);
@@ -65,7 +72,7 @@ final class CameraFrameGuide extends View {
     float zoom(){return zoom;}
     float ratio(){return ratio;}
     RectF frame(){
-        geometryExact(getWidth(),getHeight(),exactAspect,zoom,offsetX,offsetY,frame);
+        geometryExact(getWidth(),getHeight(),exactAspect(),zoom,offsetX,offsetY,frame);
         return new RectF(frame);
     }
     static void geometry(int w,int h,float ratio,RectF out){
@@ -111,16 +118,17 @@ final class CameraFrameGuide extends View {
     }
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);
-        geometryExact(getWidth(),getHeight(),exactAspect,zoom,offsetX,offsetY,frame);
+        geometryExact(getWidth(),getHeight(),exactAspect(),zoom,offsetX,offsetY,frame);
         if(frame.isEmpty())return;
-        paint.setColor(0x78000000);paint.setStyle(Paint.Style.FILL);
+        boolean entirePreview=fullViewport&&zoom<=1.001f;
+        paint.setColor(entirePreview?0x00000000:0x78000000);paint.setStyle(Paint.Style.FILL);
         canvas.drawRect(0,0,getWidth(),frame.top,paint);
         canvas.drawRect(0,frame.top,frame.left,frame.bottom,paint);
         canvas.drawRect(frame.right,frame.top,getWidth(),frame.bottom,paint);
         canvas.drawRect(0,frame.bottom,getWidth(),getHeight(),paint);
         paint.setColor(0xf0ffffff);paint.setStrokeWidth(dp(1.2f));
         paint.setStyle(Paint.Style.STROKE);
-        canvas.drawRoundRect(frame,dp(2),dp(2),paint);
+        if(!entirePreview)canvas.drawRoundRect(frame,dp(2),dp(2),paint);
         if(gridEnabled){
             paint.setColor(0x45ffffff);paint.setStrokeWidth(dp(0.6f));
             for(int i=1;i<=2;i++){
@@ -147,6 +155,7 @@ final class CameraFrameGuide extends View {
         }
         paint.setColor(0xffffffff);paint.setStrokeWidth(dp(2.4f));
         float corner=Math.min(dp(19),Math.min(frame.width(),frame.height())*.20f);
+        if(!entirePreview){
         canvas.drawLine(frame.left,frame.top,frame.left+corner,frame.top,paint);
         canvas.drawLine(frame.left,frame.top,frame.left,frame.top+corner,paint);
         canvas.drawLine(frame.right,frame.top,frame.right-corner,frame.top,paint);
@@ -155,6 +164,7 @@ final class CameraFrameGuide extends View {
         canvas.drawLine(frame.left,frame.bottom,frame.left,frame.bottom-corner,paint);
         canvas.drawLine(frame.right,frame.bottom,frame.right-corner,frame.bottom,paint);
         canvas.drawLine(frame.right,frame.bottom,frame.right,frame.bottom-corner,paint);
+        }
         if(focusX>=0&&android.os.SystemClock.uptimeMillis()-focusAt<1100){
             paint.setStrokeWidth(dp(1.8f));paint.setColor(0xffffddbb);
             canvas.drawRoundRect(focusX-dp(23),focusY-dp(23),
