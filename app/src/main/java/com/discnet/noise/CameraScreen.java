@@ -45,7 +45,7 @@ final class CameraScreen extends FrameLayout {
     private final Listener listener;
     private final PreviewView preview;
     private final CameraFrameGuide frameGuide;
-    private final NoiseCameraX engine;
+    private NoiseCameraX engine;
     private final CameraRuler ruler;
     private final LinearLayout cameraBody;
     private final TextView valueLabel,titleLabel,status,flashButton,timerButton,ratioButton;
