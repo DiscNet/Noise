@@ -82,56 +82,58 @@ public class NoiseSmokeTest extends Instrumentation {
             stage("V1.35.1: professional square Home surfaces");
             ViewGroup homeActions=(ViewGroup)((ViewGroup)homePage.getChildAt(2)).getChildAt(1);
             ViewGroup homePanel=(ViewGroup)homePage.getChildAt(2);
-            require(homePanel.getBackground() instanceof TexturedGlass,
-                "Home samples organic backdrop through a reusable textured glass surface");
-            TexturedGlass panelSurface=(TexturedGlass)homePanel.getBackground();
-            require(panelSurface.samplesBackground()&&Math.abs(panelSurface.radiusDp()-8f)<.2f,
-                "Home panel uses sampled background with precise 8dp corners");
+            require(homePanel.getBackground() instanceof android.graphics.drawable.GradientDrawable,
+                "Home panel must use a clean matte surface instead of glass");
+            android.graphics.drawable.GradientDrawable panelSurface=
+                (android.graphics.drawable.GradientDrawable)homePanel.getBackground();
+            float homeDensity=homePanel.getResources().getDisplayMetrics().density;
+            require(Math.abs(panelSurface.getCornerRadius()/homeDensity-7f)<.3f,
+                "Structural Home panel has crisp 7dp corners");
             for(int i=0;i<homeActions.getChildCount();i++){
                 android.graphics.drawable.RippleDrawable ripple=
                     (android.graphics.drawable.RippleDrawable)homeActions.getChildAt(i).getBackground();
-                require(ripple.getDrawable(0) instanceof TexturedGlass,
-                    "Each Home action card uses consistent sampled glass");
-                TexturedGlass surface=(TexturedGlass)ripple.getDrawable(0);
-                require(surface.samplesBackground()&&Math.abs(surface.radiusDp()-7f)<.2f,
-                    "Action cards use clearly squared-off 7dp corners");
+                require(ripple.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable,
+                    "No photo cards contain glass material, blur or cloudy overlays");
+                android.graphics.drawable.GradientDrawable surface=
+                    (android.graphics.drawable.GradientDrawable)ripple.getDrawable(0);
+                require(Math.abs(surface.getCornerRadius()/homeDensity-7f)<.3f,
+                    "Each action card has 7dp corners");
             }
-            stage("V1.36: organic background is blurred behind glass, not over photos");
+            stage("V1.36.2: black organic ink with speckled edges on off-white base");
             require(atmosphere instanceof OrganicBackdrop,
-                "Home's backdrop renderer uses authored asymmetric ink shapes");
-            final Bitmap[] backgroundSample={null};
-            runOnMainSync(()->backgroundSample[0]=((OrganicBackdrop)atmosphere).blurredSnapshot());
-            require(backgroundSample[0]!=null&&backgroundSample[0].getWidth()>1,
-                "Glass source is a real low-resolution blurred rendering of the Home background");
-            require(backgroundSample[0].getWidth()>=Math.max(1,atmosphere.getWidth()/5),
-                "Background sample retains enough resolution to avoid 8x enlarged cloud blocks");
+                "Home retains a native procedural background, with no textured glass");
             Field inkField=OrganicBackdrop.class.getDeclaredField("inkLayer");
             inkField.setAccessible(true);
             Bitmap inkBitmap=(Bitmap)inkField.get(atmosphere);
             require(inkBitmap!=null&&!inkBitmap.isRecycled(),
-                "Organic shapes have a reusable softly feathered texture layer");
-            int translucent=0,fullyOpaque=0;
-            for(int y=0;y<inkBitmap.getHeight();y+=6)
-                for(int x=0;x<inkBitmap.getWidth();x+=6){
+                "High-resolution organic ink is generated once for the viewport");
+            int feather=0,darkCores=0,voids=0;
+            for(int y=0;y<inkBitmap.getHeight();y+=4)
+                for(int x=0;x<inkBitmap.getWidth();x+=4){
                     int alpha=Color.alpha(inkBitmap.getPixel(x,y));
-                    if(alpha>8&&alpha<220)translucent++;
-                    if(alpha>250)fullyOpaque++;
+                    if(alpha>10&&alpha<220)feather++;
+                    if(alpha>225)darkCores++;
+                    if(alpha==0)voids++;
                 }
-            require(translucent>65&&fullyOpaque==0,
-                "Ink shapes blend translucently into atmosphere instead of solid vector cutouts");
-            final Bitmap[] glassSample={null};
+            require(feather>50&&darkCores>60&&voids>100,
+                "Ink artwork must contain real black masses, soft grain and white negative space");
+            final Bitmap[] backdropSample={null};
             runOnMainSync(()->{
-                TexturedGlass glass=(TexturedGlass)homePanel.getBackground();
-                glass.setBounds(0,0,300,110);
-                glassSample[0]=Bitmap.createBitmap(300,110,Bitmap.Config.ARGB_8888);
-                glass.draw(new Canvas(glassSample[0]));
+                backdropSample[0]=Bitmap.createBitmap(
+                    Math.max(2,atmosphere.getWidth()),
+                    Math.max(2,atmosphere.getHeight()),Bitmap.Config.ARGB_8888);
+                atmosphere.draw(new Canvas(backdropSample[0]));
             });
-            int unique=0,reference=glassSample[0].getPixel(20,18);
-            for(int y=16;y<95;y+=9)for(int x=15;x<285;x+=11)
-                if(glassSample[0].getPixel(x,y)!=reference)unique++;
-            require(unique>25,
-                "Procedural glass micro-refraction changes transmission and light in different regions");
-            glassSample[0].recycle();
+            int bright=0,dark=0;
+            for(int y=0;y<backdropSample[0].getHeight();y+=6)
+                for(int x=0;x<backdropSample[0].getWidth();x+=6){
+                    int r=Color.red(backdropSample[0].getPixel(x,y));
+                    if(r>205)bright++;
+                    if(r<95)dark++;
+                }
+            require(bright>50&&dark>40,
+                "Home background has both pale paper areas and dark organic silhouettes");
+            backdropSample[0].recycle();
             try{
                 homeCircle.getClass().getDeclaredField("orbitPaint");
                 require(false,"Hero must not draw artificial decorative rings");
@@ -1175,11 +1177,34 @@ public class NoiseSmokeTest extends Instrumentation {
                 }catch(Exception error){throw new RuntimeException(error);}
             });
             require((Integer)field(orbitStage,"framedIndex")==-1,
-                "White border vanishes while both wheel icons are between snap positions");
+                "No icon has a full-strength border while moving between items");
             for(ImageView icon:hitIcons){
                 require(!(Boolean)outlined.invoke(icon.getBackground()),
-                    "No icon inherits border before alignment");
+                    "Intermediate items use a partially faded highlight, never two solid borders");
             }
+            Method strength=hitIcons[chosenIndex].getBackground().getClass()
+                .getDeclaredMethod("strength");
+            strength.setAccessible(true);
+            float sourceIntensity=(Float)strength.invoke(hitIcons[chosenIndex].getBackground());
+            float targetIntensity=(Float)strength.invoke(hitIcons[chosenIndex+1].getBackground());
+            require(sourceIntensity>.12f&&sourceIntensity<.92f
+                    &&targetIntensity>.07f&&targetIntensity<.88f,
+                "Both adjacent icon highlights crossfade continuously with fractional wheel position");
+            stage("V1.36.2: reversible icon crossfade does not jump at halfway");
+            runOnMainSync(()->{
+                try{
+                    offsetField.setFloat(orbitStage,chosenIndex+.49f);redraw.invoke(orbitStage);
+                }catch(Exception error){throw new RuntimeException(error);}
+            });
+            float before=(Float)strength.invoke(hitIcons[chosenIndex].getBackground());
+            runOnMainSync(()->{
+                try{
+                    offsetField.setFloat(orbitStage,chosenIndex+.51f);redraw.invoke(orbitStage);
+                }catch(Exception error){throw new RuntimeException(error);}
+            });
+            float after=(Float)strength.invoke(hitIcons[chosenIndex].getBackground());
+            require(Math.abs(before-after)<.07f,
+                "Icon material and white rim must change continuously across midpoint");
             runOnMainSync(()->{
                 try{
                     offsetField.setFloat(orbitStage,chosenIndex);
