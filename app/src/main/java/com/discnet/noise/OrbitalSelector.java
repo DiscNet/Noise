@@ -444,8 +444,11 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             }
         }
         void setLiquid(float progress){
-            liquid=Math.max(0f,Math.min(1f,progress));
-            invalidateSelf();
+            float next=Math.max(0f,Math.min(1f,progress));
+            if(Math.abs(liquid-next)>.003f){
+                liquid=next;
+                invalidateSelf();
+            }
         }
         @Override public void draw(Canvas canvas){
             Rect b=getBounds();
