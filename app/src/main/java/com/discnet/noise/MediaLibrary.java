@@ -150,14 +150,48 @@ final class MediaLibrary {
             if(in==null)throw new IOException("Imagem indisponível");
             Bitmap bitmap=BitmapFactory.decodeStream(in,null,options);
             if(bitmap==null)throw new IOException("Formato não suportado");
+            try(InputStream meta=context.getContentResolver().openInputStream(uri)){
+                if(meta!=null){
+                    android.media.ExifInterface exif=new android.media.ExifInterface(meta);
+                    int orientation=exif.getAttributeInt(
+                        android.media.ExifInterface.TAG_ORIENTATION,
+                        android.media.ExifInterface.ORIENTATION_NORMAL);
+                    Matrix matrix=new Matrix();
+                    if(orientation==android.media.ExifInterface.ORIENTATION_ROTATE_90)
+                        matrix.postRotate(90);
+                    else if(orientation==android.media.ExifInterface.ORIENTATION_ROTATE_180)
+                        matrix.postRotate(180);
+                    else if(orientation==android.media.ExifInterface.ORIENTATION_ROTATE_270)
+                        matrix.postRotate(270);
+                    else if(orientation==android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL)
+                        matrix.postScale(-1,1);
+                    else if(orientation==android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL)
+                        matrix.postScale(1,-1);
+                    if(!matrix.isIdentity()){
+                        Bitmap upright=Bitmap.createBitmap(bitmap,0,0,
+                            bitmap.getWidth(),bitmap.getHeight(),matrix,true);
+                        if(upright!=bitmap){bitmap.recycle();bitmap=upright;}
+                    }
+                }
+            }catch(Exception error){
+                android.util.Log.d("NoiseGallery","EXIF indisponível",error);
+            }
             return bitmap;
         }
     }
     static Uri duplicate(Context context,Photo photo)throws IOException {
         String mime=photo.mime;
-        String extension=mime.equals("image/png")?".png":
-            mime.equals("image/webp")?".webp":
-            mime.equals("image/heic")?".heic":".jpg";
+        String extension=null;
+        int dot=photo.name.lastIndexOf('.');
+        if(dot>=0&&dot<photo.name.length()-2){
+            String suffix=photo.name.substring(dot).toLowerCase(Locale.ROOT);
+            if(suffix.matches("\\.[a-z0-9]{2,7}"))extension=suffix;
+        }
+        if(extension==null){
+            String detected=android.webkit.MimeTypeMap.getSingleton()
+                .getExtensionFromMimeType(mime);
+            extension=detected==null?".jpg":"."+detected;
+        }
         String name="Noise-copy-"+System.currentTimeMillis()+extension;
         Uri created=null;
         File fallback=null;
