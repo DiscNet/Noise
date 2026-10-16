@@ -44,7 +44,14 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private boolean homeHostResumed;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
+    private boolean projectsFromEditor;
+    private StudioTabBar studioTabs;
+    private int activeStudioTab=-1;
+    private float studioSwipeX,studioSwipeY;
+    private boolean studioGestureArmed;
+    private ResizeDialog exportScreen;
     private ExportProgressOverlay exportProgress;
+    private ExportResultOverlay exportResult;
     private PresetDialog presetLibrary;
     private OrbitalSelector orbital;
     private CropEditor cropEditor;
@@ -217,6 +224,62 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(interactive)wheel.beginReveal();
         else wheel.enterFrom(effects?1:-1);
     }
+    private void revealStudioTabs(int page){
+        if(studioTabs==null){
+            studioTabs=new StudioTabBar(this,this::switchStudioTab);
+            FrameLayout.LayoutParams position=new FrameLayout.LayoutParams(
+                -1,dp(61),Gravity.BOTTOM);
+            position.leftMargin=dp(11);
+            position.rightMargin=dp(11);
+            position.bottomMargin=dp(7);
+            appBackground.addView(studioTabs,position);
+        }
+        activeStudioTab=page;
+        studioTabs.select(page);
+        studioTabs.setVisibility(View.VISIBLE);
+        studioTabs.bringToFront();
+    }
+    private void hideStudioTabs(){
+        activeStudioTab=-1;
+        if(studioTabs!=null)studioTabs.setVisibility(View.GONE);
+    }
+    private void switchStudioTab(int page){
+        if(exporting||cameraScreen!=null||settingsScreen!=null
+            ||presetLibrary!=null||exportScreen!=null)return;
+        if(page==activeStudioTab)return;
+        if(galleryScreen!=null)galleryScreen.hidePhotoActions();
+        if(projectLibrary!=null&&projectLibrary.dismissModal())return;
+        if(page!=StudioTabBar.PROJECTS)closeProjectLibrary();
+        if(page==StudioTabBar.HOME)showHome();
+        else if(page==StudioTabBar.GALLERY)showGallery();
+        else showProjects();
+    }
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        int type=event.getActionMasked();
+        boolean eligible=activeStudioTab>=0&&studioTabs!=null
+            &&studioTabs.getVisibility()==View.VISIBLE
+            &&cameraScreen==null&&settingsScreen==null&&presetLibrary==null
+            &&exportScreen==null&&!exporting&&exportResult==null
+            &&(galleryScreen==null||!galleryScreen.dismissPhotoActionsPending())
+            &&(projectLibrary==null||!projectLibrary.hasModal());
+        if(type==MotionEvent.ACTION_DOWN){
+            studioSwipeX=event.getX();studioSwipeY=event.getY();
+            studioGestureArmed=eligible;
+        }else if(type==MotionEvent.ACTION_POINTER_DOWN||type==MotionEvent.ACTION_CANCEL){
+            studioGestureArmed=false;
+        }else if(type==MotionEvent.ACTION_UP&&studioGestureArmed&&eligible){
+            studioGestureArmed=false;
+            float dx=event.getX()-studioSwipeX;
+            float dy=event.getY()-studioSwipeY;
+            if(Math.abs(dx)>Math.max(dp(68),getResources().getDisplayMetrics().widthPixels*.19f)
+                &&Math.abs(dx)>Math.abs(dy)*1.55f){
+                switchStudioTab(Math.max(0,Math.min(2,
+                    activeStudioTab+(dx<0?1:-1))));
+                return true;
+            }
+        }
+        return super.dispatchTouchEvent(event);
+    }
     private void showHome(){
         closeOrbital();
         if(homeScreen==null){
@@ -229,6 +292,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         }
         closeGallery();
         homeScreen.setVisibility(View.VISIBLE);homeScreen.bringToFront();
+        revealStudioTabs(StudioTabBar.HOME);
         homeScreen.hostResumed(homeHostResumed);
         homeScreen.covered(settingsScreen!=null||projectLibrary!=null);
         files.execute(()->{
@@ -242,7 +306,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private void closeHome(){if(homeScreen!=null)homeScreen.setVisibility(View.GONE);}
     private void showSettings(){
         if(settingsScreen!=null)return;
-        closeOrbital();
+        closeOrbital();hideStudioTabs();
         SettingsScreen screen=new SettingsScreen(this,new SettingsScreen.Listener(){
             @Override public void close(){closeSettings();}
             @Override public void panelResizeChanged(boolean enabled){
@@ -259,6 +323,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(settingsScreen!=null){
             appBackground.removeView(settingsScreen);settingsScreen=null;
             if(homeScreen!=null)homeScreen.covered(projectLibrary!=null);
+            if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)
+                revealStudioTabs(StudioTabBar.HOME);
         }
     }
     private void toggleFullscreen(){workspace.fullscreen(!workspace.isFullscreen());}
@@ -317,6 +383,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     private void showCamera(){
         if(cameraScreen!=null)return;
+        hideStudioTabs();
         closeOrbital();closeSettings();closeGallery();closeHome();
         orientationBeforeCamera=getRequestedOrientation();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
@@ -337,7 +404,23 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         screen.dispose();appBackground.removeView(screen);
         if(!isFinishing())setRequestedOrientation(orientationBeforeCamera);
     }
-    private void showGallery(){if(galleryScreen==null){galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){public void onPhoto(Uri uri){load(uri);}public void onSystemGallery(){systemPicker();}public void onGrantPermission(){grantGalleryPermission();}public void onClose(){closeGallery();if(original==null)showHome();}public void onProjects(){closeGallery();showProjects();}});appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));}closeHome();galleryScreen.setVisibility(View.VISIBLE);galleryScreen.bringToFront();galleryScreen.refresh(hasGalleryPermission());}
+    private void showGallery(){
+        if(galleryScreen==null){
+            galleryScreen=new GalleryScreen(this,new GalleryScreen.Listener(){
+                @Override public void onPhoto(Uri uri){hideStudioTabs();load(uri);}
+                @Override public void onShare(Uri uri){shareGallery(uri);}
+                @Override public void onSystemGallery(){systemPicker();}
+                @Override public void onGrantPermission(){grantGalleryPermission();}
+                @Override public void onClose(){switchStudioTab(StudioTabBar.HOME);}
+                @Override public void onProjects(){switchStudioTab(StudioTabBar.PROJECTS);}
+            });
+            appBackground.addView(galleryScreen,new FrameLayout.LayoutParams(-1,-1));
+        }
+        closeHome();
+        galleryScreen.setVisibility(View.VISIBLE);galleryScreen.bringToFront();
+        galleryScreen.refresh(hasGalleryPermission());
+        revealStudioTabs(StudioTabBar.GALLERY);
+    }
     private void closeGallery(){if(galleryScreen!=null)galleryScreen.setVisibility(View.GONE);}
     private void systemPicker(){Intent intent=Build.VERSION.SDK_INT>=33?new Intent(MediaStore.ACTION_PICK_IMAGES):new Intent(Intent.ACTION_PICK,MediaStore.Images.Media.EXTERNAL_CONTENT_URI);intent.setType("image/*");intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);try{startActivityForResult(intent,1);}catch(ActivityNotFoundException e){toast("Galeria do sistema indisponível");}}
     void load(Uri uri){saveProject(false);int token=loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);loading=true;status.setText("Abrindo imagem…");updateActions();
@@ -347,8 +430,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         }catch(Exception|OutOfMemoryError e){try{store.delete(id);}catch(Exception ignored){}loadFailed(token,"Não foi possível abrir. Confira o formato e o espaço disponível.");}});
     }
     private void loadFailed(int token,String msg){runOnUiThread(()->{if(!destroyed&&token==loads.get()){loading=false;updateActions();status.setText(msg);toast(msg);}});}
-    private void setSource(ImageSource s){source=s;original=s.preview;loading=false;preview.setImage(original,s.width,s.height);empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();getPreferences(0).edit().putString("lastProject",projectId).apply();}
-    void setImage(Bitmap bitmap){source=null;original=bitmap;preview.setImage(bitmap);loading=false;empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();}
+    private void setSource(ImageSource s){hideStudioTabs();source=s;original=s.preview;loading=false;preview.setImage(original,s.width,s.height);empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();getPreferences(0).edit().putString("lastProject",projectId).apply();}
+    void setImage(Bitmap bitmap){hideStudioTabs();source=null;original=bitmap;preview.setImage(bitmap);loading=false;empty.setVisibility(View.GONE);closeGallery();closeHome();panel.rebuild();publish();sizeStatus();updateActions();}
     private void loadProject(String id,boolean retain){int token=loads.incrementAndGet();loading=true;updateActions();status.setText("Abrindo projeto…");files.execute(()->{try{ProjectStore.Project p=store.read(id);ImageSource decoded=ImageSource.open(p.source,Math.min(maxTexture,1600));runOnUiThread(()->{if(destroyed||token!=loads.get()){decoded.preview.recycle();return;}projectId=p.id;projectName=p.name;if(!retain){document=p.document;try{history.restore(p.history);}catch(JSONException ignored){history.clear();}}setSource(decoded);});}catch(Exception|OutOfMemoryError e){loadFailed(token,"Projeto indisponível ou arquivo inválido.");}});}
     private void saveProject(boolean explicit){if(projectId==null||original==null){if(explicit)toast("Abra uma foto para criar um projeto");return;}final String id=projectId,name=projectName;final EditorDocument snapshot=document.copy();final JSONObject h;try{h=history.toJson();}catch(JSONException e){return;}
         files.execute(()->{try{
@@ -359,9 +442,15 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                 "Projeto salvo também na pasta compartilhada":"Projeto salvo apenas no app. Proteja em Meus projetos."));}catch(Exception e){runOnUiThread(()->{if(!destroyed)toast("Não foi possível salvar o projeto. Verifique o espaço.");});}});
     }
     private void showProjects(){
-        if(projectLibrary!=null)return;
+        if(projectLibrary!=null){revealStudioTabs(StudioTabBar.PROJECTS);return;}
+        projectsFromEditor=activeStudioTab<0
+            &&(homeScreen==null||homeScreen.getVisibility()!=View.VISIBLE);
+        closeGallery();
         final ProjectLibraryScreen screen=new ProjectLibraryScreen(this,new ProjectLibraryScreen.Listener(){
-            @Override public void close(){closeProjectLibrary();}
+            @Override public void close(){
+                if(projectsFromEditor){closeProjectLibrary();hideStudioTabs();}
+                else switchStudioTab(StudioTabBar.HOME);
+            }
             @Override public void create(){closeProjectLibrary();showGallery();}
             @Override public void chooseVault(){chooseProjectVault();}
             @Override public void open(ProjectStore.Project project){
@@ -400,6 +489,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(homeScreen!=null)homeScreen.covered(true);
         appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         screen.bringToFront();
+        revealStudioTabs(StudioTabBar.PROJECTS);
         refreshProjectLibrary();
     }
     private void askProjectVaultOnFirstImport(){
@@ -504,8 +594,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         });
     }
     private void showExport(){
-        if(original==null||loading||exporting)return;
-        new ResizeDialog(this,original,document,sourceWidth(),sourceHeight(),maxTexture,
+        if(original==null||loading||exporting||exportScreen!=null)return;
+        hideStudioTabs();
+        exportScreen=new ResizeDialog(this,original,document,sourceWidth(),sourceHeight(),maxTexture,
             (w,h,jpeg,quality,exportNow)->{
                 int[] nativeSize=document.nativeSize(sourceWidth(),sourceHeight());
                 mutate(()->{
@@ -517,8 +608,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                     document.jpeg=jpeg;document.jpegQuality=quality;
                 });
                 sizeStatus();
+                exportScreen=null;
                 if(exportNow)chooseOutput();
-            }).show();
+            });
+        exportScreen.show();
     }
     private void chooseOutput(){if(Build.VERSION.SDK_INT<29&&checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},SAVE_PERMISSION);return;}export(null);}
     private void showExportProgress(){
@@ -555,11 +648,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                     exporting=false;
                     updateActions();
                     status.setText("Salvo em Pictures/Noise!");
-                    if(uri!=null&&supplied==null)
-                        new AlertDialog.Builder(this).setTitle("Imagem salva")
-                            .setMessage("Disponível na galeria, em Pictures/Noise!.")
-                            .setNegativeButton("Concluir",null)
-                            .setPositiveButton("Compartilhar",(a,b)->share(uri,d.jpeg)).show();
+                    if(uri!=null&&supplied==null)showExportResult(uri,d.jpeg);
                 });
             }catch(Exception|OutOfMemoryError e){
                 android.util.Log.e("NoiseExport","Save",e);
@@ -575,6 +664,23 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                 if(full!=null&&full!=previewSource)full.recycle();
             }
         });
+    }
+    private void showExportResult(Uri uri,boolean jpeg){
+        hideExportResult();
+        exportResult=new ExportResultOverlay(this,this::hideExportResult,()->{
+            hideExportResult();share(uri,jpeg);
+        });
+        appBackground.addView(exportResult,new FrameLayout.LayoutParams(-1,-1));
+        exportResult.bringToFront();
+    }
+    private void hideExportResult(){
+        if(exportResult!=null){
+            appBackground.removeView(exportResult);exportResult=null;
+        }
+    }
+    private void shareGallery(Uri uri){
+        String type=getContentResolver().getType(uri);
+        share(uri,type!=null&&type.equalsIgnoreCase("image/jpeg"));
     }
     private void share(Uri uri,boolean jpeg){Intent i=new Intent(Intent.ACTION_SEND).setType(jpeg?"image/jpeg":"image/png").putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);i.setClipData(ClipData.newRawUri("Noise!",uri));startActivity(Intent.createChooser(i,"Compartilhar imagem"));}
     private void toast(String s){if(!destroyed)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
@@ -594,15 +700,24 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override public void onBackPressed(){
         // The save transaction is not cancellable; keep progress visible.
         if(exporting)return;
+        if(exportResult!=null){hideExportResult();return;}
+        if(exportScreen!=null){exportScreen.dismiss();exportScreen=null;return;}
         if(cameraScreen!=null){closeCamera();showHome();return;}
         if(settingsScreen!=null){closeSettings();return;}
         if(presetLibrary!=null){presetLibrary.onBack();return;}
-        if(projectLibrary!=null){if(!projectLibrary.dismissModal())closeProjectLibrary();return;}
+        if(projectLibrary!=null){
+            if(!projectLibrary.dismissModal()){
+                if(projectsFromEditor){closeProjectLibrary();hideStudioTabs();}
+                else switchStudioTab(StudioTabBar.HOME);
+            }
+            return;
+        }
         if(cropEditor!=null){closeCrop();return;}
         if(orbital!=null&&orbital.getParent()!=null){closeOrbital();return;}
         if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE){super.onBackPressed();return;}
         if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE){
-            closeGallery();if(original==null)showHome();return;
+            if(galleryScreen.dismissPhotoActions())return;
+            switchStudioTab(StudioTabBar.HOME);return;
         }
         if(workspace.isFullscreen()){workspace.fullscreen(false);return;}
         showHome();
@@ -614,7 +729,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     }
     @Override protected void onResume(){super.onResume();homeHostResumed=true;if(homeScreen!=null)homeScreen.hostResumed(true);if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
     @Override protected void onPause(){homeHostResumed=false;if(homeScreen!=null)homeScreen.hostResumed(false);comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
-    @Override protected void onDestroy(){destroyed=true;hideExportProgress();closeSettings();closeCamera();
+    @Override protected void onDestroy(){destroyed=true;
+        if(exportScreen!=null){exportScreen.dismiss();exportScreen=null;}
+        hideExportResult();hideExportProgress();closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
         closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}
 }

@@ -28,7 +28,7 @@ final class HomeScreen extends FrameLayout {
         addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(20),dp(11),dp(20),dp(8));
+        page.setPadding(dp(20),dp(11),dp(20),dp(72));
         addView(page,new FrameLayout.LayoutParams(-1,-1));
 
         // Clear black-on-white editorial typography complements the ink
@@ -100,6 +100,15 @@ final class HomeScreen extends FrameLayout {
 
         orbArea.setClickable(true);orbArea.setFocusable(true);
         orbArea.setContentDescription("Nova criação: importar imagem para edição");
+        orbArea.setOnTouchListener((v,event)->{
+            // Only the circle is actionable; taps on its rectangular host
+            // must not unexpectedly open the image editor.
+            float radius=Math.min(Math.min(orbArea.getWidth()*.40f,
+                orbArea.getHeight()*.40f),dp(188));
+            float dx=event.getX()-orbArea.getWidth()*.5f;
+            float dy=event.getY()-orbArea.getHeight()*.5f;
+            return dx*dx+dy*dy>radius*radius;
+        });
         orbArea.setOnClickListener(v->{
             orbArea.animate().cancel();
             orbArea.animate().scaleX(.975f).scaleY(.975f).setDuration(95).withEndAction(()->{
@@ -183,6 +192,8 @@ final class HomeScreen extends FrameLayout {
         navButton(nav,"Início",IconArt.PHOTO,()->{},true);
         navButton(nav,"Biblioteca",IconArt.GALLERY,onImport,false);
         navButton(nav,"Projetos",IconArt.FOLDER,onProjects,false);
+        // MainActivity owns one persistent bar across all studio pages.
+        nav.setVisibility(View.GONE);
     }
     /** Home surfaces use opaque graphite, with no glass or noise overlay. */
     private GradientDrawable homeSurface(int color,float radius){

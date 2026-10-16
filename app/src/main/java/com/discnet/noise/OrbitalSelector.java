@@ -187,6 +187,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             params.width=dock;params.height=LayoutParams.MATCH_PARENT;
             params.gravity=gravity;content.setLayoutParams(params);
         }
+        // Screen-centered CTA independently of the left/right orbital dock.
+        continueButton.setTranslationX((effectsMode?1f:-1f)*(screenWidth-dock)*.5f);
     }
     @Override protected void onSizeChanged(int w,int h,int oldW,int oldH){
         super.onSizeChanged(w,h,oldW,oldH);
@@ -637,10 +639,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             int from=(int)Math.floor(offset);
             if(from>=0&&from<names.length-1){
                 float p=offset-from;
-                liquidBridge.draw(canvas,
-                    arcX((from-offset)*STEP),arcY((from-offset)*STEP),
-                    arcX((from+1-offset)*STEP),arcY((from+1-offset)*STEP),
-                    p,dp(27));
+                // No liquid bridge: only continuous crossfade and the original
+                // damped wheel position determine the visible selection.
             }
         }
         private void render(){

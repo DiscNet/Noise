@@ -50,7 +50,7 @@ final class ProjectLibraryScreen extends FrameLayout {
         setBackground(surface(OrbitalMaterial.BLACK,OrbitalMaterial.DARK_PURPLE,0f));
         setClickable(true);setFocusableInTouchMode(true);
         LinearLayout page=new LinearLayout(context);page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(16),dp(10),dp(16),dp(8));
+        page.setPadding(dp(16),dp(10),dp(16),dp(80));
         addView(page,new LayoutParams(-1,-1));
 
         LinearLayout bar=new LinearLayout(context);bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -77,7 +77,8 @@ final class ProjectLibraryScreen extends FrameLayout {
         vaultButton.setOnClickListener(v->listener.chooseVault());
         vaultStatus(new ProjectVault(context).attached());
 
-        TextView subtitle=text("EDITE DE ONDE PAROU",10,false);
+        TextView subtitle=text("SEUS PROJETOS  /  CONTINUE CRIANDO",11,true);
+        subtitle.setTextColor(OrbitalMaterial.WHITE);
         subtitle.setLetterSpacing(.14f);
         LinearLayout.LayoutParams subtitleParams=new LinearLayout.LayoutParams(-1,dp(37));
         page.addView(subtitle,subtitleParams);
@@ -166,7 +167,9 @@ final class ProjectLibraryScreen extends FrameLayout {
             final ProjectStore.Project p=projects.get(i);
             LinearLayout card=new LinearLayout(getContext());card.setOrientation(LinearLayout.VERTICAL);
             card.setPadding(dp(8),dp(8),dp(8),dp(8));
-            card.setBackground(surface(OrbitalMaterial.DEEP_PURPLE,OrbitalMaterial.DARK_PURPLE,6f));
+            card.setBackground(surface((i%2==0)?OrbitalMaterial.DEEP_PURPLE:0xff4c246f,
+                OrbitalMaterial.DARK_PURPLE,5f));
+            card.setElevation(dp(2));
             LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);
             cp.setMargins(dp(3),dp(3),dp(3),dp(7));row.addView(card,cp);
             FrameLayout cover=new FrameLayout(getContext());
@@ -178,13 +181,13 @@ final class ProjectLibraryScreen extends FrameLayout {
             placeholder.setTextColor(OrbitalMaterial.WHITE);cover.addView(placeholder,new LayoutParams(-1,-1));
             LinearLayout.LayoutParams imageParams=new LinearLayout.LayoutParams(-1,dp(133));
             card.addView(cover,imageParams);
-            TextView name=text(p.name,13,true);name.setSingleLine(true);
+            TextView name=text(p.name,14,true);name.setSingleLine(true);
             name.setEllipsize(TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,dp(29));np.topMargin=dp(6);
             card.addView(name,np);
             File metadata=new File(p.source.getParentFile(),"project.json");
             String updated=DateFormat.getDateInstance(DateFormat.MEDIUM).format(new Date(metadata.lastModified()));
-            TextView info=text(updated,10.5f,false);
+            TextView info=text("EDITADO  ·  "+updated,10.5f,false);
             card.addView(info,new LinearLayout.LayoutParams(-1,dp(22)));
             LinearLayout actions=new LinearLayout(getContext());actions.setGravity(Gravity.CENTER_VERTICAL);
             card.addView(actions,new LinearLayout.LayoutParams(-1,dp(39)));
@@ -310,6 +313,7 @@ final class ProjectLibraryScreen extends FrameLayout {
     }
     private void hideModal(){if(modal!=null){removeView(modal);modal=null;}}
     boolean dismissModal(){if(modal==null)return false;hideModal();return true;}
+    boolean hasModal(){return modal!=null;}
     void dispose(){
         if(disposed)return;disposed=true;generation++;previews.shutdownNow();
         hideModal();for(Bitmap b:owned)if(!b.isRecycled())b.recycle();owned.clear();
