@@ -15,6 +15,7 @@ final class HomeScreen extends FrameLayout {
     private final TextView recent;
     private final TextView resume;
     private final LinearLayout resumeGroup;
+    private final StockAtmosphere backdrop;
     private final Runnable onImport,onCamera,onProjects,onSettings,onResume;
     HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
         super(c);
@@ -22,7 +23,8 @@ final class HomeScreen extends FrameLayout {
         setBackgroundColor(0xff0c0b10);
         // Decorative animated stock-art: reusable radial shaders simulate
         // defocused light smears and floating color clouds, no bitmaps/video.
-        addView(new StockAtmosphere(c),new FrameLayout.LayoutParams(-1,-1));
+        backdrop=new StockAtmosphere(c);
+        addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(20),dp(11),dp(20),dp(8));
@@ -105,12 +107,7 @@ final class HomeScreen extends FrameLayout {
         LinearLayout lower=new LinearLayout(c);
         lower.setOrientation(LinearLayout.VERTICAL);
         lower.setPadding(dp(15),dp(12),dp(15),dp(13));
-        GradientDrawable lowerSurface=new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            new int[]{0xff27202d,0xff1b1822,0xff15141c});
-        lowerSurface.setCornerRadius(dp(12));
-        lowerSurface.setStroke(dp(1),0x66554761);
-        lower.setBackground(lowerSurface);
+        lower.setBackground(new TexturedGlass(c,backdrop,lower,12,0xff211b29,.43f));
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
 
         LinearLayout sectionHeader=new LinearLayout(c);
@@ -159,7 +156,7 @@ final class HomeScreen extends FrameLayout {
         resume.setTypeface(NoiseTypography.medium(c));
         resume.setGravity(Gravity.CENTER_VERTICAL);
         resume.setPadding(dp(13),0,dp(13),0);
-        resume.setBackground(homeSurface(0xff211f29,12));
+        resume.setBackground(new TexturedGlass(c,backdrop,resume,8,0xff24202c,.39f));
         resume.setMinHeight(dp(43));
         resume.setSingleLine(true);
         resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -185,19 +182,17 @@ final class HomeScreen extends FrameLayout {
     }
     private void homeHeaderButton(ImageView icon){
         icon.setBackground(new RippleDrawable(ColorStateList.valueOf(0x24ffffff),
-            homeSurface(0xff211d28,12),null));
+            new TexturedGlass(icon.getContext(),backdrop,icon,8,0xff201d28,.41f),null));
     }
     private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
                                    boolean primary,Runnable action){
         FrameLayout tile=new FrameLayout(c);
-        GradientDrawable body=new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            primary?new int[]{0xffaa82c7,0xff795891,0xff4d395f}
-                   :new int[]{0xff302838,0xff27202f,0xff211d27});
-        body.setCornerRadius(dp(12));
-        body.setStroke(dp(1),primary?0xffb597cf:0xff514557);
+        // A shared material grammar: sampled blurred artwork, micro-refraction,
+        // subdued warm/cool reflections. No unrelated translucent rectangles.
+        TexturedGlass material=new TexturedGlass(c,backdrop,tile,10,
+            primary?0xff695577:0xff24202b,primary?.36f:.50f);
         tile.setBackground(new RippleDrawable(
-            ColorStateList.valueOf(primary?0x3fffffff:0x26ffffff),body,null));
+            ColorStateList.valueOf(primary?0x29ffffff:0x1bffffff),material,null));
         tile.setClickable(true);
         tile.setFocusable(true);
         tile.setContentDescription(title+": "+subtitle);
@@ -254,69 +249,16 @@ final class HomeScreen extends FrameLayout {
         resume.setEnabled(ready);
         resume.setContentDescription(ready?"Retomar projeto "+name:"Nenhum projeto recente");
     }
-    /** Time-driven atmospheric composition. Animators resume when Home reappears. */
-    private static final class StockAtmosphere extends View {
-        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Matrix matrix=new Matrix();
-        private final RadialGradient[] lights={
-            new RadialGradient(0,0,1,new int[]{0xa37c4ead,0x67563885,0x16302049,0x00302049},
-                new float[]{0,.32f,.71f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,new int[]{0xa37c52d9,0x5e7841a5,0x18392b62,0x00392b62},
-                new float[]{0,.30f,.71f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,new int[]{0x818c6da1,0x487b5f90,0x133d314c,0x003d314c},
-                new float[]{0,.28f,.72f,1},Shader.TileMode.CLAMP),
-            new RadialGradient(0,0,1,new int[]{0x938c56bd,0x506c4591,0x152c233d,0x002c233d},
-                new float[]{0,.31f,.70f,1},Shader.TileMode.CLAMP)
-        };
-        private final float[] dx={.10f,.83f,.21f,.84f};
-        private final float[] dy={.22f,.23f,.72f,.72f};
-        private final float[] sx={.49f,.46f,.40f,.50f};
-        private final float[] sy={.24f,.31f,.28f,.29f};
-        private ValueAnimator animator;
+    /**
+     * Historical name is kept for compatibility with older home-state tests.
+     * The actual multi-layer ink renderer lives in the reusable OrganicBackdrop.
+     */
+    private static final class StockAtmosphere extends OrganicBackdrop {
         private float phase;
-        StockAtmosphere(Context c){super(c);setClickable(false);setFocusable(false);}
-        @Override public void onVisibilityAggregated(boolean visible){
-            super.onVisibilityAggregated(visible);
-            if(visible)resumeMotion();else pauseMotion();
-        }
-        @Override protected void onAttachedToWindow(){
-            super.onAttachedToWindow();if(isShown())resumeMotion();
-        }
-        @Override protected void onDetachedFromWindow(){
-            pauseMotion();super.onDetachedFromWindow();
-        }
-        private void resumeMotion(){
-            if(!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
-            if(animator==null){
-                animator=ValueAnimator.ofFloat(0f,1f);
-                animator.setDuration(18000);
-                animator.setRepeatCount(ValueAnimator.INFINITE);
-                animator.setInterpolator(new android.view.animation.LinearInterpolator());
-                animator.addUpdateListener(a->{
-                    phase=(Float)a.getAnimatedValue();postInvalidateOnAnimation();
-                });
-            }
-            if(!animator.isStarted())animator.start();
-            else if(animator.isPaused())animator.resume();
-        }
-        private void pauseMotion(){if(animator!=null&&animator.isStarted())animator.pause();}
-        float phase(){return phase;}
+        StockAtmosphere(Context c){super(c);}
         @Override protected void onDraw(Canvas canvas){
+            phase=phaseValue();
             super.onDraw(canvas);
-            float w=getWidth(),h=getHeight();
-            if(w<=0||h<=0)return;
-            for(int i=0;i<lights.length;i++){
-                float t=phase*6.2831853f+i*1.6f;
-                float cx=w*(dx[i]+.105f*(float)Math.sin(t));
-                float cy=h*(dy[i]+.077f*(float)Math.cos(t*2f+i*.4f));
-                float rx=w*sx[i],ry=h*sy[i];
-                matrix.reset();matrix.setScale(rx,ry);matrix.postTranslate(cx,cy);
-                lights[i].setLocalMatrix(matrix);paint.setShader(lights[i]);
-                canvas.save();canvas.rotate((float)Math.sin(t+i*.31f)*22f,cx,cy);
-                canvas.drawOval(cx-rx,cy-ry,cx+rx,cy+ry,paint);
-                canvas.restore();
-            }
-            paint.setShader(null);
         }
     }
     /** A softly lit circular surface with one continuous rim and restrained motion. */
