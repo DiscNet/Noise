@@ -14,6 +14,7 @@ final class EditorDocument {
     int outputLongEdge=0,jpegQuality=95;
     int outputWidth=0,outputHeight=0; // V1.28 optional; legacy outputLongEdge retained
     boolean jpeg=false;
+    String exportFormat="png";
     // Six stops per editable curve: H→H, H→S, S→S. Zero is the identity curve.
     final float[] colorCurves=new float[18];
     // Three separate chromatic wheels: shadow, midtone, highlight (XY vectors).
@@ -50,7 +51,8 @@ final class EditorDocument {
         for(float v1:colorCurves)curves.put((double)v1);
         for(float v1:colorWheels)wheels.put((double)v1);
         o.put("colorCurves",curves);o.put("colorWheels",wheels);
-        o.put("jpeg",jpeg);o.put("jpegQuality",jpegQuality);return o;
+        o.put("jpeg",jpeg);o.put("exportFormat",exportFormat);
+        o.put("jpegQuality",jpegQuality);return o;
     }
     static EditorDocument fromJson(JSONObject o)throws JSONException{
         if(o.optInt("schema",1)!=1)throw new JSONException("Versão de projeto não suportada");
@@ -82,7 +84,12 @@ final class EditorDocument {
             double n=wheels.optDouble(i,0);d.colorWheels[i]=Double.isFinite(n)?
                 (float)Math.max(-1,Math.min(1,n)):0f;
         }
-        d.jpeg=o.optBoolean("jpeg");d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
+        d.jpeg=o.optBoolean("jpeg");
+        String requested=o.optString("exportFormat",d.jpeg?"jpeg":"png");
+        d.exportFormat=(requested.equals("webp")||requested.equals("jpeg")||requested.equals("png"))
+            ?requested:(d.jpeg?"jpeg":"png");
+        d.jpeg=d.exportFormat.equals("jpeg");
+        d.jpegQuality=Math.max(1,Math.min(100,o.optInt("jpegQuality",95)));return d;
     }
     private static float bounded(double n){return Double.isFinite(n)?(float)Math.max(0,Math.min(1,n)):0;}
     boolean same(EditorDocument d){try{return toJson().toString().equals(d.toJson().toString());}catch(JSONException e){return false;}}
