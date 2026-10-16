@@ -41,6 +41,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private CameraScreen cameraScreen;
     private int orientationBeforeCamera=ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private HomeScreen homeScreen;
+    private boolean homeHostResumed;
     private SettingsScreen settingsScreen;
     private ProjectLibraryScreen projectLibrary;
     private PresetDialog presetLibrary;
@@ -227,6 +228,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         }
         closeGallery();
         homeScreen.setVisibility(View.VISIBLE);homeScreen.bringToFront();
+        homeScreen.hostResumed(homeHostResumed);
+        homeScreen.covered(settingsScreen!=null||projectLibrary!=null);
         files.execute(()->{
             ArrayList<ProjectStore.Project> projects=store.list();
             String id=getPreferences(0).getString("lastProject",null),name=null;
@@ -247,12 +250,14 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             }
         });
         settingsScreen=screen;
+        if(homeScreen!=null)homeScreen.covered(true);
         appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         screen.bringToFront();
     }
     private void closeSettings(){
         if(settingsScreen!=null){
             appBackground.removeView(settingsScreen);settingsScreen=null;
+            if(homeScreen!=null)homeScreen.covered(projectLibrary!=null);
         }
     }
     private void toggleFullscreen(){workspace.fullscreen(!workspace.isFullscreen());}
@@ -391,6 +396,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             }
         });
         projectLibrary=screen;
+        if(homeScreen!=null)homeScreen.covered(true);
         appBackground.addView(screen,new FrameLayout.LayoutParams(-1,-1));
         screen.bringToFront();
         refreshProjectLibrary();
@@ -456,6 +462,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(projectLibrary==null)return;
         ProjectLibraryScreen screen=projectLibrary;projectLibrary=null;
         appBackground.removeView(screen);screen.dispose();
+        if(homeScreen!=null)homeScreen.covered(settingsScreen!=null);
     }
     private interface Named{void set(String name);}
     private void askName(String title,String initial,Named callback){EditText input=new EditText(this);input.setSingleLine(true);input.setText(initial);input.setSelectAllOnFocus(true);input.setPadding(dp(24),dp(12),dp(24),dp(12));AlertDialog d=new AlertDialog.Builder(this).setTitle(title).setView(input).setNegativeButton("Cancelar",null).setPositiveButton("Salvar",null).create();d.setOnShowListener(v->d.getButton(-1).setOnClickListener(w->{String name=input.getText().toString().trim();if(name.isEmpty()||name.length()>60){input.setError("Use de 1 a 60 caracteres");return;}callback.set(name);d.dismiss();}));d.show();}
@@ -551,8 +558,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         // Portrait camera stays in place. Sensor orientation is read separately
         // by CameraScreen and applied only to the captured JPEG.
     }
-    @Override protected void onResume(){super.onResume();if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
-    @Override protected void onPause(){comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
+    @Override protected void onResume(){super.onResume();homeHostResumed=true;if(homeScreen!=null)homeScreen.hostResumed(true);if(preview!=null)preview.onResume();if(galleryScreen!=null&&galleryScreen.getVisibility()==View.VISIBLE)galleryScreen.refresh(hasGalleryPermission());if(cameraScreen!=null)cameraScreen.start();}
+    @Override protected void onPause(){homeHostResumed=false;if(homeScreen!=null)homeScreen.hostResumed(false);comparing=false;publish();saveProject(false);preview.onPause();if(cameraScreen!=null)cameraScreen.stop();super.onPause();}
     @Override protected void onDestroy(){destroyed=true;closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
         closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();super.onDestroy();}

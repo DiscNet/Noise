@@ -15,15 +15,16 @@ final class HomeScreen extends FrameLayout {
     private final TextView recent;
     private final TextView resume;
     private final LinearLayout resumeGroup;
-    private final StockAtmosphere backdrop;
+    private final OrganicBackdrop backdrop;
+    private final Sphere sphere;
+    private boolean hostActive, covered;
     private final Runnable onImport,onCamera,onProjects,onSettings,onResume;
     HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
         super(c);
         onImport=importAction;onCamera=cameraAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;
         setBackgroundColor(0xff0c0b10);
-        // A printed, stippled monochrome ink composition replaces the
-        // previous textured-glass and cloudy translucent artwork.
-        backdrop=new StockAtmosphere(c);
+        setClickable(true); // Empty space can carry a drag; child buttons keep their events.
+        backdrop=new OrganicBackdrop(c);
         addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -64,7 +65,7 @@ final class HomeScreen extends FrameLayout {
         orbParams.topMargin=dp(4);
         orbParams.bottomMargin=dp(4);
         page.addView(orbArea,orbParams);
-        Sphere sphere=new Sphere(c);
+        sphere=new Sphere(c);
         orbArea.addView(sphere,new FrameLayout.LayoutParams(-1,-1));
 
         LinearLayout sphLabels=new LinearLayout(c);
@@ -258,17 +259,20 @@ final class HomeScreen extends FrameLayout {
         resume.setEnabled(ready);
         resume.setContentDescription(ready?"Retomar projeto "+name:"Nenhum projeto recente");
     }
-    /**
-     * Historical name is kept for compatibility with older home-state tests.
-     * The actual multi-layer ink renderer lives in the reusable OrganicBackdrop.
-     */
-    private static final class StockAtmosphere extends OrganicBackdrop {
-        private float phase;
-        StockAtmosphere(Context c){super(c);}
-        @Override protected void onDraw(Canvas canvas){
-            phase=phaseValue();
-            super.onDraw(canvas);
-        }
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        backdrop.observe(event);
+        return super.dispatchTouchEvent(event);
+    }
+    void hostResumed(boolean active){
+        hostActive=active;backdrop.hostResumed(active);refreshSphereMotion();
+    }
+    void covered(boolean value){
+        covered=value;backdrop.covered(value);refreshSphereMotion();
+    }
+    private void refreshSphereMotion(){
+        boolean reduced=getContext().getSharedPreferences(SettingsScreen.PREFS,Context.MODE_PRIVATE)
+            .getBoolean(OrganicBackdrop.REDUCE_MOTION,false);
+        sphere.motionAllowed(hostActive&&!covered&&!reduced);
     }
     /** A softly lit circular surface with one continuous rim and restrained motion. */
     private static final class Sphere extends View {
@@ -279,6 +283,8 @@ final class HomeScreen extends FrameLayout {
         private SweepGradient rim;
         private ValueAnimator animator;
         private float phase,radius,rimWidth;
+        private boolean motionAllowed;
+        void motionAllowed(boolean allowed){motionAllowed=allowed;if(allowed)resumeMotion();else pauseMotion();}
         Sphere(Context c){super(c);setLayerType(View.LAYER_TYPE_HARDWARE,null);}
         @Override public void onVisibilityAggregated(boolean visible){
             super.onVisibilityAggregated(visible);
@@ -291,7 +297,7 @@ final class HomeScreen extends FrameLayout {
             pauseMotion();super.onDetachedFromWindow();
         }
         private void resumeMotion(){
-            if(!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
+            if(!motionAllowed||!ValueAnimator.areAnimatorsEnabled()||!isShown())return;
             if(animator==null){
                 animator=ValueAnimator.ofFloat(0f,1f);
                 animator.setDuration(14000);

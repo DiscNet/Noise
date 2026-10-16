@@ -16,3 +16,4 @@ key.properties
 .env.*
 release/
 *.apk
+validation/

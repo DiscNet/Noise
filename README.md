@@ -55,7 +55,7 @@ O **Noise!** combina os ajustes essenciais de fotografia com ferramentas criativ
 
 ### ◌ Estúdio e interface orbital
 
-Home com fundo monocromático inspirado em tinta sobre papel, **cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. No editor, as rodas laterais têm **crossfade contínuo de ícones** e ligação líquida por metaballs.
+Home com **tinta procedural na GPU**: massas que se deformam, fundem e se separam, com reflexos violeta e resposta suave ao toque. Perfis Alto, Equilibrado e Econômico, ajuste automático e redução de movimento nas configurações. **Cartões foscos sem vidro**, círculo preservado e cantos de 6 a 7 dp. No editor, as rodas laterais têm **crossfade contínuo de ícones** e ligação líquida por metaballs.
 
 </td>
 <td valign="top">
