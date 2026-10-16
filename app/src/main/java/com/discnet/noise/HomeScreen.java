@@ -3,6 +3,8 @@ package com.discnet.noise;
 import android.content.Context;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.animation.ValueAnimator;
 import android.os.SystemClock;
 import android.view.*;
@@ -12,6 +14,7 @@ import android.widget.*;
 final class HomeScreen extends FrameLayout {
     private final TextView recent;
     private final TextView resume;
+    private final LinearLayout resumeGroup;
     private final Runnable onImport,onCamera,onProjects,onSettings,onResume;
     HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
         super(c);
@@ -22,101 +25,200 @@ final class HomeScreen extends FrameLayout {
         addView(new StockAtmosphere(c),new FrameLayout.LayoutParams(-1,-1));
         LinearLayout page=new LinearLayout(c);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(24),dp(16),dp(24),dp(14));
+        page.setPadding(dp(20),dp(11),dp(20),dp(8));
         addView(page,new FrameLayout.LayoutParams(-1,-1));
 
+        // The identity is built from one visual vocabulary:
+        // deep graphite, lilac photographic light, thin orbital traces and warm-white type.
         LinearLayout header=new LinearLayout(c);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        page.addView(header,new LinearLayout.LayoutParams(-1,dp(76)));
-        LinearLayout titles=new LinearLayout(c);titles.setOrientation(LinearLayout.VERTICAL);
-        header.addView(titles,new LinearLayout.LayoutParams(0,-2,1));
-        TextView logo=text("Noise!",32,EditorTheme.INK);
-        logo.setTypeface(NoiseTypography.bold(c));logo.setLetterSpacing(-.045f);
-        titles.addView(logo);
-        TextView subtitle=text("Create without limits.",13,EditorTheme.MUTED);
-        titles.addView(subtitle);
-        ImageView settings=IconArt.button(c,IconArt.SETTINGS,"Configurações");
-        header.addView(settings,new LinearLayout.LayoutParams(dp(48),dp(48)));
-        settings.setOnClickListener(v->onSettings.run());
+        page.addView(header,new LinearLayout.LayoutParams(-1,dp(82)));
+        LinearLayout brand=new LinearLayout(c);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(brand,new LinearLayout.LayoutParams(0,-1,1));
+        TextView eyebrow=text("IMAGEM  /  MOVIMENTO  /  CRIAÇÃO",9,0xffbba7cc);
+        eyebrow.setLetterSpacing(.12f);
+        brand.addView(eyebrow);
+        TextView logo=text("Noise!",34,EditorTheme.INK);
+        logo.setTypeface(NoiseTypography.bold(c));logo.setLetterSpacing(-.055f);
+        brand.addView(logo);
+        TextView subtitle=text("Seu estúdio de possibilidades.",12,0xffb1a8b8);
+        brand.addView(subtitle);
         ImageView folders=IconArt.button(c,IconArt.FOLDER,"Meus projetos");
-        header.addView(folders,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        LinearLayout.LayoutParams folderParams=new LinearLayout.LayoutParams(dp(44),dp(44));
+        folderParams.rightMargin=dp(4);
+        header.addView(folders,folderParams);
         folders.setOnClickListener(v->onProjects.run());
+        ImageView settings=IconArt.button(c,IconArt.SETTINGS,"Configurações");
+        header.addView(settings,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        settings.setOnClickListener(v->onSettings.run());
 
         FrameLayout orbArea=new FrameLayout(c);
-        page.addView(orbArea,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout.LayoutParams orbParams=new LinearLayout.LayoutParams(-1,0,1);
+        orbParams.topMargin=dp(4);
+        orbParams.bottomMargin=dp(4);
+        page.addView(orbArea,orbParams);
         Sphere sphere=new Sphere(c);
         orbArea.addView(sphere,new FrameLayout.LayoutParams(-1,-1));
-        LinearLayout sphLabels=new LinearLayout(c);sphLabels.setOrientation(LinearLayout.VERTICAL);sphLabels.setGravity(Gravity.CENTER);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER);
-        orbArea.addView(sphLabels,lp);
-        TextView small=text("NOISE! STUDIO",11,EditorTheme.MUTED);small.setLetterSpacing(.17f);small.setGravity(Gravity.CENTER);
+
+        // Attached to the hero rather than scattered across the page.
+        TextView orbitLabel=eyebrow("NOISE  /  LAB 01",10);
+        FrameLayout.LayoutParams orbitTag=new FrameLayout.LayoutParams(-2,dp(24),
+            Gravity.TOP|Gravity.RIGHT);
+        orbitTag.setMargins(0,dp(12),dp(2),0);
+        orbArea.addView(orbitLabel,orbitTag);
+
+        LinearLayout sphLabels=new LinearLayout(c);
+        sphLabels.setOrientation(LinearLayout.VERTICAL);
+        sphLabels.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams centerLabels=new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER);
+        orbArea.addView(sphLabels,centerLabels);
+        TextView small=text("O PRÓXIMO FRAME",10,0xffe4c9f2);
+        small.setLetterSpacing(.13f);small.setGravity(Gravity.CENTER);
         sphLabels.addView(small);
-        TextView start=text("Nova\ncriação",32,EditorTheme.INK);start.setGravity(Gravity.CENTER);
-        start.setTypeface(NoiseTypography.bold(c));start.setLetterSpacing(-.04f);
+        TextView start=text("Nova\ncriação",31,EditorTheme.INK);
+        start.setGravity(Gravity.CENTER);
+        start.setTypeface(NoiseTypography.bold(c));start.setLetterSpacing(-.05f);
         sphLabels.addView(start);
-        TextView hint=text("Toque para importar",12,EditorTheme.MUTED);hint.setGravity(Gravity.CENTER);
-        hint.setPadding(0,dp(8),0,0);sphLabels.addView(hint);
+        TextView hint=text("Toque para começar  ↗",12,0xffe0c6ed);
+        hint.setGravity(Gravity.CENTER);hint.setPadding(0,dp(9),0,0);
+        sphLabels.addView(hint);
+
+        TextView filmTag=eyebrow("DITHER   ·   ASCII   ·   COR",10);
+        FrameLayout.LayoutParams toolTag=new FrameLayout.LayoutParams(-2,dp(24),
+            Gravity.BOTTOM|Gravity.LEFT);
+        toolTag.setMargins(dp(2),0,0,dp(13));
+        orbArea.addView(filmTag,toolTag);
+
         orbArea.setClickable(true);orbArea.setFocusable(true);
-        orbArea.setContentDescription("Criar edição, importar uma imagem");
-        orbArea.setOnClickListener(v->{orbArea.animate().scaleX(.97f).scaleY(.97f).setDuration(110).withEndAction(()->{
-            orbArea.animate().scaleX(1).scaleY(1).setDuration(190).start();onImport.run();
-        }).start();});
+        orbArea.setContentDescription("Nova criação: importar imagem para edição");
+        orbArea.setOnClickListener(v->{
+            orbArea.animate().cancel();
+            orbArea.animate().scaleX(.975f).scaleY(.975f).setDuration(95).withEndAction(()->{
+                orbArea.animate().scaleX(1f).scaleY(1f).setDuration(180).start();
+                onImport.run();
+            }).start();
+        });
 
         LinearLayout lower=new LinearLayout(c);
         lower.setOrientation(LinearLayout.VERTICAL);
-        lower.setPadding(dp(16),dp(16),dp(16),dp(14));
-        lower.setBackground(EditorTheme.panel(c,0xb01b1721,0,20,0));
+        lower.setPadding(dp(15),dp(12),dp(15),dp(13));
+        GradientDrawable lowerSurface=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{0xff27202d,0xff1b1822,0xff15141c});
+        lowerSurface.setCornerRadius(dp(21));
+        lowerSurface.setStroke(dp(1),0x66554761);
+        lower.setBackground(lowerSurface);
         page.addView(lower,new LinearLayout.LayoutParams(-1,-2));
-        TextView recentTitle=text("Continue criando",19,EditorTheme.INK);
-        recentTitle.setTypeface(NoiseTypography.bold(c));
-        lower.addView(recentTitle);
-        recent=text("Seu projeto recente aparecerá aqui.",13,EditorTheme.MUTED);
-        recent.setMaxLines(1);recent.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        lower.addView(recent,new LinearLayout.LayoutParams(-1,dp(28)));
-        resume=text("Nenhum projeto recente",13,EditorTheme.MUTED);
-        resume.setGravity(Gravity.CENTER_VERTICAL);
-        resume.setPadding(dp(16),0,dp(16),0);
-        resume.setBackground(EditorTheme.buttonSurface(c,18,false));
-        resume.setMinHeight(dp(48));
-        LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(48));rp.bottomMargin=dp(12);
-        lower.addView(resume,rp);
-        resume.setEnabled(false);
-        resume.setOnClickListener(v->onResume.run());
-        FrameLayout add=new FrameLayout(c);
-        android.graphics.drawable.GradientDrawable glass=new android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            new int[]{0x82d2c0e8,0x476e617e,0x65847a95});
-        glass.setCornerRadius(dp(3));glass.setStroke(dp(1),0xacc5b8d8);
-        add.setBackground(glass);add.setClipToOutline(true);
-        FrostedLight blurred=new FrostedLight(c);
-        if(android.os.Build.VERSION.SDK_INT>=31)blurred.setRenderEffect(
-            android.graphics.RenderEffect.createBlurEffect(dp(12),dp(12),
-                Shader.TileMode.CLAMP));
-        add.addView(blurred,new FrameLayout.LayoutParams(-1,-1));
-        TextView importText=text("Importar imagem",15,0xfff7efff);
-        importText.setTypeface(NoiseTypography.bold(c));importText.setGravity(Gravity.CENTER);
-        add.addView(importText,new FrameLayout.LayoutParams(-1,-1));
-        add.setClickable(true);add.setFocusable(true);
-        add.setContentDescription("Importar imagem");
-        // Two compact actions share the original import row.
-        LinearLayout captureActions=new LinearLayout(c);
-        captureActions.setGravity(Gravity.CENTER_VERTICAL);
-        lower.addView(captureActions,new LinearLayout.LayoutParams(-1,dp(54)));
-        captureActions.addView(add,new LinearLayout.LayoutParams(0,dp(54),1));
-        TextView camera=text("Câmera",14,EditorTheme.INK);
-        camera.setGravity(Gravity.CENTER);camera.setTypeface(NoiseTypography.bold(c));
-        EditorTheme.button(camera,false);
-        camera.setContentDescription("Abrir câmera com ajustes ao vivo");
-        LinearLayout.LayoutParams camParams=new LinearLayout.LayoutParams(dp(104),dp(54));
-        camParams.leftMargin=dp(10);captureActions.addView(camera,camParams);
-        camera.setOnClickListener(v->onCamera.run());
-        add.setOnClickListener(v->onImport.run());
 
-        LinearLayout nav=new LinearLayout(c);nav.setGravity(Gravity.CENTER);
-        page.addView(nav,new LinearLayout.LayoutParams(-1,dp(58)));
+        LinearLayout sectionHeader=new LinearLayout(c);
+        sectionHeader.setGravity(Gravity.CENTER_VERTICAL);
+        lower.addView(sectionHeader,new LinearLayout.LayoutParams(-1,dp(33)));
+        TextView section=text("Comece por aqui",17,EditorTheme.INK);
+        section.setTypeface(NoiseTypography.bold(c));
+        sectionHeader.addView(section,new LinearLayout.LayoutParams(0,-2,1));
+        TextView tag=eyebrow("STUDIO / 01",9);
+        tag.setBackgroundColor(Color.TRANSPARENT);
+        sectionHeader.addView(tag);
+
+        // These two surfaces are real paths into the editor and camera.
+        LinearLayout entryRow=new LinearLayout(c);
+        entryRow.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams entryParams=new LinearLayout.LayoutParams(-1,dp(77));
+        entryParams.topMargin=dp(4);
+        lower.addView(entryRow,entryParams);
+        FrameLayout importTile=actionTile(c,IconArt.PHOTO,"Editar foto",
+            "Luz, cor e textura",true,onImport);
+        LinearLayout.LayoutParams importParams=new LinearLayout.LayoutParams(0,-1,1);
+        importParams.rightMargin=dp(5);
+        entryRow.addView(importTile,importParams);
+        FrameLayout cameraTile=actionTile(c,IconArt.CAMERA,"Câmera",
+            "Capture e experimente",false,onCamera);
+        LinearLayout.LayoutParams cameraParams=new LinearLayout.LayoutParams(0,-1,1);
+        cameraParams.leftMargin=dp(5);
+        entryRow.addView(cameraTile,cameraParams);
+
+        resumeGroup=new LinearLayout(c);
+        resumeGroup.setOrientation(LinearLayout.VERTICAL);
+        resumeGroup.setVisibility(View.GONE);
+        LinearLayout.LayoutParams recentParams=new LinearLayout.LayoutParams(-1,-2);
+        recentParams.topMargin=dp(9);
+        lower.addView(resumeGroup,recentParams);
+        LinearLayout resumeHead=new LinearLayout(c);
+        resumeHead.setGravity(Gravity.CENTER_VERTICAL);
+        resumeGroup.addView(resumeHead,new LinearLayout.LayoutParams(-1,dp(24)));
+        TextView resumeTitle=text("CONTINUE CRIANDO",10,0xffc6b3d5);
+        resumeTitle.setLetterSpacing(.15f);
+        resumeHead.addView(resumeTitle,new LinearLayout.LayoutParams(0,-2,1));
+        recent=text("Seus projetos locais",11,EditorTheme.MUTED);
+        recent.setMaxLines(1);recent.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        resumeHead.addView(recent);
+        resume=text("",13,EditorTheme.INK);
+        resume.setTypeface(NoiseTypography.medium(c));
+        resume.setGravity(Gravity.CENTER_VERTICAL);
+        resume.setPadding(dp(13),0,dp(13),0);
+        resume.setBackground(EditorTheme.buttonSurface(c,14,false));
+        resume.setMinHeight(dp(43));
+        resume.setSingleLine(true);
+        resume.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        resumeGroup.addView(resume,new LinearLayout.LayoutParams(-1,dp(43)));
+        resume.setOnClickListener(v->onResume.run());
+        resume.setContentDescription("Retomar último projeto");
+
+        LinearLayout nav=new LinearLayout(c);
+        nav.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(49));
+        navParams.topMargin=dp(5);
+        page.addView(nav,navParams);
         navButton(nav,"Início",IconArt.PHOTO,()->{},true);
+        navButton(nav,"Biblioteca",IconArt.GALLERY,onImport,false);
         navButton(nav,"Projetos",IconArt.FOLDER,onProjects,false);
-        navButton(nav,"Editar",IconArt.RESIZE,onImport,false);
+    }
+    private FrameLayout actionTile(Context c,int icon,String title,String subtitle,
+                                   boolean primary,Runnable action){
+        FrameLayout tile=new FrameLayout(c);
+        GradientDrawable body=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            primary?new int[]{0xffaa82c7,0xff795891,0xff4d395f}
+                   :new int[]{0xff302838,0xff27202f,0xff211d27});
+        body.setCornerRadius(dp(15));
+        body.setStroke(dp(1),primary?0xffb597cf:0xff514557);
+        tile.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(primary?0x3fffffff:0x26ffffff),body,null));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setContentDescription(title+": "+subtitle);
+        LinearLayout column=new LinearLayout(c);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_VERTICAL);
+        column.setPadding(dp(12),dp(7),dp(12),dp(7));
+        tile.addView(column,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout line=new LinearLayout(c);line.setGravity(Gravity.CENTER_VERTICAL);
+        column.addView(line,new LinearLayout.LayoutParams(-1,dp(25)));
+        ImageView glyph=new ImageView(c);
+        glyph.setImageDrawable(new IconArt(icon,primary?Color.WHITE:0xffd9bedf));
+        glyph.setContentDescription(title);
+        line.addView(glyph,new LinearLayout.LayoutParams(dp(18),dp(18)));
+        TextView arrow=text("↗",15,primary?0xfff4e9fa:0xffb89ec9);
+        arrow.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+        line.addView(arrow,new LinearLayout.LayoutParams(0,-1,1));
+        TextView label=text(title,14,EditorTheme.INK);
+        label.setTypeface(NoiseTypography.bold(c));
+        column.addView(label);
+        TextView detail=text(subtitle,10,primary?0xfff4e8fb:0xffb8aebf);
+        detail.setSingleLine(true);
+        detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        column.addView(detail);
+        tile.setOnClickListener(v->action.run());
+        return tile;
+    }
+    private TextView eyebrow(String value,int size){
+        TextView t=text(value,size,0xffc1a9d1);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setLetterSpacing(.12f);
+        t.setPadding(dp(7),0,dp(7),0);
+        return t;
     }
     private int dp(float d){return EditorTheme.dp(getContext(),d);}
     private TextView text(String s,int size,int color){TextView t=new TextView(getContext());t.setTypeface(NoiseTypography.regular(getContext()));t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
@@ -132,24 +234,13 @@ final class HomeScreen extends FrameLayout {
         b.setOnClickListener(v->r.run());
     }
     void setRecent(String name){
-        boolean ready=name!=null&&!name.isEmpty();
-        recent.setText(ready?"Seu último projeto está pronto para continuar.":"Importe uma imagem para começar.");
-        resume.setText(ready?name+"   ›":"Nenhum projeto recente");
-        resume.setEnabled(ready);resume.setTextColor(ready?EditorTheme.INK:EditorTheme.MUTED);
-    }
-    /** Soft light diffused under the translucent import button. */
-    private static final class FrostedLight extends View{
-        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        FrostedLight(Context c){super(c);setClickable(false);}
-        @Override protected void onDraw(Canvas c){
-            super.onDraw(c);
-            float w=getWidth(),h=getHeight();
-            if(w<=0||h<=0)return;
-            p.setShader(new RadialGradient(w*.28f,h*.25f,w*.70f,
-                new int[]{0x88c7a3d7,0x406c5f90,0x00705a94},null,Shader.TileMode.CLAMP));
-            c.drawRect(0,0,w,h,p);
-            p.setShader(null);
-        }
+        boolean ready=name!=null&&!name.trim().isEmpty();
+        // No large disabled "empty project" card on a first launch.
+        resumeGroup.setVisibility(ready?View.VISIBLE:View.GONE);
+        recent.setText(ready?"Seu último projeto":"");
+        resume.setText(ready?name+"    ›":"");
+        resume.setEnabled(ready);
+        resume.setContentDescription(ready?"Retomar projeto "+name:"Nenhum projeto recente");
     }
     /** Time-driven atmospheric composition. Animators resume when Home reappears. */
     private static final class StockAtmosphere extends View {
