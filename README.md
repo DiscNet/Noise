@@ -86,7 +86,7 @@ Galeria por álbuns, projetos locais, presets, recorte, exportação em **PNG/JP
 | ▦ **Dither** | Neon/Nonqual, Bayer e Threshold; paletas coloridas, monocromáticas e RGB |
 | ▤ **ASCII** | Imagem formada por caracteres, com densidade, contraste, brilho, limiar, espaçamento e símbolos |
 | ✂️ **Ferramentas** | Recorte, rotação, espelhamento, presets, projetos e exportação |
-| 📷 **Câmera** | CameraX com JPEG em alta resolução, foco/flash/temporizador, zoom pela moldura (prévia fixa), formatos selecionáveis, régua de ajustes ao vivo, nitidez no JPEG e alinhamento sem bordas pretas |
+| 📷 **Câmera** | CameraX com JPEG em alta resolução, foco por toque, zoom exclusivo pela moldura e prévia imóvel; modo TELA sem bordas em 1×, proporções que seguem a posição do celular, régua mais suave e alinhamento fotográfico |
 
 > **Mais controle, menos efeitos artificiais:** cada ajuste conserva seus próprios parâmetros. Glow e Brancos usam curvas de processamento desenvolvidas para responder também em imagens com luminosidades diferentes.
 
@@ -186,7 +186,7 @@ app/src/main/assets/
 <details>
 <summary><b>🧪 Testes e limitações</b></summary>
 
-A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.34](docs/RELEASE-1.34.0.md).
+A suíte de instrumentação verifica shaders, ajustes, comparação com o original, efeitos, galeria, importação, recorte, projetos, histórico e exportação. Veja a [documentação de validação](docs/VALIDATION.md) e as [notas da V1.34.1](docs/RELEASE-1.34.1.md).
 
 **Ainda não implementado:** máscaras locais, curvas RGB, Dither por difusão de erro Floyd–Steinberg/Atkinson e exportação ilimitada. Alguns detalhes podem variar entre a prévia reduzida e a exportação em resolução maior.
 
@@ -202,7 +202,7 @@ A suíte de instrumentação verifica shaders, ajustes, comparação com o origi
 
 <strong>Experimente. Ajuste. Transforme.</strong>
 
-<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.34.0.md"><strong>Notas da versão</strong></a>
+<a href="https://github.com/DiscNet/Noise/releases/latest"><strong>Baixar Noise!</strong></a> · <a href="https://github.com/DiscNet/Noise/issues"><strong>Reportar um problema</strong></a> · <a href="docs/RELEASE-1.34.1.md"><strong>Notas da versão</strong></a>
 
 <sub>Inspirado por fluxos de edição de imagem como Photopea e Lightroom Mobile. Noise! é um projeto independente.</sub>
 
