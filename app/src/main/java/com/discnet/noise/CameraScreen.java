@@ -63,15 +63,18 @@ final class CameraScreen extends FrameLayout {
     private volatile boolean disposed,active,capturing;
     private Uri latestPhoto;
     private float zoom=1f,saturation=1f,temperature=0f,exposure=0f,hue=0f,contrast=1f,sharpness=0f,alignment=0f;
-    private int deviceOrientationDegrees,timerSeconds,ratioIndex=0,flashIndex=0;
+    private volatile int deviceOrientationDegrees;
+    private int timerSeconds,ratioIndex=0,flashIndex=0;
     private float nativeAspect=.75f,maxFrameZoom=4f;
     private int jpegQuality=98;
     private boolean showGrid=true;
     private boolean nativeEv;
     private float residualExposure;
     private String resolution="MAX";
-    private static final float[] RATIOS={1f,4f/3f,3f/4f,16f/9f,9f/16f,3f/2f,3f/4f};
-    private static final String[] RATIO_NAMES={"1:1","4:3","3:4","16:9","9:16","3:2","NATIVO"};
+    // Choose a shape once; 4:3 automatically becomes 3:4 in portrait.
+    // 0 means the entire visible preview, with no permanent inset or crop.
+    private static final float[] RATIOS={0f,1f,3f/4f,9f/16f,2f/3f,-1f};
+    private static final String[] RATIO_NAMES={"TELA","1:1","4:3","16:9","3:2","NATIVO"};
 
     CameraScreen(Activity context,Listener listener){
         super(context);
@@ -82,7 +85,15 @@ final class CameraScreen extends FrameLayout {
         setFocusableInTouchMode(true);
         deviceOrientationListener=new OrientationEventListener(context,SensorManager.SENSOR_DELAY_UI){
             @Override public void onOrientationChanged(int orientation){
-                if(orientation!=ORIENTATION_UNKNOWN)deviceOrientationDegrees=nearestRightAngle(orientation);
+                if(orientation!=ORIENTATION_UNKNOWN){
+                    int next=nearestRightAngle(orientation);
+                    if(next!=deviceOrientationDegrees){
+                        deviceOrientationDegrees=next;
+                        // Keep the camera's preview fixed, like a standard camera;
+                        // rotate just the controls that describe the capture mode.
+                        post(()->{if(!disposed)updateOrientationIndicators();});
+                    }
+                }
             }
         };
         cameraBody=new LinearLayout(context);
@@ -108,7 +119,7 @@ final class CameraScreen extends FrameLayout {
             @Override public void zoom(float factor){setToolValue(Tool.ZOOM,zoom*factor,true);}
         });
         cameraPanel.addView(frameGuide,new FrameLayout.LayoutParams(-1,-1));
-        frameGuide.exactAspect(1f);
+        frameGuide.exactAspect(0f);
         frameGuide.grid(showGrid);
 
         LinearLayout top=new LinearLayout(context);
@@ -130,7 +141,7 @@ final class CameraScreen extends FrameLayout {
         timerP.leftMargin=dp(3);top.addView(timerButton,timerP);
         timerButton.setContentDescription("Temporizador de captura");
         timerButton.setOnClickListener(v->cycleTimer());
-        ratioButton=chip("1:1",46);
+        ratioButton=chip("TELA",46);
         LinearLayout.LayoutParams ratioP=new LinearLayout.LayoutParams(dp(46),dp(38));
         ratioP.leftMargin=dp(3);top.addView(ratioButton,ratioP);
         ratioButton.setOnClickListener(v->showRatios(ratioButton));
@@ -238,7 +249,7 @@ final class CameraScreen extends FrameLayout {
                 flashButton.setVisibility(flash?View.VISIBLE:View.GONE);
                 nativeEv=ev;resolution=resolutionLabel;
                 nativeAspect=aspect;maxFrameZoom=zoomLimit;
-                if(ratioIndex==RATIOS.length-1)frameGuide.exactAspect(nativeAspect);
+                applyRatio();
                 if(zoom>maxFrameZoom)setToolValue(Tool.ZOOM,maxFrameZoom,true);
                 if(selected==Tool.ZOOM)selectTool(Tool.ZOOM);
                 residualExposure=exposure-engine.setExposureEv(exposure);
@@ -421,16 +432,34 @@ final class CameraScreen extends FrameLayout {
         menu.getMenu().setGroupCheckable(0,true,true);
         menu.setOnMenuItemClickListener(item->{
             ratioIndex=item.getItemId();
-            ratioButton.setText(RATIO_NAMES[ratioIndex]);
-            frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+            applyRatio();
             return true;
         });
         menu.show();
     }
     private void cycleRatio(){
         ratioIndex=(ratioIndex+1)%RATIOS.length;
+        applyRatio();
+    }
+    /** An aspect choice follows device rotation without duplicate 3:4 / 9:16 entries.
+     *  The UI stays anchored; the saved JPEG rotates to match physical posture.
+     */
+    static float viewAspect(int choice,float sensorAspect){
+        if(choice<=0)return 0f; // Full viewfinder at 1x
+        if(choice==RATIOS.length-1)return sensorAspect;
+        return RATIOS[choice];
+    }
+    private void applyRatio(){
         ratioButton.setText(RATIO_NAMES[ratioIndex]);
-        frameGuide.exactAspect(ratioIndex==RATIOS.length-1?nativeAspect:RATIOS[ratioIndex]);
+        frameGuide.exactAspect(viewAspect(ratioIndex,nativeAspect));
+    }
+    private void updateOrientationIndicators(){
+        // Keep positions fixed while their symbols follow the phone orientation.
+        // Real camera frames are oriented only in the final JPEG.
+        float degrees=-deviceOrientationDegrees;
+        ratioButton.animate().rotation(degrees).setDuration(170).start();
+        flashButton.animate().rotation(degrees).setDuration(170).start();
+        timerButton.animate().rotation(degrees).setDuration(170).start();
     }
     private void scheduleShot(){
         if(!active||disposed||capturing)return;
