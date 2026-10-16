@@ -637,10 +637,8 @@ final class OrbitalSelector extends FrameLayout implements Choreographer.FrameCa
             int from=(int)Math.floor(offset);
             if(from>=0&&from<names.length-1){
                 float p=offset-from;
-                liquidBridge.draw(canvas,
-                    arcX((from-offset)*STEP),arcY((from-offset)*STEP),
-                    arcX((from+1-offset)*STEP),arcY((from+1-offset)*STEP),
-                    p,dp(27));
+                // No liquid bridge: only continuous crossfade and the original
+                // damped wheel position determine the visible selection.
             }
         }
         private void render(){
