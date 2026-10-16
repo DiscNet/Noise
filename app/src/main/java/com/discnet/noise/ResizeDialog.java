@@ -1,6 +1,7 @@
 package com.discnet.noise;
 
-import android.app.Dialog;
+import android.app.Activity;
+import android.graphics.drawable.GradientDrawable;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.ColorDrawable;
@@ -14,7 +15,9 @@ import java.util.Locale;
  * Only downscaling is offered; GPU memory / image bounds are authoritative.
  * Text edits never trigger bitmap decoding or GPU work.
  */
-final class ResizeDialog extends Dialog {
+final class ResizeDialog extends FrameLayout {
+    private final Activity host;
+    private boolean visible;
     interface Result { void apply(int width,int height,boolean jpeg,int quality,boolean export); }
     private final int sourceW,sourceH,maximum;
     private int targetW,targetH;
@@ -29,6 +32,10 @@ final class ResizeDialog extends Dialog {
     ResizeDialog(Context context,Bitmap preview,EditorDocument doc,int originalW,int originalH,
                  int maxTexture,Result callback){
         super(context);this.callback=callback;
+        host=(Activity)context;
+        setBackgroundColor(0xff09070e);
+        setClickable(true);
+        setFocusableInTouchMode(true);
         int[] nativeSize=doc.nativeSize(originalW,originalH);
         sourceW=nativeSize[0];sourceH=nativeSize[1];
         maximum=Math.max(1,Math.min(4096,maxTexture));
@@ -38,12 +45,16 @@ final class ResizeDialog extends Dialog {
 
         LinearLayout body=new LinearLayout(context);body.setOrientation(LinearLayout.VERTICAL);
         body.setPadding(dp(16),dp(12),dp(16),dp(17));
-        body.setBackground(EditorTheme.panel(context,0xff17161d,0,24,0));
+        GradientDrawable pageMaterial=new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[]{OrbitalMaterial.DARK_PURPLE,OrbitalMaterial.BLACK});
+        pageMaterial.setCornerRadius(0);
+        body.setBackground(pageMaterial);
         ScrollView scroller=new ScrollView(context);scroller.setFillViewport(false);
         scroller.setVerticalScrollBarEnabled(false);
         scroller.addView(body);
 
-        TextView title=text("Transformar",21,true);body.addView(title,new LinearLayout.LayoutParams(-1,dp(35)));
+        TextView title=text("EXPORTAR IMAGEM",21,true);body.addView(title,new LinearLayout.LayoutParams(-1,dp(35)));
         TextView subtitle=text("Redimensionar a resolução",12,false);
         body.addView(subtitle,new LinearLayout.LayoutParams(-1,dp(27)));
         ImageView picture=new ImageView(context);picture.setImageBitmap(preview);
@@ -134,23 +145,36 @@ final class ResizeDialog extends Dialog {
         LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(49),1);
         bp.rightMargin=dp(6);actions.addView(apply,bp);
         actions.addView(export,new LinearLayout.LayoutParams(0,dp(49),1.25f));
-        body.addView(actions,new LinearLayout.LayoutParams(-1,dp(52)));
+        // Footer stays fixed when the keyboard opens or on compact Android displays.
         cancel.setOnClickListener(v->dismiss());
         apply.setOnClickListener(v->commit(false));
         export.setOnClickListener(v->commit(true));
 
-        setContentView(scroller);
-        Window window=getWindow();
-        if(window!=null){window.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
-            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            WindowManager.LayoutParams p=window.getAttributes();
-            p.width=WindowManager.LayoutParams.MATCH_PARENT;
-            p.height=WindowManager.LayoutParams.WRAP_CONTENT;
-            p.gravity=Gravity.BOTTOM;p.dimAmount=.63f;window.setAttributes(p);}
+        LinearLayout screen=new LinearLayout(context);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setBackgroundColor(OrbitalMaterial.BLACK);
+        screen.addView(scroller,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout footer=new LinearLayout(context);
+        footer.setPadding(dp(12),dp(8),dp(12),dp(12));
+        footer.setBackgroundColor(OrbitalMaterial.DARK_PURPLE);
+        footer.addView(actions,new LinearLayout.LayoutParams(-1,dp(52)));
+        screen.addView(footer,new LinearLayout.LayoutParams(-1,-2));
+        addView(screen,new FrameLayout.LayoutParams(-1,-1));
         updateSummary();
     }
-    @Override public void show(){super.show();Window w=getWindow();
-        if(w!=null)w.setLayout(-1,-2);}
+    void show(){
+        if(visible)return;
+        visible=true;
+        FrameLayout root=host.findViewById(android.R.id.content);
+        root.addView(this,new FrameLayout.LayoutParams(-1,-1));
+        bringToFront();
+    }
+    void dismiss(){
+        if(!visible)return;
+        visible=false;
+        if(getParent() instanceof android.view.ViewGroup)
+            ((android.view.ViewGroup)getParent()).removeView(this);
+    }
     private TextView text(String s,float size,boolean heading){
         TextView t=new TextView(getContext());t.setText(s);t.setTextSize(size);
         t.setTextColor(heading?EditorTheme.INK:EditorTheme.MUTED);
