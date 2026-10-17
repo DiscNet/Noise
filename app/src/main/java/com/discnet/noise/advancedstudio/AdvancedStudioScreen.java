@@ -1256,9 +1256,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textTitleTo(effectControls,"ESTRUTURA");
         String[] blendNames={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear","Adicionar"};
         String[] blends={"NORMAL","MULTIPLY","SCREEN","OVERLAY","DARKEN","LIGHTEN","ADD"};
-        styleChoice(effectControls,layer,"Modo de mesclagem",
-            blendNames,blends,style.blend,v->style.blend=v);
-        styleValue(layer,"Opacidade","%",style.opacity*100,0,100,1,v->style.opacity=(float)(v/100));
+        if(style.kind!=StudioLayerStyles.Kind.BEVEL_EMBOSS){
+            styleChoice(effectControls,layer,"Modo de mesclagem",
+                blendNames,blends,style.blend,v->style.blend=v);
+            styleValue(layer,"Opacidade","%",style.opacity*100,0,100,1,v->style.opacity=(float)(v/100));
+        }
         switch(style.kind){
             case COLOR_OVERLAY:
                 styleColor(layer,"Cor",style.color,v->style.color=v);break;
@@ -1312,11 +1314,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 styleValue(layer,"Suavização","px",style.soften,0,64,1,v->style.soften=(float)v);
                 styleValue(layer,"Ângulo da luz","°",style.angle,-180,180,1,v->style.angle=(float)v);
                 styleValue(layer,"Altitude da luz","°",style.altitude,0,90,1,v->style.altitude=(float)v);
-                styleColor(layer,"Luz",style.highlight,v->style.highlight=v);
-                styleValue(layer,"Opac. da luz","%",style.highlightOpacity*100,
+                textTitleTo(effectControls,"REALCE · LUZ");
+                styleChoice(effectControls,layer,"Modo da luz",blendNames,blends,
+                    style.highlightBlend,v->style.highlightBlend=v);
+                styleColor(layer,"Cor da luz",style.highlight,v->style.highlight=v);
+                styleValue(layer,"Opacidade da luz","%",style.highlightOpacity*100,
                     0,100,1,v->style.highlightOpacity=(float)(v/100));
-                styleColor(layer,"Sombra",style.shade,v->style.shade=v);
-                styleValue(layer,"Opac. sombra","%",style.shadowOpacity*100,
+                textTitleTo(effectControls,"SOMBREAMENTO");
+                styleChoice(effectControls,layer,"Modo da sombra",blendNames,blends,
+                    style.shadowBlend,v->style.shadowBlend=v);
+                styleColor(layer,"Cor da sombra",style.shade,v->style.shade=v);
+                styleValue(layer,"Opacidade da sombra","%",style.shadowOpacity*100,
                     0,100,1,v->style.shadowOpacity=(float)(v/100));
                 break;
         }

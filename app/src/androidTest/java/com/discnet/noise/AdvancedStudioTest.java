@@ -441,6 +441,51 @@ final class AdvancedStudioTest {
             "Hard and soft chisel must differ clearly on Luka typography");
         check(hardFringe>40,"Hard chisel must preserve fractional edge alpha");
         baseAlpha.recycle();polishedView.recycle();hardLuka.recycle();softLuka.recycle();
+        // Bevel is a *pair* of independent optical passes. No opaque
+        // gray is mixed between white highlights and black shadows.
+        StudioDocument optical=StudioDocument.blank("Optical bevel",260,116,true);
+        StudioDocument.Layer violet=optical.addText("Luka",0xff9f70da,66);
+        violet.x=12;violet.y=10;
+        StudioLayerStyles.Style material=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        material.size=9;material.depth=155;material.opacity=1;
+        material.highlightOpacity=.92f;material.shadowOpacity=.85f;
+        violet.styles.add(material);
+        Bitmap baseline=StudioLayerEffects.sourceBitmap(violet);
+        Bitmap both=optical.composite();
+        material.highlightOpacity=0;
+        Bitmap onlyShadow=optical.composite();
+        material.highlightOpacity=.92f;material.shadowOpacity=0;
+        Bitmap onlyLight=optical.composite();
+        int highlights=0,shadows=0,grayHaze=0;
+        for(int y=0;y<baseline.getHeight();y++)for(int x=0;x<baseline.getWidth();x++){
+            int base=baseline.getPixel(x,y);
+            if(Color.alpha(base)<245)continue;
+            int sx=x+Math.round(violet.x),sy=y+Math.round(violet.y);
+            int h=onlyLight.getPixel(sx,sy),sh=onlyShadow.getPixel(sx,sy);
+            int reference=Color.red(base)+Color.green(base)+Color.blue(base);
+            int lumi=Color.red(h)+Color.green(h)+Color.blue(h);
+            int dark=Color.red(sh)+Color.green(sh)+Color.blue(sh);
+            if(lumi>reference+14)highlights++;
+            if(dark<reference-14)shadows++;
+            // A correct optical pass never darkens pure light or brightens
+            // pure shade, which caused the muddy grey single-layer render.
+            if(lumi<reference-10||dark>reference+10)grayHaze++;
+        }
+        check(highlights>15&&shadows>15,
+            "Independent bevel passes create clear directional highlights and shadows");
+        check(grayHaze<10,
+            "No mixed-gray haze from bevel: light only brightens, shade only darkens");
+        check(!material.highlightBlend.equals(material.shadowBlend),
+            "Default bevel uses Screen and Multiply independently");
+        material.highlightBlend="OVERLAY";material.shadowBlend="DARKEN";
+        storage.save(optical);
+        StudioDocument opticalBack=storage.load(optical.id);
+        check("OVERLAY".equals(opticalBack.active().styles.get(0).highlightBlend)&&
+            "DARKEN".equals(opticalBack.active().styles.get(0).shadowBlend),
+            "Separate optical blend modes survive .noise roundtrip");
+        new File(activity.getFilesDir(),"advanced_studio/"+optical.id+".noise").delete();
+        baseline.recycle();both.recycle();onlyShadow.recycle();onlyLight.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
