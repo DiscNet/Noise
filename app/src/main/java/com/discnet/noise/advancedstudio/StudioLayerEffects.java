@@ -272,9 +272,11 @@ public final class StudioLayerEffects {
         final Paint pen=new Paint(Paint.ANTI_ALIAS_FLAG);
         final StudioDocument.Layer layer;
         final StudioDocument doc;
+        final Bitmap original,modified;
         float previousX,previousY;
-        MaskStroke(StudioDocument doc,StudioDocument.Layer l,Bitmap copy,int gray,float width){
+        MaskStroke(StudioDocument doc,StudioDocument.Layer l,Bitmap copy,Bitmap before,int gray,float width){
             this.doc=doc;layer=l;canvas=new Canvas(copy);
+            original=before;modified=copy;
             int g=Math.max(0,Math.min(255,gray));pen.setColor(Color.rgb(g,g,g));
             pen.setStrokeWidth(width);pen.setStrokeCap(Paint.Cap.ROUND);
             pen.setStrokeJoin(Paint.Join.ROUND);pen.setStyle(Paint.Style.STROKE);
@@ -289,6 +291,18 @@ public final class StudioLayerEffects {
             pen.setStyle(Paint.Style.FILL);
             canvas.drawCircle(x,y,pen.getStrokeWidth()/2,pen);
             pen.setStyle(Paint.Style.STROKE);canvas.restore();
+            invalidate(layer);
+        }
+        public void finish(){
+            if(doc.selectionPixels==null)return;
+            int w=modified.getWidth(),h=modified.getHeight();
+            int[] px=new int[w*h],old=new int[w*h];
+            modified.getPixels(px,0,w,0,0,w,h);
+            original.getPixels(old,0,w,0,0,w,h);
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+                if(!doc.containsSelection(x+layer.x+.5f,y+layer.y+.5f))
+                    px[y*w+x]=old[y*w+x];
+            modified.setPixels(px,0,w,0,0,w,h);
             invalidate(layer);
         }
         public void move(float x,float y){
@@ -310,8 +324,9 @@ public final class StudioLayerEffects {
             throw new IllegalStateException("Edite a máscara antes de transformar");
         Bitmap copy=l.mask.copy(Bitmap.Config.ARGB_8888,true);
         if(copy==null)throw new IllegalStateException("Memória insuficiente");
+        Bitmap before=l.mask;
         doc.checkpoint();l.mask=copy;
-        MaskStroke stroke=new MaskStroke(doc,l,copy,gray,size);
+        MaskStroke stroke=new MaskStroke(doc,l,copy,before,gray,size);
         stroke.start(x,y);return stroke;
     }
 }
