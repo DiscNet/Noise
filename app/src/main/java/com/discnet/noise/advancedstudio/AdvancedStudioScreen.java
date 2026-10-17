@@ -47,13 +47,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private TextView toolMode;
     private int revision,savedRevision;
     private boolean refreshingPanels;
-    private final Runnable deferredPanelRefresh=()->{
+    private final Runnable deferredPanelRefresh=this::refreshPanelsIfIdle;
+    private void refreshPanelsIfIdle(){
         if(closed)return;
         View focused=findFocus();
         // An active precision input must not be detached while the IME is editing it.
         if(focused instanceof EditText&&focused!=opacityInput)return;
         updatePanels();
-    };
+    }
     private int ink=0xfff5f2f8,muted=0xffa9a4b0,accent=0xffbe9aeb;
     private final int surface=0xff101016,panel=0xff19171f;
     public AdvancedStudioScreen(Activity a,Host host,Bitmap imported){
