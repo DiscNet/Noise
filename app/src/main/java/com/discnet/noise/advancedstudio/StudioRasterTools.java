@@ -41,12 +41,14 @@ public final class StudioRasterTools {
             pen.setStrokeWidth(pen.getStrokeWidth()*Math.max(.15f,Math.min(1.3f,pressure)));
             canvas.drawPoint(x,y,pen);
             canvas.restore();
+            StudioLayerEffects.invalidate(layer);
         }
         public void move(float x,float y){
             canvas.save();clip();
             canvas.drawLine(previousX,previousY,x,y,pen);
             canvas.restore();
             previousX=x;previousY=y;
+            StudioLayerEffects.invalidate(layer);
         }
         public void finish(){} // One undo checkpoint covers the complete gesture.
     }

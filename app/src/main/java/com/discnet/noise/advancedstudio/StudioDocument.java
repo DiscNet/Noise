@@ -10,7 +10,7 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=2, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public static final int FORMAT_VERSION=3, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
     public static final class Layer {
@@ -25,6 +25,12 @@ public final class StudioDocument {
         public String text="";
         public float fontSize=64f;
         public int color=Color.WHITE,objectWidth=240,objectHeight=160;
+        public Bitmap mask;
+        public boolean maskEnabled=true,shadowEnabled=false;
+        public int maskDensity=100;
+        public float shadowRadius=5,shadowX=5,shadowY=5,shadowOpacity=.65f;
+        public int shadowColor=Color.BLACK;
+        public final ArrayList<StudioLayerEffects.Effect> effects=new ArrayList<>();
         Layer(String id,String name,Bitmap bitmap){
             this.id=id;this.name=name;this.bitmap=bitmap;
         }
@@ -43,14 +49,27 @@ public final class StudioDocument {
             newer.opacity=l.opacity;newer.visible=l.visible;newer.locked=l.locked;
             newer.blend=l.blend;newer.text=l.text;newer.fontSize=l.fontSize;
             newer.color=l.color;newer.objectWidth=l.objectWidth;
-            newer.objectHeight=l.objectHeight;return newer;
+            newer.objectHeight=l.objectHeight;
+            newer.mask=l.mask;newer.maskEnabled=l.maskEnabled;
+            newer.maskDensity=l.maskDensity;
+            newer.shadowEnabled=l.shadowEnabled;newer.shadowRadius=l.shadowRadius;
+            newer.shadowX=l.shadowX;newer.shadowY=l.shadowY;
+            newer.shadowColor=l.shadowColor;newer.shadowOpacity=l.shadowOpacity;
+            for(StudioLayerEffects.Effect e:l.effects)newer.effects.add(e.copy());
+            return newer;
         }
         Layer copy(){
             Layer l=new Layer(id,name,bitmap);l.type=type;
             l.x=x;l.y=y;l.scaleX=scaleX;l.scaleY=scaleY;l.rotation=rotation;
             l.opacity=opacity;l.visible=visible;l.locked=locked;l.blend=blend;
             l.text=text;l.fontSize=fontSize;l.color=color;
-            l.objectWidth=objectWidth;l.objectHeight=objectHeight;return l;
+            l.objectWidth=objectWidth;l.objectHeight=objectHeight;
+            l.mask=mask;l.maskEnabled=maskEnabled;l.maskDensity=maskDensity;
+            l.shadowEnabled=shadowEnabled;l.shadowRadius=shadowRadius;
+            l.shadowX=shadowX;l.shadowY=shadowY;
+            l.shadowOpacity=shadowOpacity;l.shadowColor=shadowColor;
+            for(StudioLayerEffects.Effect e:effects)l.effects.add(e.copy());
+            return l;
         }
         JSONObject toJson()throws JSONException{
             JSONObject j=new JSONObject().put("id",id).put("name",name)
@@ -61,6 +80,14 @@ public final class StudioDocument {
                 .put("color",color).put("objectWidth",objectWidth)
                 .put("objectHeight",objectHeight);
             if(type==Type.RASTER)j.put("image","layers/"+id+".png");
+            if(mask!=null)j.put("mask","masks/"+id+".png");
+            j.put("maskEnabled",maskEnabled).put("maskDensity",maskDensity);
+            j.put("shadowEnabled",shadowEnabled).put("shadowRadius",shadowRadius)
+                .put("shadowX",shadowX).put("shadowY",shadowY)
+                .put("shadowColor",shadowColor).put("shadowOpacity",shadowOpacity);
+            JSONArray stack=new JSONArray();
+            for(StudioLayerEffects.Effect e:effects)stack.put(e.toJson());
+            j.put("effects",stack);
             return j;
         }
     }
@@ -216,7 +243,9 @@ public final class StudioDocument {
                 p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
                     PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
             }
-            switch(l.type){
+            if(StudioLayerEffects.requiresProcessing(l)||l.shadowEnabled){
+                StudioLayerEffects.draw(canvas,l,p);
+            }else switch(l.type){
                 case RASTER:if(l.bitmap!=null&&!l.bitmap.isRecycled())
                     canvas.drawBitmap(l.bitmap,0,0,p);break;
                 case TEXT:
@@ -249,7 +278,7 @@ public final class StudioDocument {
     }
     static StudioDocument fromJson(JSONObject j)throws Exception{
         int format=j.getInt("format");
-        if(format!=1&&format!=FORMAT_VERSION)
+        if(format!=1&&format!=2&&format!=FORMAT_VERSION)
             throw new java.io.IOException("Versão .noise incompatível");
         StudioDocument d=new StudioDocument(j.getString("id"),j.getString("name"),
             j.getInt("width"),j.getInt("height"),j.optInt("dpi",72));
@@ -288,6 +317,27 @@ public final class StudioDocument {
             throw new java.io.IOException("Objeto inválido");
         if(l.type==Type.RASTER&&source==null)
             throw new java.io.IOException("Camada raster sem pixels");
+        l.maskEnabled=j.optBoolean("maskEnabled",true);
+        l.maskDensity=j.optInt("maskDensity",100);
+        if(l.maskDensity<0||l.maskDensity>100)
+            throw new java.io.IOException("Densidade de máscara inválida");
+        l.shadowEnabled=j.optBoolean("shadowEnabled",false);
+        l.shadowRadius=(float)j.optDouble("shadowRadius",5);
+        l.shadowX=(float)j.optDouble("shadowX",5);
+        l.shadowY=(float)j.optDouble("shadowY",5);
+        l.shadowColor=j.optInt("shadowColor",Color.BLACK);
+        l.shadowOpacity=(float)j.optDouble("shadowOpacity",.65);
+        if(!Float.isFinite(l.shadowRadius)||l.shadowRadius<1||l.shadowRadius>16||
+            !Float.isFinite(l.shadowX)||!Float.isFinite(l.shadowY)||
+            Math.abs(l.shadowX)>512||Math.abs(l.shadowY)>512||
+            !Float.isFinite(l.shadowOpacity)||l.shadowOpacity<0||l.shadowOpacity>1)
+            throw new java.io.IOException("Sombra inválida");
+        JSONArray stack=j.optJSONArray("effects");
+        if(stack!=null){
+            if(stack.length()>8)throw new java.io.IOException("Filtros demais");
+            for(int k=0;k<stack.length();k++)
+                l.effects.add(StudioLayerEffects.Effect.fromJson(stack.getJSONObject(k)));
+        }
         return l;
     }
     public StudioDocument snapshot(){

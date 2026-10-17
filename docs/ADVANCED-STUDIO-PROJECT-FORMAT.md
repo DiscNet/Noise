@@ -8,3 +8,6 @@ Ainda não inclui texto, vetores, filtros, máscaras, ICC, histórico serializad
 
 ## Formato v2 — compatibilidade retroativa
 `format:2` acrescenta layer `type` RASTER/TEXT/RECTANGLE/ELLIPSE, campos paramétricos text/fontSize/color/objectWidth/objectHeight, scaleX/scaleY/rotation, seleção retangular opcional. Somente camadas raster possuem `image` e entrada PNG; textos e shapes são reconstruídos dos parâmetros do manifesto. `fromJson` aceita `format:1` para preservar os projetos V1.40.0, fornecendo defaults para tipo e transformações. O leitor continua verificando IDs/caminhos e limite de recursos.
+
+## Formato v3
+Compatibilidade de leitura v1/v2/v3. Camadas podem possuir `mask` = `masks/<UUID>.png`, `maskEnabled`, `maskDensity`, `shadowEnabled`, `shadowRadius`, `shadowX`, `shadowY`, `shadowColor`, `shadowOpacity`, `effects` = array de `{kind,value,enabled}` em ordem de aplicação. Máscaras grayscale têm dimensões idênticas ao conteúdo natural da camada, sem valores fora do orçamento 2 MP; editor de máscara não altera bitmap original. Leitor impede traversal e valida UUID, caminho de recurso, dimensão da máscara, tamanho/numero de efeitos, parâmetros e orçamento total decodificado. Escrita atômica persiste PNGs separados de raster e máscaras.

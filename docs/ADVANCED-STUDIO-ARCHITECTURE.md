@@ -21,3 +21,6 @@ Fase 2: brush engine, eraser, formas/texto editáveis, seleções e transformaç
 
 ## Evolução 1.41.0
 Camadas tipadas (RASTER, TEXT, RECTANGLE, ELLIPSE). Texto e geometria serializados parametricamente e renderizados pelo mesmo compositor de exportação, sem bitmap de texto no `.noise`. Stroke/fill/gradient ColorMatrix implementados em StudioRasterTools, cada edição raster substitui referência do Bitmap (copy-on-write) após checkpoint, permitindo undo pixel a pixel. Seleção é RectF no espaço do documento e limita operações de raster. Crop altera dimensões e offsets com undo, sem eliminar bitmaps de origem. UI mantém rotas independentes do editor original.
+
+## Fase 3A: módulo StudioLayerEffects
+Camada guarda bitmap de máscara e lista de operações tipadas, copiadas junto com metadados nos snapshots; alterações raster usam copy-on-write. LayerEffects.processed aplica filtro(s) sequencialmente sobre cópia da origem, depois máscara em luminância, sem escrever no bitmap original. O editor de máscaras altera exclusivamente a cópia do bitmap da máscara. Um cache LRU de 16 MB evita reprocesar nos pan/zoom, com invalidação durante o traço. Pincel raster/PNG continua independente. Sombra projetada passa pelo mesmo compositor. Não representa um pipeline GPU completo ou otimização para documentos 4K.

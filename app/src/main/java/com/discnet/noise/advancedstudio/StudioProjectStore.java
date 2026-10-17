@@ -60,6 +60,15 @@ public final class StudioProjectStore {
                         throw new IOException("Falha ao codificar camada");
                     zip.closeEntry();
                 }
+                for(StudioDocument.Layer l:d.layers){
+                    if(l.mask==null)continue;
+                    String path="masks/"+l.id+".png";
+                    if(!written.add(path))throw new IOException("Máscara duplicada");
+                    zip.putNextEntry(new ZipEntry(path));
+                    if(!l.mask.compress(Bitmap.CompressFormat.PNG,100,zip))
+                        throw new IOException("Falha ao codificar máscara");
+                    zip.closeEntry();
+                }
                 zip.finish();
             }finally{zip.close();}
             atomic.finishWrite(out);
@@ -115,7 +124,37 @@ public final class StudioProjectStore {
                     if(bitmap==null)throw new IOException("Imagem da camada inválida");
                 }
                 }
-                doc.layers.add(StudioDocument.decodeLayer(item,bitmap));
+                StudioDocument.Layer layer=StudioDocument.decodeLayer(item,bitmap);
+                if(item.has("mask")){
+                    String expected="masks/"+layerId+".png";
+                    if(!expected.equals(item.getString("mask")))
+                        throw new IOException("Caminho de máscara proibido");
+                    ZipEntry resource=zip.getEntry(expected);
+                    if(resource==null||resource.getSize()>MAX_ZIP_BYTES)
+                        throw new IOException("Máscara ausente");
+                    byte[] bytes;
+                    try(InputStream in=zip.getInputStream(resource)){
+                        bytes=readLimited(in,MAX_ZIP_BYTES);
+                    }
+                    BitmapFactory.Options bounds=new BitmapFactory.Options();
+                    bounds.inJustDecodeBounds=true;
+                    BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+                    if(bounds.outWidth!=layer.naturalWidth()||
+                       bounds.outHeight!=layer.naturalHeight()||
+                       (long)bounds.outWidth*bounds.outHeight>
+                           StudioLayerEffects.MAX_EFFECT_PIXELS)
+                        throw new IOException("Dimensões de máscara incompatíveis");
+                    pixels+=(long)bounds.outWidth*bounds.outHeight;
+                    if(pixels>MAX_DECODED_PIXELS)
+                        throw new IOException("Orçamento de memória excedido");
+                    layer.mask=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                    if(layer.mask==null)throw new IOException("Máscara corrompida");
+                }
+                if((layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled)
+                    &&(long)layer.naturalWidth()*layer.naturalHeight()>
+                        StudioLayerEffects.MAX_EFFECT_PIXELS)
+                    throw new IOException("Camada com efeitos maior que limite de 2 MP");
+                doc.layers.add(layer);
             }
             doc.markSaved();return doc;
         }

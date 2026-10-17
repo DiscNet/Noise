@@ -30,7 +30,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final StudioCanvas canvas;
     private final TextView docTab,info,opacityLabel;
     private final SeekBar opacity;
-    enum Tool { MOVE,HAND,BRUSH,ERASER,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE }
+    enum Tool { MOVE,HAND,BRUSH,ERASER,MASK_HIDE,MASK_REVEAL,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE }
     private Tool selectedTool=Tool.MOVE;
     private boolean closed,showLayers=true;
     private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
@@ -66,6 +66,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::selectionCommand);
         commandMenu("Imagem",new String[]{"Aplicar recorte","Cancelar recorte","Brilho / Contraste / Saturação"},
             this::imageCommand);
+        commandMenu("Máscaras",new String[]{"Criar máscara branca","Criar máscara preta","Pintar preto","Pintar branco","Inverter máscara","Ativar/desativar","Densidade","Excluir máscara"},
+            this::maskCommand);
+        commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
+            this::filterCommand);
+        commandMenu("Estilos",new String[]{"Sombra projetada","Remover sombra"},
+            this::styleCommand);
         commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas"},
             this::viewCommand);
 
@@ -97,6 +103,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolButton("Mão",Tool.HAND);
         toolButton("Pincel",Tool.BRUSH);
         toolButton("Borracha",Tool.ERASER);
+        toolButton("Másc.−",Tool.MASK_HIDE);
+        toolButton("Másc.+",Tool.MASK_REVEAL);
         toolButton("Seleção",Tool.SELECTION);
         toolButton("Recorte",Tool.CROP);
         toolButton("Balde",Tool.BUCKET);
@@ -210,7 +218,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(value.trim().isEmpty()){message("Insira um texto");return;}
                 if(value.length()>8192){message("Texto muito longo");return;}
                 if(editing){if(current.locked){message("Camada bloqueada");return;}
+                    long projected=(long)Math.max(1,Math.round(value.length()*current.fontSize*.61f))
+                        *Math.max(1,Math.round(current.fontSize*1.4f));
+                    if(current.mask!=null&&projected>StudioLayerEffects.MAX_EFFECT_PIXELS){
+                        message("Texto grande demais para máscara vinculada");return;
+                    }
                     document.checkpoint();current.text=value;current.color=foreground;
+                    StudioLayerEffects.resizeMask(current);
                 }else document.addText(value,foreground,64f);
                 changed(true);
             }).show();
@@ -344,6 +358,146 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 changed(true);dialog.dismiss();
             }).setNegativeButton("Cancelar",null).show();
     }
+    private void maskCommand(String cmd){
+        StudioDocument.Layer l=document.active();
+        if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
+        try{
+            switch(cmd){
+                case "Criar máscara branca":StudioLayerEffects.createMask(document,true);break;
+                case "Criar máscara preta":StudioLayerEffects.createMask(document,false);break;
+                case "Pintar preto":selectedTool=Tool.MASK_HIDE;toolMode.setText("Ocultar na máscara");return;
+                case "Pintar branco":selectedTool=Tool.MASK_REVEAL;toolMode.setText("Revelar na máscara");return;
+                case "Inverter máscara":StudioLayerEffects.invertMask(document);break;
+                case "Ativar/desativar":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    document.checkpoint();l.maskEnabled=!l.maskEnabled;break;
+                case "Excluir máscara":
+                    if(l.mask==null)return;
+                    document.checkpoint();l.mask=null;break;
+                case "Densidade":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    maskDensityDialog(l);return;
+                default:return;
+            }
+            changed(true);
+        }catch(Exception e){message(e.getMessage());}
+    }
+    private void maskDensityDialog(StudioDocument.Layer l){
+        SeekBar density=new SeekBar(activity);density.setMax(100);density.setProgress(l.maskDensity);
+        LinearLayout box=new LinearLayout(activity);box.setPadding(dp(22),dp(10),dp(22),dp(10));
+        box.addView(density,new LinearLayout.LayoutParams(-1,dp(48)));
+        new AlertDialog.Builder(activity).setTitle("Densidade da máscara")
+            .setView(box).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(d,w)->{
+                document.checkpoint();l.maskDensity=density.getProgress();changed(true);
+            }).show();
+    }
+    private void filterCommand(String cmd){
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        if("Adicionar filtro".equals(cmd)){addFilterDialog(layer);return;}
+        manageFilterDialog(layer);
+    }
+    private void addFilterDialog(StudioDocument.Layer layer){
+        if(layer.effects.size()>=8){message("Limite de 8 filtros por camada");return;}
+        if((long)layer.naturalWidth()*layer.naturalHeight()>
+            StudioLayerEffects.MAX_EFFECT_PIXELS){
+            message("Filtros limitados a 2 MP por camada nesta versão");return;
+        }
+        String[] names={"Desfoque gaussiano","Brilho","Saturação"};
+        new AlertDialog.Builder(activity).setTitle("Novo filtro inteligente")
+            .setItems(names,(dialog,index)->{
+                StudioLayerEffects.Kind kind=index==0?
+                    StudioLayerEffects.Kind.GAUSSIAN_BLUR:index==1?
+                    StudioLayerEffects.Kind.BRIGHTNESS:StudioLayerEffects.Kind.SATURATION;
+                parameterDialog(layer,new StudioLayerEffects.Effect(kind,index==0?3:0),-1);
+            }).show();
+    }
+    private void manageFilterDialog(StudioDocument.Layer layer){
+        if(layer.effects.isEmpty()){message("Esta camada não tem filtros");return;}
+        String[] names=new String[layer.effects.size()];
+        for(int i=0;i<names.length;i++){
+            StudioLayerEffects.Effect e=layer.effects.get(i);
+            names[i]=(e.enabled?"● ":"○ ")+e.kind.name()+" · "+e.value;
+        }
+        new AlertDialog.Builder(activity).setTitle("Pilha de filtros (ordem de cima para baixo)")
+            .setItems(names,(d,index)->filterActions(layer,index)).show();
+    }
+    private void filterActions(StudioDocument.Layer layer,int index){
+        new AlertDialog.Builder(activity).setTitle("Filtro "+(index+1))
+            .setItems(new String[]{"Editar intensidade","Ativar / desativar","Subir","Descer","Excluir"},
+                (d,choice)->{
+                    if(index>=layer.effects.size())return;
+                    StudioLayerEffects.Effect effect=layer.effects.get(index);
+                    if(choice==0){parameterDialog(layer,effect,index);return;}
+                    if((choice==2&&index==0)||
+                        (choice==3&&index==layer.effects.size()-1))return;
+                    document.checkpoint();
+                    if(choice==1)effect.enabled=!effect.enabled;
+                    else if(choice==2)Collections.swap(layer.effects,index,index-1);
+                    else if(choice==3)Collections.swap(layer.effects,index,index+1);
+                    else if(choice==4)layer.effects.remove(index);
+                    changed(true);
+                }).show();
+    }
+    private void parameterDialog(StudioDocument.Layer layer,
+                                 StudioLayerEffects.Effect current,int index){
+        int min=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?1:-100;
+        int max=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?8:100;
+        SeekBar bar=new SeekBar(activity);bar.setMax(max-min);
+        bar.setProgress(current.value-min);
+        LinearLayout box=new LinearLayout(activity);
+        box.setPadding(dp(23),dp(10),dp(23),dp(10));
+        box.addView(bar,new LinearLayout.LayoutParams(-1,dp(50)));
+        // Do not mutate the committed stack before Confirm; Cancel is clean.
+        new AlertDialog.Builder(activity)
+            .setTitle(current.kind.name()+" · "+current.value)
+            .setView(box).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(dialog,which)->{
+                StudioLayerEffects.Effect replacement=current.copy();
+                replacement.value=bar.getProgress()+min;
+                try{StudioLayerEffects.validate(replacement);}
+                catch(Exception e){message(e.getMessage());return;}
+                document.checkpoint();
+                if(index<0)layer.effects.add(replacement);
+                else layer.effects.set(index,replacement);
+                changed(true);
+            }).show();
+    }
+    private void styleCommand(String cmd){
+        StudioDocument.Layer l=document.active();
+        if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
+        if("Remover sombra".equals(cmd)){
+            if(l.shadowEnabled){document.checkpoint();l.shadowEnabled=false;changed(true);}
+            return;
+        }
+        if((long)l.naturalWidth()*l.naturalHeight()>
+            StudioLayerEffects.MAX_EFFECT_PIXELS){
+            message("Sombra limitada a 2 MP nesta versão");return;
+        }
+        LinearLayout box=new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(5),dp(18),dp(5));
+        EditText radius=numberField("Raio 1–16",false);
+        radius.setText(String.valueOf(l.shadowRadius));box.addView(radius);
+        EditText shift=numberField("Deslocamento X/Y",false);
+        shift.setText(String.valueOf(l.shadowX));box.addView(shift);
+        EditText transparency=numberField("Opacidade 0–100",false);
+        transparency.setText(String.valueOf(Math.round(l.shadowOpacity*100)));
+        box.addView(transparency);
+        new AlertDialog.Builder(activity).setTitle("Sombra projetada")
+            .setView(box).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(d,w)->{
+                try{
+                    float r=Float.parseFloat(radius.getText().toString());
+                    float x=Float.parseFloat(shift.getText().toString());
+                    int o=Integer.parseInt(transparency.getText().toString());
+                    if(!Float.isFinite(r)||r<1||r>16||!Float.isFinite(x)||
+                       Math.abs(x)>128||o<0||o>100)throw new IllegalArgumentException();
+                    document.checkpoint();l.shadowRadius=r;l.shadowX=x;l.shadowY=x;
+                    l.shadowOpacity=o/100f;l.shadowEnabled=true;changed(true);
+                }catch(Exception e){message("Valores de sombra inválidos");}
+            }).show();
+    }
     private void viewCommand(String cmd){
         if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
         else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
@@ -378,6 +532,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 document.checkpoint();layer.locked=!layer.locked;changed(true);
             });
             row.addView(lock,new LinearLayout.LayoutParams(dp(31),dp(40)));
+            if(layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled){
+                TextView extras=text((layer.mask!=null?"M":"")+
+                    (!layer.effects.isEmpty()?" fx":"")+
+                    (layer.shadowEnabled?" ░":""),10,accent);
+                row.addView(extras,new LinearLayout.LayoutParams(dp(36),dp(40)));
+            }
             layersList.addView(row,new LinearLayout.LayoutParams(-1,dp(43)));
         }
         StudioDocument.Layer current=document.active();
@@ -530,6 +690,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private float lastX,lastY,lastMidX,lastMidY,startDocX,startDocY;
         private RectF gestureRect;
         private StudioRasterTools.Stroke stroke;
+        private StudioLayerEffects.MaskStroke maskStroke;
         StudioCanvas(Context c){
             super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             zoomDetector=new ScaleGestureDetector(c,
@@ -606,9 +767,19 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 lastX=e.getX();lastY=e.getY();
                 startDocX=docX(lastX);startDocY=docY(lastY);
                 gestureMoving=false;gestureUsed=false;resize=false;
-                gestureRect=null;stroke=null;
+                gestureRect=null;stroke=null;maskStroke=null;
                 if(!inDocument(startDocX,startDocY))return true;
                 switch(selectedTool){
+                    case MASK_HIDE:case MASK_REVEAL:
+                        try{
+                            StudioDocument.Layer l=document.active();
+                            if(l==null)throw new IllegalStateException("Selecione uma máscara");
+                            maskStroke=StudioLayerEffects.beginMaskStroke(document,
+                                startDocX-l.x,startDocY-l.y,
+                                selectedTool==Tool.MASK_REVEAL,brushSize);
+                            invalidate();
+                        }catch(Exception error){message(error.getMessage());}
+                        break;
                     case BRUSH:case ERASER:
                         try{
                             StudioDocument.Layer layer=document.active();
@@ -645,6 +816,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }
             if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
                 if(stroke!=null){stroke.finish();stroke=null;changed(true);}
+                if(maskStroke!=null){maskStroke=null;changed(true);}
                 gestureRect=null;
                 lastMidX=(e.getX(0)+e.getX(1))*.5f;
                 lastMidY=(e.getY(0)+e.getY(1))*.5f;
@@ -663,6 +835,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(stroke!=null){
                     StudioDocument.Layer l=stroke.layer;
                     stroke.move(x-l.x,y-l.y);invalidate();
+                }else if(maskStroke!=null){
+                    StudioDocument.Layer l=maskStroke.layer;
+                    maskStroke.move(x-l.x,y-l.y);invalidate();
                 }else if(gestureRect!=null){
                     gestureRect.set(startDocX,startDocY,x,y);gestureRect.sort();
                     invalidate();
@@ -695,6 +870,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
                 if(stroke!=null){
                     stroke.finish();stroke=null;changed(true);
+                }else if(maskStroke!=null){
+                    maskStroke=null;changed(true);
                 }else if(gestureMoving)changed(true);
                 if(gestureRect!=null&&!gestureUsed&&action==MotionEvent.ACTION_UP){
                     RectF rect=new RectF(gestureRect);
