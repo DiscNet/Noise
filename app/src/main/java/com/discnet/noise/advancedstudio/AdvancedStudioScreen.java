@@ -1312,9 +1312,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 styleValue(layer,"Suavização","px",style.soften,0,64,1,v->style.soften=(float)v);
                 styleValue(layer,"Ângulo da luz","°",style.angle,-180,180,1,v->style.angle=(float)v);
                 styleValue(layer,"Altitude da luz","°",style.altitude,0,90,1,v->style.altitude=(float)v);
+                textTitleTo(effectControls,"ILUMINAÇÃO · MODOS INDEPENDENTES");
+                styleChoice(effectControls,layer,"Mesclagem da luz",
+                    new String[]{"Tela (Photopea)","Normal","Multiplicar","Sobrepor","Adicionar"},
+                    new String[]{"SCREEN","NORMAL","MULTIPLY","OVERLAY","ADD"},
+                    style.highlightBlend,v->style.highlightBlend=v);
                 styleColor(layer,"Luz",style.highlight,v->style.highlight=v);
                 styleValue(layer,"Opac. da luz","%",style.highlightOpacity*100,
                     0,100,1,v->style.highlightOpacity=(float)(v/100));
+                styleChoice(effectControls,layer,"Mesclagem da sombra",
+                    new String[]{"Multiplicar (Photopea)","Normal","Tela","Sobrepor"},
+                    new String[]{"MULTIPLY","NORMAL","SCREEN","OVERLAY"},
+                    style.shadowBlend,v->style.shadowBlend=v);
                 styleColor(layer,"Sombra",style.shade,v->style.shade=v);
                 styleValue(layer,"Opac. sombra","%",style.shadowOpacity*100,
                     0,100,1,v->style.shadowOpacity=(float)(v/100));
