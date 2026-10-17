@@ -401,6 +401,46 @@ final class AdvancedStudioTest {
         check(partialCoverage>25,
             "Chisel hard preserves subpixel antialiasing on text outlines");
         smoothRender.recycle();hardRender.recycle();softRender.recycle();
+        // Regression: curved and diagonal letters ("Luka") previously acquired
+        // sawtooth lighting, white ghost silhouettes and flat chisel modes.
+        StudioDocument luka=StudioDocument.blank("Luka regression",720,260,true);
+        StudioDocument.Layer letters=luka.addText("Luka",0xff9f76d6,142);
+        letters.x=42;letters.y=22;
+        StudioLayerStyles.Style polished=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        polished.size=12;polished.depth=180;polished.soften=3;
+        polished.opacity=1;polished.technique="SMOOTH";
+        letters.styles.add(polished);
+        Bitmap baseAlpha=StudioLayerEffects.sourceBitmap(letters);
+        int baseX=Math.round(letters.x),baseY=Math.round(letters.y);
+        Bitmap polishedView=luka.composite();
+        int fractional=0,ghostPixels=0,changedFill=0;
+        for(int y=0;y<baseAlpha.getHeight();y++)
+            for(int x=0;x<baseAlpha.getWidth();x++){
+                int original=Color.alpha(baseAlpha.getPixel(x,y));
+                int baked=polishedView.getPixel(baseX+x,baseY+y);
+                if(original==0&&Color.alpha(baked)>0)ghostPixels++;
+                if(original>20&&original<235)fractional++;
+                if(original>240&&baked!=letters.color)changedFill++;
+            }
+        check(ghostPixels==0,
+            "Inner bevel must never paint ghost silhouettes beyond text alpha");
+        check(fractional>40,"Glyphs use genuine anti-aliased coverage");
+        check(changedFill>80,"Rounded bevel modifies glyph surface, not a hard outline");
+        polished.technique="CHISEL_HARD";
+        Bitmap hardLuka=luka.composite();
+        polished.technique="CHISEL_SOFT";
+        Bitmap softLuka=luka.composite();
+        int techniqueDifferences=0,hardFringe=0;
+        for(int y=0;y<260;y++)for(int x=0;x<720;x++){
+            if(hardLuka.getPixel(x,y)!=softLuka.getPixel(x,y))techniqueDifferences++;
+            int a=Color.alpha(hardLuka.getPixel(x,y));
+            if(a>10&&a<245)hardFringe++;
+        }
+        check(techniqueDifferences>120,
+            "Hard and soft chisel must differ clearly on Luka typography");
+        check(hardFringe>40,"Hard chisel must preserve fractional edge alpha");
+        baseAlpha.recycle();polishedView.recycle();hardLuka.recycle();softLuka.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);

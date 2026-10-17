@@ -14,9 +14,15 @@ public final class StudioTypography {
         try {return Typeface.create(layer.fontFamily,style);}
         catch(Exception ignored){return Typeface.create("sans-serif",style);}
     }
+    private static float gutter(StudioDocument.Layer layer){
+        // Glyph negative left side-bearings, italics and antialiased descenders
+        // must not be cropped by tight bitmap dimensions.
+        return Math.max(4f,layer.fontSize*.085f);
+    }
     private static Paint measurePaint(StudioDocument.Layer layer){
-        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-        p.setTypeface(font(layer));p.setTextSize(layer.fontSize);
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.SUBPIXEL_TEXT_FLAG);
+        p.setSubpixelText(true);p.setTypeface(font(layer));
+        p.setTextSize(layer.fontSize);
         return p;
     }
     private static float width(Paint paint,StudioDocument.Layer layer,String line){
@@ -28,23 +34,29 @@ public final class StudioTypography {
     public static int width(StudioDocument.Layer layer){
         Paint p=measurePaint(layer);float max=0;
         for(String line:layer.text.split("\n",-1))max=Math.max(max,width(p,layer,line));
-        return Math.max(1,(int)Math.ceil(Math.min(8192,max+2)));
+        return Math.max(1,(int)Math.ceil(Math.min(8192,max+gutter(layer)*2+3)));
     }
     public static int height(StudioDocument.Layer layer){
         int count=layer.text.split("\n",-1).length;
+        Paint p=measurePaint(layer);
+        Paint.FontMetrics fm=p.getFontMetrics();
+        float baseline=gutter(layer)-fm.top;
+        float last=baseline+(count-1)*layer.fontSize*layer.lineSpacing;
         return Math.max(1,(int)Math.ceil(Math.min(8192,
-            layer.fontSize*(1+(count-1)*layer.lineSpacing)+layer.fontSize*.24f)));
+            last+fm.bottom+gutter(layer)+3)));
     }
     public static void draw(Canvas canvas,StudioDocument.Layer layer,Paint paint){
         paint.setTypeface(font(layer));paint.setTextSize(layer.fontSize);
+        paint.setAntiAlias(true);paint.setSubpixelText(true);
         String[] lines=layer.text.split("\n",-1);
-        float extent=width(layer);
+        float extent=width(layer)-gutter(layer)*2;
         for(int line=0;line<lines.length;line++){
             String value=lines[line];
             float span=width(paint,layer,value);
-            float x="CENTER".equals(layer.textAlign)?(extent-span)/2:
-                "RIGHT".equals(layer.textAlign)?extent-span:0;
-            float baseline=layer.fontSize*(1+line*layer.lineSpacing);
+            float x=gutter(layer)+("CENTER".equals(layer.textAlign)?(extent-span)/2:
+                "RIGHT".equals(layer.textAlign)?extent-span:0);
+            float baseline=gutter(layer)-paint.getFontMetrics().top+
+                line*layer.fontSize*layer.lineSpacing;
             if(layer.letterSpacing==0)canvas.drawText(value,x,baseline,paint);
             else for(int i=0;i<value.length();){
                 int cp=value.codePointAt(i);
