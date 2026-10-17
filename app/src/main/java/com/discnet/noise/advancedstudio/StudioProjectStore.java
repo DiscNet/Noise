@@ -150,6 +150,10 @@ public final class StudioProjectStore {
                     layer.mask=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
                     if(layer.mask==null)throw new IOException("Máscara corrompida");
                 }
+                if((layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled)
+                    &&(long)layer.naturalWidth()*layer.naturalHeight()>
+                        StudioLayerEffects.MAX_EFFECT_PIXELS)
+                    throw new IOException("Camada com efeitos maior que limite de 2 MP");
                 doc.layers.add(layer);
             }
             doc.markSaved();return doc;
