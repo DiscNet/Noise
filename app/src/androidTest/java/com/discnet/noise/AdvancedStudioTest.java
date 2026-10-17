@@ -335,9 +335,15 @@ final class AdvancedStudioTest {
                 View layerTab=label(opened[0],"CAMADAS");
                 check(layerTab!=null,"Layer panel tab is mounted");
                 layerTab.performClick();
-                View shadow=label(opened[0],"☑ Sombra");
-                check(shadow!=null,"Shadow controls remain available below layers");
-                shadow.performClick();
+                View styles=label(opened[0],"fx Estilos");
+                check(styles!=null,"Photopea-inspired layer-style controls remain available");
+                Method addStyle=AdvancedStudioScreen.class.getDeclaredMethod(
+                    "addStyle",StudioDocument.Layer.class,StudioLayerStyles.Kind.class);
+                addStyle.setAccessible(true);
+                addStyle.invoke(opened[0],interactive[0].active(),
+                    StudioLayerStyles.Kind.DROP_SHADOW);
+                check(label(opened[0],"Sombra projetada")!=null,
+                    "Layer style appears as a collapsible row below its source");
                 incrementFirstInspector(opened[0]);
             }catch(Exception error){throw new RuntimeException(error);}
         });
