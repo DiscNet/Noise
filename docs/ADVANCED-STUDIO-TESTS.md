@@ -17,3 +17,6 @@ Falta cobertura visual em dispositivo físico, tablets, teclado, stylus, casos d
 
 ## Cenários adicionados para 1.41.0
 Gesto raster gera pixels reais; undo/redo recupera bitmaps de versões anteriores; borracha remove alfa e desfaz; seleção restringe pintura; balde realiza flood fill; gradiente altera pixels; ColorMatrix faz ajuste reversível; texto não é rasterizado; retângulo e elipse são retidos no manifesto; escala/rotação salvas; crop altera documento e é reversível. Não classificar como TESTADO até CI concluir.
+
+## Fase 3A
+Testes instrumentados adicionados: máscara branca deixa fonte visível, traço preto apaga alfa, raster original permanece intacto, undo/redo da máscara altera composição, inversão revela, desativação restaura o original, pilha de brilho e Gaussian modifica render sem modificar o bitmap, round-trip .noise v3 conserva máscara/ordem de filtros/sombra e mantém os pixels fonte intactos. Não declarar aprovação antes de verificar o run do GitHub Actions.
