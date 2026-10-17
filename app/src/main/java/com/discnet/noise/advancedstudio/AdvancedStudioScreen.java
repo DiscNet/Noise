@@ -831,59 +831,6 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 "Objeto inteligente incorporado":l.type==StudioDocument.Type.RASTER?
                 "Camada raster":l.type==StudioDocument.Type.TEXT?"Camada de texto":"Forma vetorial");
         }
-        /** Coordinates transformed in the same T*R*skew*scale order as the compositor. */
-        private float[] layerPoint(StudioDocument.Layer l,float px,float py){
-            float x=px*l.scaleX,y=py*l.scaleY;
-            float h=(float)Math.tan(Math.toRadians(l.skewX));
-            float v=(float)Math.tan(Math.toRadians(l.skewY));
-            float u=x+h*y,w=y+v*x;
-            float radians=(float)Math.toRadians(l.rotation);
-            float cos=(float)Math.cos(radians),sin=(float)Math.sin(radians);
-            return new float[]{l.x+u*cos-w*sin,l.y+u*sin+w*cos};
-        }
-        private float[][] transformHandles(StudioDocument.Layer l){
-            float w=l.naturalWidth(),h=l.naturalHeight();
-            return new float[][]{
-                layerPoint(l,0,0),layerPoint(l,w/2,0),layerPoint(l,w,0),
-                layerPoint(l,0,h/2),layerPoint(l,w,h/2),
-                layerPoint(l,0,h),layerPoint(l,w/2,h),layerPoint(l,w,h),
-                layerPoint(l,w/2,-Math.max(12,26/scale()/Math.max(.01f,Math.abs(l.scaleY))))
-            };
-        }
-        private int findTransformHandle(StudioDocument.Layer l,float x,float y){
-            if(l==null||l.locked)return 0;
-            float[][] handles=transformHandles(l);
-            float radius=dp(13)/scale();
-            int best=0;float distance=radius*radius;
-            for(int i=0;i<handles.length;i++){
-                float dx=x-handles[i][0],dy=y-handles[i][1];
-                float d=dx*dx+dy*dy;
-                if(d<distance){distance=d;best=i+1;}
-            }
-            if(best!=0)return best;
-            RectF bounds=activeBounds(l);
-            return bounds!=null&&bounds.contains(x,y)?-1:0;
-        }
-        private void transformOverlay(Canvas c,StudioDocument.Layer l){
-            float[][] points=transformHandles(l);
-            paint.setShader(null);paint.setColor(0xffba8cff);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(1.6f/scale());
-            Path path=new Path();
-            path.moveTo(points[0][0],points[0][1]);
-            path.lineTo(points[2][0],points[2][1]);
-            path.lineTo(points[7][0],points[7][1]);
-            path.lineTo(points[5][0],points[5][1]);path.close();
-            c.drawPath(path,paint);
-            c.drawLine(points[1][0],points[1][1],points[8][0],points[8][1],paint);
-            paint.setStyle(Paint.Style.FILL);
-            for(int i=0;i<points.length;i++){
-                paint.setColor(0xfff7f1ff);
-                c.drawCircle(points[i][0],points[i][1],5f/scale(),paint);
-                paint.setColor(0xff8d58c1);
-                c.drawCircle(points[i][0],points[i][1],2.7f/scale(),paint);
-            }
-        }
         @Override protected void onDraw(Canvas c){
             float w=getWidth(),h=getHeight(),pad=dp(4);
             p.setStyle(Paint.Style.FILL);
@@ -1151,6 +1098,59 @@ public final class AdvancedStudioScreen extends FrameLayout {
             paint.setStrokeWidth(Math.max(.8f,1.5f/scale()));
             canvas.drawRect(bounds,paint);
             paint.setStyle(Paint.Style.FILL);
+        }
+        /** Coordinates transformed in the same T*R*skew*scale order as the compositor. */
+        private float[] layerPoint(StudioDocument.Layer l,float px,float py){
+            float x=px*l.scaleX,y=py*l.scaleY;
+            float h=(float)Math.tan(Math.toRadians(l.skewX));
+            float v=(float)Math.tan(Math.toRadians(l.skewY));
+            float u=x+h*y,w=y+v*x;
+            float radians=(float)Math.toRadians(l.rotation);
+            float cos=(float)Math.cos(radians),sin=(float)Math.sin(radians);
+            return new float[]{l.x+u*cos-w*sin,l.y+u*sin+w*cos};
+        }
+        private float[][] transformHandles(StudioDocument.Layer l){
+            float w=l.naturalWidth(),h=l.naturalHeight();
+            return new float[][]{
+                layerPoint(l,0,0),layerPoint(l,w/2,0),layerPoint(l,w,0),
+                layerPoint(l,0,h/2),layerPoint(l,w,h/2),
+                layerPoint(l,0,h),layerPoint(l,w/2,h),layerPoint(l,w,h),
+                layerPoint(l,w/2,-Math.max(12,26/scale()/Math.max(.01f,Math.abs(l.scaleY))))
+            };
+        }
+        private int findTransformHandle(StudioDocument.Layer l,float x,float y){
+            if(l==null||l.locked)return 0;
+            float[][] handles=transformHandles(l);
+            float radius=dp(13)/scale();
+            int best=0;float distance=radius*radius;
+            for(int i=0;i<handles.length;i++){
+                float dx=x-handles[i][0],dy=y-handles[i][1];
+                float d=dx*dx+dy*dy;
+                if(d<distance){distance=d;best=i+1;}
+            }
+            if(best!=0)return best;
+            RectF bounds=activeBounds(l);
+            return bounds!=null&&bounds.contains(x,y)?-1:0;
+        }
+        private void transformOverlay(Canvas c,StudioDocument.Layer l){
+            float[][] points=transformHandles(l);
+            paint.setShader(null);paint.setColor(0xffba8cff);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.6f/scale());
+            Path path=new Path();
+            path.moveTo(points[0][0],points[0][1]);
+            path.lineTo(points[2][0],points[2][1]);
+            path.lineTo(points[7][0],points[7][1]);
+            path.lineTo(points[5][0],points[5][1]);path.close();
+            c.drawPath(path,paint);
+            c.drawLine(points[1][0],points[1][1],points[8][0],points[8][1],paint);
+            paint.setStyle(Paint.Style.FILL);
+            for(int i=0;i<points.length;i++){
+                paint.setColor(0xfff7f1ff);
+                c.drawCircle(points[i][0],points[i][1],5f/scale(),paint);
+                paint.setColor(0xff8d58c1);
+                c.drawCircle(points[i][0],points[i][1],2.7f/scale(),paint);
+            }
         }
         @Override protected void onDraw(Canvas c){
             super.onDraw(c);
