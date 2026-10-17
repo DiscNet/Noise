@@ -11,3 +11,12 @@ Ainda não inclui texto, vetores, filtros, máscaras, ICC, histórico serializad
 
 ## Formato v3
 Compatibilidade de leitura v1/v2/v3. Camadas podem possuir `mask` = `masks/<UUID>.png`, `maskEnabled`, `maskDensity`, `shadowEnabled`, `shadowRadius`, `shadowX`, `shadowY`, `shadowColor`, `shadowOpacity`, `effects` = array de `{kind,value,enabled}` em ordem de aplicação. Máscaras grayscale têm dimensões idênticas ao conteúdo natural da camada, sem valores fora do orçamento 2 MP; editor de máscara não altera bitmap original. Leitor impede traversal e valida UUID, caminho de recurso, dimensão da máscara, tamanho/numero de efeitos, parâmetros e orçamento total decodificado. Escrita atômica persiste PNGs separados de raster e máscaras.
+
+
+## Formato v4 — Advanced Studio 1.43.0
+
+Leitura mantém compatibilidade com v1, v2 e v3. A propriedade \`type: SMART\` identifica uma camada raster **incorporada** cujo bitmap de origem continua gravado em \`layers/<UUID>.png\`, mas não é editável diretamente pelo pincel enquanto estiver no modo inteligente. Convertê-la em raster habilita edição de pixels, preservando geometria e efeitos existentes. Isso não corresponde a um documento PSD incorporado ou objeto inteligente com conteúdo aninhado.
+
+Camadas podem conter \`skewX\` e \`skewY\` em graus, limitados a ±70° ao ler (a UI permite até 65°); são aplicados no Canvas entre rotação e escala. Camadas de texto passam a armazenar \`fontFamily\`, \`fontBold\`, \`fontItalic\`, \`letterSpacing\`, \`lineSpacing\` e \`textAlign\` (LEFT/CENTER/RIGHT). O compositor normal, a renderização temporária de efeitos, máscaras e o exportador usam o mesmo \`StudioTypography.draw\`.
+
+O leitor aplica defaults do esquema anterior ao encontrar documentos antigos. Arquivos desconhecidos continuam sendo rejeitados. Metadados de perspectiva e Warp não pertencem à v4.
