@@ -18,10 +18,10 @@ final class HomeScreen extends FrameLayout {
     private final OrganicBackdrop backdrop;
     private final Sphere sphere;
     private boolean hostActive, covered;
-    private final Runnable onImport,onCamera,onProjects,onSettings,onResume;
-    HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction){
+    private final Runnable onImport,onCamera,onProjects,onSettings,onResume,onAdvanced;
+    HomeScreen(Context c,Runnable importAction,Runnable cameraAction,Runnable projectAction,Runnable settingsAction,Runnable resumeAction,Runnable advancedAction){
         super(c);
-        onImport=importAction;onCamera=cameraAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;
+        onImport=importAction;onCamera=cameraAction;onProjects=projectAction;onSettings=settingsAction;onResume=resumeAction;onAdvanced=advancedAction;
         setBackgroundColor(0xff0c0b10);
         setClickable(true); // Empty space can carry a drag; child buttons keep their events.
         backdrop=new OrganicBackdrop(c);
@@ -134,8 +134,14 @@ final class HomeScreen extends FrameLayout {
         TextView section=text("Comece por aqui",17,EditorTheme.INK);
         section.setTypeface(NoiseTypography.bold(c));
         sectionHeader.addView(section,new LinearLayout.LayoutParams(0,-2,1));
-        TextView tag=eyebrow("STUDIO / 01",9);
-        tag.setBackgroundColor(Color.TRANSPARENT);
+        TextView tag=eyebrow("ADVANCED STUDIO  ›",10);
+        tag.setTextColor(0xfff6eaff);
+        tag.setBackgroundColor(0xff513669);
+        tag.setGravity(Gravity.CENTER);
+        tag.setPadding(dp(9),dp(3),dp(9),dp(3));
+        tag.setMinHeight(dp(32));
+        tag.setContentDescription("Abrir Noise! Advanced Studio");
+        tag.setOnClickListener(v->onAdvanced.run());
         sectionHeader.addView(tag);
 
         // These two surfaces are real paths into the editor and camera.
