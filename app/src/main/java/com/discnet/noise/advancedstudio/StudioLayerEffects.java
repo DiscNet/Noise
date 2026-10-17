@@ -240,6 +240,20 @@ public final class StudioLayerEffects {
         bitmap.eraseColor(white?Color.WHITE:Color.BLACK);
         doc.checkpoint();layer.mask=bitmap;layer.maskEnabled=true;layer.maskDensity=100;
     }
+    public static void applyMask(StudioDocument doc){
+        StudioDocument.Layer l=doc.active();
+        if(l==null||l.locked||l.mask==null)
+            throw new IllegalStateException("Selecione uma máscara desbloqueada");
+        Bitmap bitmap=sourceBitmap(l);
+        if(bitmap==null)throw new IllegalStateException("Sem pixels na camada");
+        Bitmap result=mask(bitmap,l.mask,l.maskDensity);
+        if(bitmap!=l.bitmap)bitmap.recycle();
+        doc.checkpoint();
+        l.bitmap=result;l.mask=null;l.type=StudioDocument.Type.RASTER;
+        l.smartContent=null;
+        l.maskEnabled=true;l.maskDensity=100;
+        invalidate(l);
+    }
     public static void invertMask(StudioDocument doc){
         StudioDocument.Layer layer=doc.active();
         if(layer==null||layer.mask==null||layer.locked)
@@ -261,7 +275,7 @@ public final class StudioLayerEffects {
         float previousX,previousY;
         MaskStroke(StudioDocument doc,StudioDocument.Layer l,Bitmap copy,int gray,float width){
             this.doc=doc;layer=l;canvas=new Canvas(copy);
-            pen.setColor(gray>=128?Color.WHITE:Color.BLACK);
+            int g=Math.max(0,Math.min(255,gray));pen.setColor(Color.rgb(g,g,g));
             pen.setStrokeWidth(width);pen.setStrokeCap(Paint.Cap.ROUND);
             pen.setStrokeJoin(Paint.Join.ROUND);pen.setStyle(Paint.Style.STROKE);
         }
@@ -285,6 +299,10 @@ public final class StudioLayerEffects {
     }
     public static MaskStroke beginMaskStroke(StudioDocument doc,float x,float y,
                                              boolean reveal,float size){
+        return beginMaskStroke(doc,x,y,reveal?255:0,size);
+    }
+    public static MaskStroke beginMaskStroke(StudioDocument doc,float x,float y,
+                                             int gray,float size){
         StudioDocument.Layer l=doc.active();
         if(l==null||l.locked||l.mask==null)
             throw new IllegalStateException("Selecione uma camada com máscara");
@@ -293,7 +311,7 @@ public final class StudioLayerEffects {
         Bitmap copy=l.mask.copy(Bitmap.Config.ARGB_8888,true);
         if(copy==null)throw new IllegalStateException("Memória insuficiente");
         doc.checkpoint();l.mask=copy;
-        MaskStroke stroke=new MaskStroke(doc,l,copy,reveal?255:0,size);
+        MaskStroke stroke=new MaskStroke(doc,l,copy,gray,size);
         stroke.start(x,y);return stroke;
     }
 }
