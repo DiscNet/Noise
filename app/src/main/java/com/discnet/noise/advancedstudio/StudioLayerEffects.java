@@ -322,8 +322,6 @@ public final class StudioLayerEffects {
         StudioDocument.Layer l=doc.active();
         if(l==null||l.locked||l.mask==null)
             throw new IllegalStateException("Selecione uma camada com máscara");
-        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0)
-            throw new IllegalStateException("Edite a máscara antes de transformar");
         Bitmap copy=l.mask.copy(Bitmap.Config.ARGB_8888,true);
         if(copy==null)throw new IllegalStateException("Memória insuficiente");
         Bitmap before=l.mask;
