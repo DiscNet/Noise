@@ -103,13 +103,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolScroll.setVerticalScrollBarEnabled(false);
         toolScroll.addView(tools);
         working.addView(toolScroll,new LinearLayout.LayoutParams(dp(51),-1));
-        toolGroup("move",Tool.MOVE,Tool.TRANSFORM,Tool.HAND);
+        toolGroup("move",Tool.MOVE,Tool.HAND);
         toolGroup("selection",Tool.SELECTION,Tool.CROP);
         toolGroup("brush",Tool.BRUSH,Tool.ERASER,Tool.MASK_HIDE,Tool.MASK_REVEAL);
         toolGroup("fill",Tool.BUCKET,Tool.GRADIENT);
         toolGroup("shape",Tool.RECTANGLE,Tool.ELLIPSE);
         toolGroup("type",Tool.TEXT);
-        toolGroup("transform",Tool.TRANSFORM,Tool.MOVE);
+        toolGroup("transform",Tool.TRANSFORM);
         editor=new FrameLayout(a);editor.setBackgroundColor(0xff0a090d);
         working.addView(editor,new LinearLayout.LayoutParams(0,-1,1));
         canvas=new StudioCanvas(a);
@@ -287,44 +287,93 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 String value=input.getText().toString();
                 if(value.trim().isEmpty()){message("Insira um texto");return;}
                 if(value.length()>8192){message("Texto muito longo");return;}
-                if(editing){if(current.locked){message("Camada bloqueada");return;}
-                    long projected=(long)Math.max(1,Math.round(value.length()*current.fontSize*.61f))
-                        *Math.max(1,Math.round(current.fontSize*1.4f));
-                    if(current.mask!=null&&projected>StudioLayerEffects.MAX_EFFECT_PIXELS){
-                        message("Texto grande demais para máscara vinculada");return;
-                    }
-                    document.checkpoint();current.text=value;current.color=foreground;
+                if(editing){
+                    if(current.locked){message("Camada bloqueada");return;}
+                    StudioDocument.Layer preview=current.copy();preview.text=value;
+                    if(!canApplyText(current,preview))return;
+                    document.checkpoint();current.text=value;
                     StudioLayerEffects.resizeMask(current);
-                }else document.addText(value,foreground,64f);
+                }else{
+                    document.addText(value,foreground,64f);
+                    showTextPanel=true;
+                }
                 changed(true);
             }).show();
+    }
+    private EditText numericField(LinearLayout box,String hint,float value){
+        EditText input=numberField(hint,false);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED|
+            InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setText(String.format(Locale.ROOT,"%.2f",value));
+        box.addView(input,new LinearLayout.LayoutParams(-1,dp(45)));
+        return input;
+    }
+    private float fieldValue(EditText input){return Float.parseFloat(input.getText().toString().trim());}
+    private void editCommand(String cmd){
+        StudioDocument.Layer layer=document.active();
+        if("Desfazer".equals(cmd)){if(document.undo())changed(true);return;}
+        if("Refazer".equals(cmd)){if(document.redo())changed(true);return;}
+        if("Transformação livre".equals(cmd)){activateTool(Tool.TRANSFORM);transformDialog();return;}
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        document.checkpoint();
+        switch(cmd){
+            case "Girar 90° horário":layer.rotation+=90;break;
+            case "Girar 90° anti-horário":layer.rotation-=90;break;
+            case "Girar 180°":layer.rotation+=180;break;
+            case "Espelhar horizontal":layer.scaleX=-layer.scaleX;break;
+            case "Espelhar vertical":layer.scaleY=-layer.scaleY;break;
+            default:return;
+        }
+        changed(true);
     }
     private void transformDialog(){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
         LinearLayout fields=new LinearLayout(activity);
-        fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
-        EditText rotate=numberField("Rotação",false);
-        rotate.setText(String.valueOf(layer.rotation));fields.addView(rotate);
-        EditText sx=numberField("Escala horizontal",false);
-        sx.setText(String.valueOf(layer.scaleX));fields.addView(sx);
-        EditText sy=numberField("Escala vertical",false);
-        sy.setText(String.valueOf(layer.scaleY));fields.addView(sy);
-        new AlertDialog.Builder(activity).setTitle("Transformação livre — valores")
-            .setView(fields).setNegativeButton("Cancelar",null)
+        fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(18),dp(8),dp(18),dp(8));
+        EditText x=numericField(fields,"Posição X (px)",layer.x);
+        EditText y=numericField(fields,"Posição Y (px)",layer.y);
+        EditText w=numericField(fields,"Largura W (px)",Math.abs(layer.scaleX)*layer.naturalWidth());
+        EditText h=numericField(fields,"Altura H (px)",Math.abs(layer.scaleY)*layer.naturalHeight());
+        CheckBox chain=new CheckBox(activity);chain.setText("Proporções vinculadas (W/H)");
+        chain.setChecked(keepAspect);
+        fields.addView(chain);
+        EditText rotate=numericField(fields,"Ângulo (°)",layer.rotation);
+        EditText skewH=numericField(fields,"Inclinação horizontal (°)",layer.skewX);
+        EditText skewV=numericField(fields,"Inclinação vertical (°)",layer.skewY);
+        TextView hint=text("Mova, redimensione e gire também pelas alças no canvas.",12,muted);
+        fields.addView(hint);
+        ScrollView scroll=new ScrollView(activity);scroll.addView(fields);
+        new AlertDialog.Builder(activity).setTitle("Transformação livre")
+            .setView(scroll).setNegativeButton("Cancelar",null)
             .setPositiveButton("Aplicar",(dialog,which)->{
                 try{
-                    float angle=Float.parseFloat(rotate.getText().toString());
-                    float x=Float.parseFloat(sx.getText().toString());
-                    float y=Float.parseFloat(sy.getText().toString());
-                    if(!Float.isFinite(angle)||!Float.isFinite(x)||!Float.isFinite(y)
-                        ||Math.abs(x)>.0f&&Math.abs(x)<.01f
-                        ||Math.abs(y)>.0f&&Math.abs(y)<.01f
-                        ||x==0||y==0||Math.abs(x)>16||Math.abs(y)>16)
-                        throw new NumberFormatException();
-                    document.checkpoint();layer.rotation=angle;
-                    layer.scaleX=x;layer.scaleY=y;changed(true);
-                }catch(Exception e){message("Transformação inválida");}
+                    float nx=fieldValue(x),ny=fieldValue(y),nw=fieldValue(w),
+                        nh=fieldValue(h),angle=fieldValue(rotate),
+                        skx=fieldValue(skewH),sky=fieldValue(skewV);
+                    float oldW=Math.max(1,Math.abs(layer.scaleX)*layer.naturalWidth());
+                    float oldH=Math.max(1,Math.abs(layer.scaleY)*layer.naturalHeight());
+                    // The last edited axis would be preferable; use changed W as primary.
+                    if(chain.isChecked()&&Math.abs(nw-oldW)>.01f)
+                        nh=nw*(oldH/oldW);
+                    else if(chain.isChecked()&&Math.abs(nh-oldH)>.01f)
+                        nw=nh*(oldW/oldH);
+                    float sx=nw/Math.max(1,layer.naturalWidth());
+                    float sy=nh/Math.max(1,layer.naturalHeight());
+                    if(!Float.isFinite(nx)||!Float.isFinite(ny)||
+                       !Float.isFinite(sx)||!Float.isFinite(sy)||
+                       sx<.01f||sy<.01f||sx>16||sy>16||
+                       !Float.isFinite(angle)||Math.abs(angle)>36000||
+                       !Float.isFinite(skx)||!Float.isFinite(sky)||
+                       Math.abs(skx)>65||Math.abs(sky)>65)
+                       throw new NumberFormatException();
+                    keepAspect=chain.isChecked();
+                    document.checkpoint();layer.x=nx;layer.y=ny;layer.rotation=angle;
+                    layer.skewX=skx;layer.skewY=sky;
+                    layer.scaleX=Math.copySign(sx,layer.scaleX);
+                    layer.scaleY=Math.copySign(sy,layer.scaleY);
+                    changed(true);
+                }catch(Exception error){message("Valores de transformação inválidos");}
             }).show();
     }
     private void selectionCommand(String cmd){
@@ -410,8 +459,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Texto editável":textDialog();return;
             case "Retângulo":document.addShape(StudioDocument.Type.RECTANGLE,foreground,200,160);break;
             case "Elipse":document.addShape(StudioDocument.Type.ELLIPSE,foreground,200,160);break;
-            case "Transformar":transformDialog();return;
+            case "Transformar":activateTool(Tool.TRANSFORM);transformDialog();return;
             case "Mesclagem":blendDialog();return;
+            case "Converter em objeto inteligente":
+                if(active==null||active.locked||active.type!=StudioDocument.Type.RASTER){
+                    message("Selecione uma camada raster desbloqueada");return;
+                }
+                document.checkpoint();active.type=StudioDocument.Type.SMART;break;
+            case "Rasterizar objeto inteligente":
+                if(active==null||active.locked||active.type!=StudioDocument.Type.SMART){
+                    message("Selecione um objeto inteligente incorporado");return;
+                }
+                document.checkpoint();active.type=StudioDocument.Type.RASTER;break;
             case "Painel":case "Camadas":showLayers=!showLayers;
                 propertyPanel.setVisibility(showLayers?VISIBLE:GONE);return;
         }
@@ -572,7 +631,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
         else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
         else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
-        else if(cmd.equals("Camadas"))layerCommand("Painel");
+        else if(cmd.equals("Camadas")){showTextPanel=false;updatePanels();}
+        else if(cmd.equals("Texto")){showTextPanel=true;updatePanels();}
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
     }
     private void updateUi(){
