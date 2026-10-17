@@ -462,6 +462,7 @@ final class AdvancedStudioTest {
             "Bevel lighting disabled leaves original text RGB untouched");
         noLight.recycle();
         polished.highlightOpacity=1;polished.shadowOpacity=.75f;
+        polished.highlight=0xffe8b16e; // Non-white swatch differentiates Screen/Normal.
         polished.highlightBlend="SCREEN";polished.shadowBlend="MULTIPLY";
         polished.angle=120;
         Bitmap lit=luka.composite();
