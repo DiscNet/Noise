@@ -11,7 +11,7 @@ public final class StudioRasterTools {
         StudioDocument.Layer l=d.active();
         if(l==null||l.locked||l.type!=StudioDocument.Type.RASTER||l.bitmap==null)
             throw new IllegalStateException("Selecione uma camada raster desbloqueada");
-        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0f)
+        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0f||l.skewX!=0f||l.skewY!=0f)
             throw new IllegalStateException("Rasterize a transformação antes de pintar");
         return l;
     }

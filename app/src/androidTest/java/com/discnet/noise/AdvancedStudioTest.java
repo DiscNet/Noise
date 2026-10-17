@@ -188,8 +188,32 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==3,
-            "Advanced Studio writes native project format version 3");
+        check(restoredFx.toJson().getInt("format")==4,
+            "Advanced Studio writes native project format version 4");
+        StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
+        StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
+        styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
+        styled.letterSpacing=.08f;styled.lineSpacing=1.5f;styled.textAlign="CENTER";
+        styled.rotation=15;styled.skewX=12;styled.skewY=-4;
+        Bitmap embedded=Bitmap.createBitmap(16,16,Bitmap.Config.ARGB_8888);
+        embedded.eraseColor(Color.CYAN);
+        StudioDocument.Layer smart=enhanced.add("Smart image",embedded);
+        smart.type=StudioDocument.Type.SMART;smart.scaleX=1.5f;
+        storage.save(enhanced);
+        StudioDocument restoredEnhanced=storage.load(enhanced.id);
+        StudioDocument.Layer restoredText=restoredEnhanced.layers.get(0);
+        check(restoredText.type==StudioDocument.Type.TEXT&&
+            restoredText.fontBold&&restoredText.fontItalic&&
+            restoredText.fontFamily.equals("serif")&&
+            restoredText.textAlign.equals("CENTER")&&
+            restoredText.letterSpacing==.08f&&
+            restoredText.lineSpacing==1.5f&&restoredText.skewX==12f,
+            "Character, paragraph and skew settings survive project round trip");
+        check(restoredEnhanced.layers.get(1).type==StudioDocument.Type.SMART&&
+            restoredEnhanced.layers.get(1).bitmap.getPixel(8,8)==Color.CYAN,
+            "Smart embedded layer retains independent bitmap data");
+        new File(activity.getFilesDir(),"advanced_studio/"+
+            enhanced.id+".noise").delete();
         new File(activity.getFilesDir(),"advanced_studio/"+masked.id+".noise").delete();
         final AdvancedStudioScreen[] opened={null};
         test.runOnMainSync(()->{

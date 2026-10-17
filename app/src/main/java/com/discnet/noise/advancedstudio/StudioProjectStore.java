@@ -51,7 +51,7 @@ public final class StudioProjectStore {
                 zip.closeEntry();
                 HashSet<String> written=new HashSet<>();
                 for(StudioDocument.Layer l:d.layers){
-                    if(l.type!=StudioDocument.Type.RASTER)continue;
+                    if(l.type!=StudioDocument.Type.RASTER&&l.type!=StudioDocument.Type.SMART)continue;
                     if(l.bitmap==null)throw new IOException("Raster sem imagem");
                     String path="layers/"+l.id+".png";
                     if(!written.add(path))throw new IOException("ID de camada duplicado");
@@ -102,7 +102,8 @@ public final class StudioProjectStore {
                 if(!layerId.matches("[0-9a-fA-F-]{36}")||!seen.add(layerId))
                     throw new IOException("Camada inválida");
                 Bitmap bitmap=null;
-                if("RASTER".equals(item.optString("type","RASTER"))){
+                if("RASTER".equals(item.optString("type","RASTER"))||
+                    "SMART".equals(item.optString("type","RASTER"))){
                     String relative="layers/"+layerId+".png";
                     if(!relative.equals(item.getString("image")))
                         throw new IOException("Caminho de arquivo proibido");
