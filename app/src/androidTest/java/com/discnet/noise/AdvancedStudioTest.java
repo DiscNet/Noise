@@ -5,12 +5,43 @@ import android.graphics.*;
 import android.os.*;
 import android.view.*;
 import java.io.File;
+import android.widget.*;
+import java.lang.reflect.*;
 import com.discnet.noise.advancedstudio.*;
 
 /** Tests real model/serialized layer pixels and interaction routes, not placeholders. */
 final class AdvancedStudioTest {
     private static void check(boolean value,String message){
         if(!value)throw new AssertionError(message);
+    }
+    private static View label(View root,String text){
+        if(root instanceof TextView&&text.contentEquals(((TextView)root).getText()))
+            return root;
+        if(root instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)root;
+            for(int i=0;i<group.getChildCount();i++){
+                View match=label(group.getChildAt(i),text);
+                if(match!=null)return match;
+            }
+        }
+        return null;
+    }
+    private static StudioInspectorField firstInspector(View root){
+        if(root instanceof StudioInspectorField)return (StudioInspectorField)root;
+        if(root instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)root;
+            for(int i=0;i<group.getChildCount();i++){
+                StudioInspectorField match=firstInspector(group.getChildAt(i));
+                if(match!=null)return match;
+            }
+        }
+        return null;
+    }
+    private static void incrementFirstInspector(View root){
+        StudioInspectorField field=firstInspector(root);
+        if(field==null)throw new AssertionError("Touch-first inspector missing");
+        ViewGroup row=(ViewGroup)field.getChildAt(0);
+        row.getChildAt(4).performClick();
     }
     static void run(Instrumentation test,MainActivity activity)throws Exception{
         StudioDocument doc=StudioDocument.blank("Advanced test",128,128,true);
@@ -256,9 +287,46 @@ final class AdvancedStudioTest {
         test.waitForIdleSync();
         check(opened[0].getChildCount()>0,
             "Native Advanced Studio uses own canvas and property panels");
+        final StudioDocument[] interactive={null};
         test.runOnMainSync(()->{
+            try{
+                Field docField=AdvancedStudioScreen.class.getDeclaredField("document");
+                docField.setAccessible(true);
+                interactive[0]=(StudioDocument)docField.get(opened[0]);
+                StudioDocument.Layer live=interactive[0].addText("Alive",Color.WHITE,36);
+                live.shadowEnabled=true;live.shadowRadius=2;
+                Method update=AdvancedStudioScreen.class.getDeclaredMethod("updateUi");
+                update.setAccessible(true);update.invoke(opened[0]);
+                View textTab=label(opened[0],"TEXTO");
+                check(textTab!=null,"Text panel tab is mounted");
+                textTab.performClick();
+                incrementFirstInspector(opened[0]);
+                View layerTab=label(opened[0],"CAMADAS");
+                check(layerTab!=null,"Layer panel tab is mounted");
+                layerTab.performClick();
+                View shadow=label(opened[0],"☑ Sombra");
+                check(shadow!=null,"Shadow controls remain available below layers");
+                shadow.performClick();
+                incrementFirstInspector(opened[0]);
+            }catch(Exception error){throw new RuntimeException(error);}
+        });
+        test.waitForIdleSync();
+        // Real delayed save + panel refresh executes after editing; this path
+        // was previously absent from the smoke suite.
+        SystemClock.sleep(2400);
+        test.waitForIdleSync();
+        File interactiveFile=new File(activity.getFilesDir(),
+            "advanced_studio/"+interactive[0].id+".noise");
+        check(interactiveFile.isFile(),
+            "Continuous adjustments and delayed autosave do not terminate Studio");
+        StudioDocument reloaded=storage.load(interactive[0].id);
+        check(reloaded.active()!=null&&reloaded.active().shadowEnabled,
+            "Saved interactive session can be reopened after debounce");
+        test.runOnMainSync(()->{
+            check(opened[0].isAttachedToWindow(),"Studio remains attached after delayed UI refresh");
             ((android.view.ViewGroup)opened[0].getParent()).removeView(opened[0]);
             opened[0].dispose();
         });
+        interactiveFile.delete();
     }
 }
