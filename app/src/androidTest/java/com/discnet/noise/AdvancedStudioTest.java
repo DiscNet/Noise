@@ -440,6 +440,45 @@ final class AdvancedStudioTest {
         check(techniqueDifferences>120,
             "Hard and soft chisel must differ clearly on Luka typography");
         check(hardFringe>40,"Hard chisel must preserve fractional edge alpha");
+        check("SCREEN".equals(polished.highlightBlend)&&
+            "MULTIPLY".equals(polished.shadowBlend),
+            "Bevel defaults to independent Screen highlight and Multiply shadow");
+        int[] sourceColors=new int[baseAlpha.getWidth()*baseAlpha.getHeight()];
+        baseAlpha.getPixels(sourceColors,0,baseAlpha.getWidth(),0,0,
+            baseAlpha.getWidth(),baseAlpha.getHeight());
+        // With no lighting, the bevel must not tint the original colored text.
+        polished.technique="SMOOTH";
+        polished.highlightOpacity=0;polished.shadowOpacity=0;
+        Bitmap noLight=luka.composite();
+        int tainted=0;
+        for(int y=0;y<baseAlpha.getHeight();y++)
+            for(int x=0;x<baseAlpha.getWidth();x++){
+                int i=y*baseAlpha.getWidth()+x;
+                if(Color.alpha(sourceColors[i])>253&&
+                    (noLight.getPixel(baseX+x,baseY+y)&0xffffff)!=
+                    (sourceColors[i]&0xffffff))tainted++;
+            }
+        check(tainted==0,
+            "Bevel lighting disabled leaves original text RGB untouched");
+        noLight.recycle();
+        polished.highlightOpacity=1;polished.shadowOpacity=.75f;
+        polished.highlight=0xffe8b16e; // Non-white swatch differentiates Screen/Normal.
+        polished.highlightBlend="SCREEN";polished.shadowBlend="MULTIPLY";
+        polished.angle=120;
+        Bitmap lit=luka.composite();
+        polished.highlightBlend="NORMAL";
+        Bitmap litNormal=luka.composite();
+        int highlightModeDifference=0;
+        for(int y=0;y<260;y++)for(int x=0;x<720;x++)
+            if(lit.getPixel(x,y)!=litNormal.getPixel(x,y))
+                highlightModeDifference++;
+        check(highlightModeDifference>60,
+            "Screen highlight and Normal highlight produce different real pixels");
+        check(polished.toJson().getString("shadowBlend").equals("MULTIPLY")&&
+            StudioLayerStyles.Style.fromJson(polished.toJson())
+                .highlightBlend.equals("NORMAL"),
+            "Independent highlight/shadow modes persist through .noise style JSON");
+        lit.recycle();litNormal.recycle();
         baseAlpha.recycle();polishedView.recycle();hardLuka.recycle();softLuka.recycle();
         // Bevel is a *pair* of independent optical passes. No opaque
         // gray is mixed between white highlights and black shadows.
