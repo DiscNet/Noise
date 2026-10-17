@@ -3,260 +3,277 @@ package com.discnet.noise.advancedstudio;
 import android.graphics.*;
 
 /**
- * High-quality bevel from a supersampled coverage mask and a true Euclidean
- * signed-distance field. Geometry is never built from a binary staircase at
- * the final output resolution. All work is bounded for low-memory phones.
+ * Bevel / Emboss renderer using a continuous signed Euclidean-distance field.
+ *
+ * Unlike a white-to-black painted gradient, it creates two independent,
+ * transparent light and shade masks for Screen / Multiply compositing.
+ * It never paints neutral gray onto the original artwork.
  */
 public final class StudioBevelRenderer {
     private static final float INF=1.0e12f;
-    private static final int MAX_WORK_PIXELS=1_100_000;
+    private static final int MAX_WORK_PIXELS=960_000;
     private StudioBevelRenderer(){}
 
-    static Bitmap render(StudioDocument.Layer layer,Bitmap source,
+    public static final class Layers {
+        public final Bitmap light,shade;
+        Layers(Bitmap light,Bitmap shade){this.light=light;this.shade=shade;}
+        int bytes(){return light.getByteCount()+shade.getByteCount();}
+    }
+
+    static Layers render(StudioDocument.Layer layer,Bitmap source,
                          StudioLayerStyles.Style style,int padding){
-        int w=source.getWidth(),h=source.getHeight();
-        int targetWidth=w+padding*2,targetHeight=h+padding*2;
-        long pixels=(long)targetWidth*targetHeight;
-        float factor=1f;
-        if(pixels>MAX_WORK_PIXELS){
-            // Avoid large full-resolution EDT buffers on limited-RAM Android.
-            // The result is resized to the full layer dimensions at the end.
-            factor=(float)Math.sqrt(MAX_WORK_PIXELS/(double)pixels)*.90f;
+        int outputW=source.getWidth()+2*padding,outputH=source.getHeight()+2*padding;
+        float scale=1f;
+        long outputPixels=(long)outputW*outputH;
+        if(outputPixels>MAX_WORK_PIXELS){
+            scale=(float)Math.sqrt((double)MAX_WORK_PIXELS/outputPixels)*.94f;
         }else{
-            for(int candidate=4;candidate>=2;candidate--){
-                if(pixels*candidate*candidate<=MAX_WORK_PIXELS){
-                    factor=candidate;break;
-                }
+            for(int n=4;n>=2;n--){
+                if(outputPixels*(long)n*n<=MAX_WORK_PIXELS){scale=n;break;}
             }
         }
-        int rw=Math.max(1,Math.round(w*factor));
-        int rh=Math.max(1,Math.round(h*factor));
-        int workPadding=Math.max(0,Math.round(padding*factor));
-        Bitmap hi=null,composited=null;
+        int w=Math.max(1,Math.round(source.getWidth()*scale));
+        int h=Math.max(1,Math.round(source.getHeight()*scale));
+        int border=Math.max(0,Math.round(padding*scale));
+        Bitmap hi=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+        Layers work=null;
         try{
-            hi=Bitmap.createBitmap(rw,rh,Bitmap.Config.ARGB_8888);
-            Canvas hiCanvas=new Canvas(hi);
-            hiCanvas.scale(factor,factor);
+            Canvas cv=new Canvas(hi);
+            cv.scale(scale,scale);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG|
                 Paint.SUBPIXEL_TEXT_FLAG);
-            if(layer.type==StudioDocument.Type.TEXT&&
+            if(layer.type==StudioDocument.Type.TEXT &&
                 !StudioLayerEffects.requiresProcessing(layer)){
                 p.setColor(layer.color);
-                StudioTypography.draw(hiCanvas,layer,p);
+                StudioTypography.draw(cv,layer,p);
             }else if((layer.type==StudioDocument.Type.RECTANGLE||
-                    layer.type==StudioDocument.Type.ELLIPSE)&&
-                    !StudioLayerEffects.requiresProcessing(layer)){
+                layer.type==StudioDocument.Type.ELLIPSE)&&
+                !StudioLayerEffects.requiresProcessing(layer)){
                 p.setColor(layer.color);
                 if(layer.type==StudioDocument.Type.RECTANGLE)
-                    hiCanvas.drawRect(0,0,layer.objectWidth,layer.objectHeight,p);
-                else hiCanvas.drawOval(0,0,layer.objectWidth,layer.objectHeight,p);
+                    cv.drawRect(0,0,layer.objectWidth,layer.objectHeight,p);
+                else cv.drawOval(0,0,layer.objectWidth,layer.objectHeight,p);
             }else{
-                hiCanvas.drawBitmap(source,0,0,p);
+                cv.drawBitmap(source,0,0,p);
             }
-            StudioLayerStyles.Style work=style.copy();
-            work.size*=factor;work.soften*=factor;
-            composited=shade(hi,work,workPadding,1);
-            if(factor==1f)return composited;
-            if(factor>=2f&&Math.abs(factor-Math.round(factor))<.001f&&
-                composited.getWidth()==targetWidth*Math.round(factor)&&
-                composited.getHeight()==targetHeight*Math.round(factor))
-                return areaDownsample(composited,Math.round(factor),targetWidth,targetHeight);
-            // Fallback is used only for large documents / odd dimensions.
-            return Bitmap.createScaledBitmap(composited,targetWidth,targetHeight,true);
+            work=shade(hi,style,border,scale);
+            if(scale==1)return work;
+            Bitmap light=resize(work.light,outputW,outputH,scale);
+            Bitmap shade=resize(work.shade,outputW,outputH,scale);
+            return new Layers(light,shade);
         }finally{
-            if(composited!=null&&factor!=1f&&!composited.isRecycled())
-                composited.recycle();
-            if(hi!=null&&!hi.isRecycled())hi.recycle();
+            if(work!=null&&scale!=1){
+                work.light.recycle();work.shade.recycle();
+            }
+            hi.recycle();
         }
     }
 
-    /** Exact squared Euclidean distance transform (Felzenszwalb/Huttenlocher)
-     * evaluated in O(width*height), using reusable line buffers. */
-    private static void edtLine(float[] input,int inputOffset,int step,int count,
-                                float[] output,int outputOffset,int outputStep,
+    private static Bitmap resize(Bitmap source,int w,int h,float scale){
+        int n=Math.round(scale);
+        if(n>=2&&Math.abs(scale-n)<.001f&&
+            source.getWidth()==w*n&&source.getHeight()==h*n)
+            return areaDownsample(source,n,w,h);
+        return Bitmap.createScaledBitmap(source,w,h,true);
+    }
+
+    /** Exact O(N) squared Euclidean distance transform on each axis. */
+    private static void edtLine(float[] input,int offset,int step,int length,
+                                float[] out,int outOffset,int outStep,
                                 int[] sites,float[] boundaries){
-        int tail=-1;
-        for(int q=0;q<count;q++){
-            float cost=input[inputOffset+q*step];
-            if(cost>=INF*.5f)continue;
+        int top=-1;
+        for(int q=0;q<length;q++){
+            float value=input[offset+q*step];
+            if(value>=INF*.5f)continue;
             float boundary=-INF;
-            while(tail>=0){
-                int prev=sites[tail];
-                float previous=input[inputOffset+prev*step];
-                boundary=((cost+q*q)-(previous+prev*prev))/(2f*(q-prev));
-                if(boundary>boundaries[tail])break;
-                tail--;
+            while(top>=0){
+                int old=sites[top];
+                float f=input[offset+old*step];
+                boundary=(value+q*q-f-old*old)/(2f*(q-old));
+                if(boundary>boundaries[top])break;
+                top--;
             }
-            if(tail<0){tail=0;sites[0]=q;boundaries[0]=-INF;}
-            else{tail++;sites[tail]=q;boundaries[tail]=boundary;}
-            boundaries[tail+1]=INF;
+            if(top<0){top=0;sites[0]=q;boundaries[0]=-INF;}
+            else{sites[++top]=q;boundaries[top]=boundary;}
+            boundaries[top+1]=INF;
         }
-        if(tail<0){
-            for(int q=0;q<count;q++)output[outputOffset+q*outputStep]=INF;
+        if(top<0){
+            for(int q=0;q<length;q++)out[outOffset+q*outStep]=INF;
             return;
         }
-        int k=0;
-        for(int q=0;q<count;q++){
-            while(k<tail&&boundaries[k+1]<q)k++;
-            int site=sites[k];
-            float delta=q-site;
-            output[outputOffset+q*outputStep]=
-                delta*delta+input[inputOffset+site*step];
+        int idx=0;
+        for(int q=0;q<length;q++){
+            while(idx<top&&boundaries[idx+1]<q)idx++;
+            int site=sites[idx];float delta=q-site;
+            out[outOffset+q*outStep]=delta*delta+input[offset+site*step];
         }
     }
-    private static float[] distances(int[] alpha,int w,int h,boolean toOpaque){
-        int n=w*h,max=Math.max(w,h);
-        float[] field=new float[n],partial=new float[n],squared=new float[n];
-        int[] sites=new int[max];float[] boundaries=new float[max+1];
-        for(int i=0;i<n;i++)
-            field[i]=(toOpaque?alpha[i]>=128:alpha[i]<128)?0:INF;
-        for(int y=0;y<h;y++)
-            edtLine(field,y*w,1,w,partial,y*w,1,sites,boundaries);
-        field=null;
-        for(int x=0;x<w;x++)
-            edtLine(partial,x,w,h,squared,x,w,sites,boundaries);
-        return squared;
+
+    private static float[] squaredDistance(int[] alpha,int width,int height,
+                                            boolean foreground){
+        int count=width*height,extent=Math.max(width,height);
+        float[] src=new float[count],temp=new float[count],out=new float[count];
+        int[] sites=new int[extent];
+        float[] bounds=new float[extent+1];
+        for(int i=0;i<count;i++)
+            src[i]=(foreground?alpha[i]>=128:alpha[i]<128)?0:INF;
+        for(int y=0;y<height;y++)
+            edtLine(src,y*width,1,width,temp,y*width,1,sites,bounds);
+        for(int x=0;x<width;x++)
+            edtLine(temp,x,width,height,out,x,width,sites,bounds);
+        return out;
     }
-    private static float clamp(float n){return Math.max(0,Math.min(1,n));}
-    private static float ease(float t){t=clamp(t);return t*t*(3-2*t);}
-    private static float read(float[] data,int w,int h,int x,int y){
-        return data[Math.max(0,Math.min(h-1,y))*w+
-                    Math.max(0,Math.min(w-1,x))];
+
+    private static float clamp(float f){return Math.max(0,Math.min(1,f));}
+    private static float smooth(float f){f=clamp(f);return f*f*(3f-2f*f);}
+    private static float profile(String technique,float ratio,float width){
+        float q=clamp(ratio),pixel=1f/Math.max(1f,width);
+        if("CHISEL_HARD".equals(technique)){
+            // A flat plane with narrow, *continuous* rounded shoulders.
+            float leading=smooth((q+.04f)/(Math.max(.035f,pixel*1.4f)));
+            float trailing=1-smooth((q-.79f)/Math.max(.08f,pixel*1.5f));
+            return leading*trailing;
+        }
+        if("CHISEL_SOFT".equals(technique)){
+            // Rounded edges of a largely planar chisel face.
+            return (float)Math.sqrt(1-smooth(q));
+        }
+        // Gently curved smooth profile, disappearing into the flat face.
+        float c=(float)Math.cos(Math.PI*.5*q);
+        return c*c;
     }
-    private static int blendRgb(int shadow,int highlight,float t){
-        t=clamp(t);
-        int r=Math.round(Color.red(shadow)*(1-t)+Color.red(highlight)*t);
-        int g=Math.round(Color.green(shadow)*(1-t)+Color.green(highlight)*t);
-        int b=Math.round(Color.blue(shadow)*(1-t)+Color.blue(highlight)*t);
-        return (r<<16)|(g<<8)|b;
+    private static float pixel(float[] field,int w,int h,int x,int y){
+        return field[Math.max(0,Math.min(h-1,y))*w+
+            Math.max(0,Math.min(w-1,x))];
     }
-    private static Bitmap shade(Bitmap source,StudioLayerStyles.Style s,
-                                int padding,int scale){
-        int W=source.getWidth()+2*padding,H=source.getHeight()+2*padding;
-        int n=W*H;
-        if(n>MAX_WORK_PIXELS&&scale>1)
-            throw new IllegalArgumentException("Bisel excede orçamento de memória");
-        int[] pixels=new int[source.getWidth()*source.getHeight()];
-        source.getPixels(pixels,0,source.getWidth(),0,0,
-            source.getWidth(),source.getHeight());
-        int[] alpha=new int[n];
-        for(int y=0;y<source.getHeight();y++)
-            for(int x=0;x<source.getWidth();x++)
-                alpha[(y+padding)*W+x+padding]=Color.alpha(
-                    pixels[y*source.getWidth()+x]);
-        float[] toInside=distances(alpha,W,H,true);
-        float[] toOutside=distances(alpha,W,H,false);
-        float[] signed=new float[n];
+
+    private static Layers shade(Bitmap source,StudioLayerStyles.Style s,
+                                int padding,float scale){
+        int srcW=source.getWidth(),srcH=source.getHeight();
+        int W=srcW+2*padding,H=srcH+2*padding,n=W*H;
+        if(n>MAX_WORK_PIXELS+4096)
+            throw new IllegalArgumentException("Relevo acima do limite de processamento");
+        int[] rgba=new int[srcW*srcH],alpha=new int[n];
+        source.getPixels(rgba,0,srcW,0,0,srcW,srcH);
+        for(int y=0;y<srcH;y++)for(int x=0;x<srcW;x++)
+            alpha[(y+padding)*W+x+padding]=Color.alpha(rgba[y*srcW+x]);
+        float[] distanceToSolid=squaredDistance(alpha,W,H,true);
+        float[] distanceToClear=squaredDistance(alpha,W,H,false);
+        float[] sdf=new float[n];
         for(int i=0;i<n;i++){
             float coverage=alpha[i]/255f;
-            // Correct the binary EDT boundary with real glyph alpha.
-            float signedDistance=alpha[i]>=128?
-                (float)Math.sqrt(toOutside[i])-.5f:
-                .5f-(float)Math.sqrt(toInside[i]);
-            if(!Float.isFinite(signedDistance))signedDistance=0;
-            signed[i]=signedDistance+(coverage-.5f)*.65f;
+            float signed=coverage>=.5f?
+                (float)Math.sqrt(distanceToClear[i])-.5f:
+                .5f-(float)Math.sqrt(distanceToSolid[i]);
+            sdf[i]=Float.isFinite(signed)?
+                signed+(coverage-.5f)*.65f:0;
         }
-        // Continuous signed-distance smoothing removes the quantized diagonal
-        // gradients that produced the black-striped / white-ghost Luka text.
+        // 3x3 weighted low-pass on the SDF, NOT on the text's alpha.
         float[] smoothed=new float[n];
         for(int y=0;y<H;y++)for(int x=0;x<W;x++){
             float sum=0;
-            for(int oy=-1;oy<=1;oy++)for(int ox=-1;ox<=1;ox++){
-                int weight=(ox==0?2:1)*(oy==0?2:1);
-                sum+=read(signed,W,H,x+ox,y+oy)*weight;
+            for(int sy=-1;sy<=1;sy++)for(int sx=-1;sx<=1;sx++){
+                int weight=(sy==0?2:1)*(sx==0?2:1);
+                sum+=pixel(sdf,W,H,x+sx,y+sy)*weight;
             }
-            smoothed[y*W+x]=sum/16f;
+            smoothed[y*W+x]=sum*.0625f;
         }
-        int[] out=new int[n];
-        float angle=(float)Math.toRadians(s.angle);
-        float lx=(float)Math.cos(angle),ly=-(float)Math.sin(angle);
-        float size=Math.max(1f,s.size*scale),soften=s.soften*scale;
-        float width=size+Math.min(size*.65f,soften);
-        float gain=Math.min(2.5f,Math.max(.15f,s.depth/100f));
+
+        int[] lights=new int[n],shadows=new int[n];
+        float a=(float)Math.toRadians(s.angle);
+        float lightX=(float)Math.cos(a),lightY=-(float)Math.sin(a);
+        float altitude=(float)Math.toRadians(s.altitude);
+        float lightVertical=(float)Math.sin(altitude);
+        float lightHorizontal=(float)Math.cos(altitude);
+        float width=Math.max(.8f,s.size*scale);
+        float soften=s.soften*scale;
+        float depth=Math.min(5,Math.max(0,s.depth/100f));
         boolean outer="OUTER_BEVEL".equals(s.bevelStyle);
-        boolean embossed="EMBOSS".equals(s.bevelStyle)||
-                         "PILLOW".equals(s.bevelStyle);
-        boolean chiselHard="CHISEL_HARD".equals(s.technique);
-        boolean chiselSoft="CHISEL_SOFT".equals(s.technique);
-        float sun=(float)Math.sin(Math.toRadians(s.altitude));
+        boolean emboss="EMBOSS".equals(s.bevelStyle);
+        boolean pillow="PILLOW".equals(s.bevelStyle);
+        int hiColor=s.highlight&0x00ffffff,shColor=s.shade&0x00ffffff;
+        float hiAlpha=Color.alpha(s.highlight)/255f,shAlpha=Color.alpha(s.shade)/255f;
         for(int y=0;y<H;y++)for(int x=0;x<W;x++){
             int i=y*W+x;
             float coverage=alpha[i]/255f;
-            float d=signed[i],ad=Math.abs(d);
-            boolean outside=d<0;
-            if((outer&&!outside)||(!outer&&!embossed&&outside)||
-                (embossed&&false))continue;
-            if(ad>width+scale||coverage<=.001f&&!outside)continue;
-            float surface=outside?1-coverage:coverage;
-            float q=clamp(ad/width);
-            float ramp;
-            // The three techniques differ in the surface itself, rather
-            // than merely toggling a hard alpha threshold.
-            if(chiselHard){
-                float aa=Math.max(.025f,1.15f/width);
-                ramp=1-ease((q-(.81f-aa))/(2*aa));
-            }else if(chiselSoft){
-                ramp=(float)Math.pow(1-ease(q),.48f);
+            boolean outside=sdf[i]<0;
+            if(outer&&!outside)continue;
+            if(!outer&&!emboss&&!pillow&&outside)continue;
+            float shapeCoverage=outside?1-coverage:coverage;
+            if(shapeCoverage<.001f)continue;
+            float d=Math.abs(sdf[i]);
+            if(d>=width+Math.max(1f,soften))continue;
+            float fraction=clamp(d/width);
+            float slope=profile(s.technique,fraction,width);
+            float feather=soften>0?
+                1-smooth((d-width+soften)/Math.max(1f,2*soften)):
+                1-smooth((d-width+.7f)/1.4f);
+            slope*=clamp(feather);
+            if(slope<.0001f)continue;
+            float gx=(pixel(smoothed,W,H,x+1,y-1)+
+                2*pixel(smoothed,W,H,x+1,y)+pixel(smoothed,W,H,x+1,y+1)-
+                pixel(smoothed,W,H,x-1,y-1)-
+                2*pixel(smoothed,W,H,x-1,y)-
+                pixel(smoothed,W,H,x-1,y+1))*.125f;
+            float gy=(pixel(smoothed,W,H,x-1,y+1)+
+                2*pixel(smoothed,W,H,x,y+1)+pixel(smoothed,W,H,x+1,y+1)-
+                pixel(smoothed,W,H,x-1,y-1)-
+                2*pixel(smoothed,W,H,x,y-1)-
+                pixel(smoothed,W,H,x+1,y-1))*.125f;
+            float length=(float)Math.hypot(gx,gy);
+            float radial=(gx*lightX+gy*lightY)/Math.max(.15f,length);
+            if(outside)radial=-radial;
+            if("DOWN".equals(s.direction))radial=-radial;
+            if(pillow)radial=-radial;
+
+            // Shading from the tilt of the surface relative to its flat
+            // interior. No gray layer at grazing angles: neutral is alpha 0.
+            float tilt=depth*slope;
+            float normalZ=1f/(float)Math.sqrt(1f+tilt*tilt);
+            float illumination=lightVertical*normalZ+
+                radial*lightHorizontal*tilt*normalZ;
+            float delta=illumination-lightVertical;
+            float amount=clamp(Math.abs(delta)*2.6f);
+            if(amount<.0004f)continue;
+            // Gloss contours adjust contrast, without painting neutral areas.
+            float gloss=StudioLayerStyles.curve(s,amount);
+            amount*=.35f+.65f*clamp(gloss);
+            amount=smooth(amount);
+            float edge=shapeCoverage*amount;
+            if(delta>0){
+                int opacity=Math.round(255*edge*hiAlpha);
+                if(opacity>0)lights[i]=(opacity<<24)|hiColor;
             }else{
-                ramp=(float)Math.cos(q*Math.PI*.5f);
-                ramp*=ramp;
+                int opacity=Math.round(255*edge*shAlpha);
+                if(opacity>0)shadows[i]=(opacity<<24)|shColor;
             }
-            // A soft, normalized 3x3 derivative yields stable shading even
-            // around circular counters and angular glyph junctions.
-            float gx=(read(smoothed,W,H,x+1,y-1)+
-                2*read(smoothed,W,H,x+1,y)+read(smoothed,W,H,x+1,y+1)-
-                read(smoothed,W,H,x-1,y-1)-2*read(smoothed,W,H,x-1,y)-
-                read(smoothed,W,H,x-1,y+1))*.125f;
-            float gy=(read(smoothed,W,H,x-1,y+1)+
-                2*read(smoothed,W,H,x,y+1)+read(smoothed,W,H,x+1,y+1)-
-                read(smoothed,W,H,x-1,y-1)-2*read(smoothed,W,H,x,y-1)-
-                read(smoothed,W,H,x+1,y-1))*.125f;
-            float normal=(gx*lx+gy*ly)/
-                (float)Math.max(.18,Math.hypot(gx,gy));
-            if("DOWN".equals(s.direction))normal=-normal;
-            if(outside)normal=-normal;
-            if("PILLOW".equals(s.bevelStyle))normal=-normal;
-            float oriented=Math.max(-1,Math.min(1,normal));
-            float intensity=chiselHard?1f:chiselSoft?.87f:.68f;
-            float specular=clamp(Math.abs(oriented)*intensity+
-                (chiselHard?.08f:0));
-            float profile=StudioLayerStyles.curve(s,1-q);
-            float strength=ramp*gain*specular*sun*profile;
-            // Only an alpha-weighted highlight/shadow is composited on top.
-            // Neutral or transparent exterior remains untouched: no ghost
-            // silhouettes or solid white "extrusions".
-            float polarity=clamp(.5f+.5f*oriented);
-            float lightOpacity=s.shadowOpacity+
-                (s.highlightOpacity-s.shadowOpacity)*polarity;
-            int pigment=blendRgb(s.shade,s.highlight,polarity);
-            int a=Math.round(255*clamp(surface*strength*lightOpacity));
-            if(a>0)out[i]=(a<<24)|pigment;
         }
-        Bitmap result=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
-        result.setPixels(out,0,W,0,0,W,H);
-        return result;
+        Bitmap light=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
+        Bitmap shade=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
+        light.setPixels(lights,0,W,0,0,W,H);
+        shade.setPixels(shadows,0,W,0,0,W,H);
+        return new Layers(light,shade);
     }
 
-    /** Box-filter in premultiplied alpha; bilinear one-tap shrink aliases text. */
-    private static Bitmap areaDownsample(Bitmap source,int scale,int w,int h){
-        int W=source.getWidth();
-        int[] raw=new int[W*source.getHeight()];
-        source.getPixels(raw,0,W,0,0,W,source.getHeight());
-        int[] output=new int[w*h];
+    /** Pixel footprint averaging in premultiplied color / alpha. */
+    private static Bitmap areaDownsample(Bitmap bitmap,int factor,int w,int h){
+        int W=bitmap.getWidth();
+        int[] src=new int[W*bitmap.getHeight()],out=new int[w*h];
+        bitmap.getPixels(src,0,W,0,0,W,bitmap.getHeight());
+        int count=factor*factor;
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-            long sumA=0,sumR=0,sumG=0,sumB=0;
-            for(int iy=0;iy<scale;iy++)for(int ix=0;ix<scale;ix++){
-                int col=raw[(y*scale+iy)*W+x*scale+ix],a=Color.alpha(col);
-                sumA+=a;sumR+=(long)Color.red(col)*a;
-                sumG+=(long)Color.green(col)*a;
-                sumB+=(long)Color.blue(col)*a;
+            long a=0,r=0,g=0,b=0;
+            for(int iy=0;iy<factor;iy++)for(int ix=0;ix<factor;ix++){
+                int c=src[(y*factor+iy)*W+x*factor+ix],ca=Color.alpha(c);
+                a+=ca;r+=(long)ca*Color.red(c);
+                g+=(long)ca*Color.green(c);
+                b+=(long)ca*Color.blue(c);
             }
-            if(sumA==0)continue;
-            int a=Math.min(255,(int)((sumA+scale*scale/2)/(scale*scale)));
-            int r=(int)(sumR/sumA),g=(int)(sumG/sumA),b=(int)(sumB/sumA);
-            output[y*w+x]=Color.argb(a,r,g,b);
+            if(a==0)continue;
+            out[y*w+x]=Color.argb((int)((a+count/2)/count),
+                (int)(r/a),(int)(g/a),(int)(b/a));
         }
         Bitmap result=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
-        result.setPixels(output,0,w,0,0,w,h);return result;
+        result.setPixels(out,0,w,0,0,w,h);return result;
     }
 }
