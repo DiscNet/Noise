@@ -239,11 +239,7 @@ public final class StudioDocument {
         for(Layer l:layers){
             if(!l.visible)continue;
             canvas.save();
-            canvas.translate(l.x,l.y);
-            canvas.rotate(l.rotation);
-            canvas.skew((float)Math.tan(Math.toRadians(l.skewX)),
-                (float)Math.tan(Math.toRadians(l.skewY)));
-            canvas.scale(l.scaleX,l.scaleY);
+            StudioTransformMath.apply(canvas,l);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
             p.setAlpha(Math.round(Math.max(0,Math.min(1,l.opacity))*255));
