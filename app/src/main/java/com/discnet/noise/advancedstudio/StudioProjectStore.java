@@ -50,6 +50,12 @@ public final class StudioProjectStore {
                 zip.write(d.toJson().toString().getBytes(StandardCharsets.UTF_8));
                 zip.closeEntry();
                 HashSet<String> written=new HashSet<>();
+                if(d.selectionPixels!=null){
+                    zip.putNextEntry(new ZipEntry("selection.png"));
+                    if(!d.selectionPixels.compress(Bitmap.CompressFormat.PNG,100,zip))
+                        throw new IOException("Falha ao salvar seleção");
+                    zip.closeEntry();
+                }
                 for(StudioDocument.Layer l:d.layers){
                     if(l.type!=StudioDocument.Type.RASTER&&l.type!=StudioDocument.Type.SMART)continue;
                     if(l.bitmap==null)throw new IOException("Raster sem imagem");
@@ -68,6 +74,31 @@ public final class StudioProjectStore {
                     if(!l.mask.compress(Bitmap.CompressFormat.PNG,100,zip))
                         throw new IOException("Falha ao codificar máscara");
                     zip.closeEntry();
+                }
+                for(StudioDocument.Layer owner:d.layers){
+                    if(owner.type!=StudioDocument.Type.SMART||owner.smartContent==null)continue;
+                    StudioDocument child=owner.smartContent;
+                    if(child.layers.size()>12)
+                        throw new IOException("Objeto inteligente: máximo de 12 camadas internas");
+                    for(StudioDocument.Layer inside:child.layers){
+                        if(inside.type==StudioDocument.Type.SMART)
+                            throw new IOException("Aninhamento inteligente ainda não é suportado");
+                        if(inside.type==StudioDocument.Type.RASTER){
+                            if(inside.bitmap==null)throw new IOException("Raster interno sem pixels");
+                            String name="smart/"+owner.id+"/"+inside.id+".png";
+                            zip.putNextEntry(new ZipEntry(name));
+                            if(!inside.bitmap.compress(Bitmap.CompressFormat.PNG,100,zip))
+                                throw new IOException("Falha ao salvar raster inteligente");
+                            zip.closeEntry();
+                        }
+                        if(inside.mask!=null){
+                            String name="smart/"+owner.id+"/masks/"+inside.id+".png";
+                            zip.putNextEntry(new ZipEntry(name));
+                            if(!inside.mask.compress(Bitmap.CompressFormat.PNG,100,zip))
+                                throw new IOException("Falha ao salvar máscara interna");
+                            zip.closeEntry();
+                        }
+                    }
                 }
                 zip.finish();
             }finally{zip.close();}
@@ -91,6 +122,23 @@ public final class StudioProjectStore {
                 root=new JSONObject(new String(readLimited(in,2*1024*1024),StandardCharsets.UTF_8));
             }
             StudioDocument doc=StudioDocument.fromJson(root);
+            if(root.optBoolean("pixelSelection")){
+                ZipEntry sel=zip.getEntry("selection.png");
+                if(sel==null||sel.getSize()>MAX_ZIP_BYTES)
+                    throw new IOException("Seleção do documento ausente");
+                byte[] bytes;
+                try(InputStream in=zip.getInputStream(sel)){
+                    bytes=readLimited(in,MAX_ZIP_BYTES);
+                }
+                BitmapFactory.Options bounds=new BitmapFactory.Options();
+                bounds.inJustDecodeBounds=true;
+                BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+                if(bounds.outWidth!=doc.width||bounds.outHeight!=doc.height||
+                    (long)bounds.outWidth*bounds.outHeight>4_194_304L)
+                    throw new IOException("Seleção inválida");
+                doc.selectionPixels=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                if(doc.selectionPixels==null)throw new IOException("Seleção corrompida");
+            }
             if(!doc.id.equals(id))throw new IOException("ID incompatível");
             JSONArray layers=root.getJSONArray("layers");
             if(layers.length()>StudioDocument.MAX_LAYERS)throw new IOException("Camadas demais");
@@ -150,6 +198,58 @@ public final class StudioProjectStore {
                         throw new IOException("Orçamento de memória excedido");
                     layer.mask=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
                     if(layer.mask==null)throw new IOException("Máscara corrompida");
+                }
+                if(layer.type==StudioDocument.Type.SMART&&item.has("smartContent")){
+                    JSONObject inner=item.getJSONObject("smartContent");
+                    StudioDocument child=StudioDocument.fromJson(inner);
+                    JSONArray internals=inner.getJSONArray("layers");
+                    if(internals.length()>12||child.width!=layer.naturalWidth()||
+                        child.height!=layer.naturalHeight())
+                        throw new IOException("Objeto inteligente inválido");
+                    for(int k=0;k<internals.length();k++){
+                        JSONObject childItem=internals.getJSONObject(k);
+                        String childId=childItem.getString("id");
+                        if(!childId.matches("[0-9a-fA-F-]{36}"))
+                            throw new IOException("ID interno inválido");
+                        String childType=childItem.getString("type");
+                        if(childType.equals("SMART"))
+                            throw new IOException("Objetos aninhados não são suportados");
+                        Bitmap childImage=null;
+                        if(childType.equals("RASTER")){
+                            String key="smart/"+layer.id+"/"+childId+".png";
+                            ZipEntry asset=zip.getEntry(key);
+                            if(asset==null||asset.getSize()>MAX_ZIP_BYTES)
+                                throw new IOException("Pixels internos ausentes");
+                            byte[] bytes;
+                            try(InputStream in=zip.getInputStream(asset)){
+                                bytes=readLimited(in,MAX_ZIP_BYTES);
+                            }
+                            BitmapFactory.Options bounds=new BitmapFactory.Options();
+                            bounds.inJustDecodeBounds=true;
+                            BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);
+                            pixels+=(long)bounds.outWidth*bounds.outHeight;
+                            if(bounds.outWidth<1||bounds.outHeight<1||
+                                pixels>MAX_DECODED_PIXELS)
+                                throw new IOException("Conteúdo interno excede memória");
+                            childImage=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                            if(childImage==null)throw new IOException("Raster interno inválido");
+                        }
+                        StudioDocument.Layer nested=StudioDocument.decodeLayer(childItem,childImage);
+                        if(childItem.has("mask")){
+                            String key="smart/"+layer.id+"/masks/"+childId+".png";
+                            ZipEntry asset=zip.getEntry(key);
+                            if(asset==null)throw new IOException("Máscara interna ausente");
+                            try(InputStream in=zip.getInputStream(asset)){
+                                byte[] bytes=readLimited(in,MAX_ZIP_BYTES);
+                                nested.mask=BitmapFactory.decodeByteArray(bytes,0,bytes.length);
+                            }
+                            if(nested.mask==null||nested.mask.getWidth()!=nested.naturalWidth()||
+                                nested.mask.getHeight()!=nested.naturalHeight())
+                                throw new IOException("Máscara interna incompatível");
+                        }
+                        child.layers.add(nested);
+                    }
+                    child.markSaved();layer.smartContent=child;
                 }
                 if((layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled)
                     &&(long)layer.naturalWidth()*layer.naturalHeight()>
