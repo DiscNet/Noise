@@ -94,7 +94,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolMode=text("Mover",12,accent);contextBar.addView(toolMode);
         contextBar.addView(action("⚙",()->{
             if(selectedTool==Tool.TRANSFORM)transformDialog();
-            else if(selectedTool==Tool.TEXT){showTextPanel=true;updatePanels();}
+            else if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
             else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)colorDialog();
         }));
         page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
@@ -253,7 +253,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
             }
         });
-        properties.addView(action("Texto",()->{showTextPanel=true;updatePanels();}));
+        properties.addView(action("Texto",()->{showTextPanel=true;showTransformPanel=false;updatePanels();}));
         updateToolbar();
         updateUi();
         if(imported!=null)scheduleSave();
@@ -280,7 +280,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     private void activateTool(Tool t){
         selectedTool=t;toolMode.setText(toolName(t));
-        if(t==Tool.TEXT){showTextPanel=true;updatePanels();}
+        if(t==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
+        if(t==Tool.TRANSFORM){showTextPanel=false;showTransformPanel=true;updatePanels();}
         updateToolbar();canvas.invalidate();
     }
     private void toolGroup(String icon,Tool first,Tool... variants){
@@ -742,54 +743,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }).show();
     }
     private void transformDialog(){
-        StudioDocument.Layer layer=document.active();
-        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
-        LinearLayout fields=new LinearLayout(activity);
-        fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(18),dp(8),dp(18),dp(8));
-        EditText x=numericField(fields,"Posição X (px)",layer.x);
-        EditText y=numericField(fields,"Posição Y (px)",layer.y);
-        EditText w=numericField(fields,"Largura W (px)",Math.abs(layer.scaleX)*layer.naturalWidth());
-        EditText h=numericField(fields,"Altura H (px)",Math.abs(layer.scaleY)*layer.naturalHeight());
-        CheckBox chain=new CheckBox(activity);chain.setText("Proporções vinculadas (W/H)");
-        chain.setChecked(keepAspect);
-        fields.addView(chain);
-        EditText rotate=numericField(fields,"Ângulo (°)",layer.rotation);
-        EditText skewH=numericField(fields,"Inclinação horizontal (°)",layer.skewX);
-        EditText skewV=numericField(fields,"Inclinação vertical (°)",layer.skewY);
-        TextView hint=text("Mova, redimensione e gire também pelas alças no canvas.",12,muted);
-        fields.addView(hint);
-        ScrollView scroll=new ScrollView(activity);scroll.addView(fields);
-        new AlertDialog.Builder(activity).setTitle("Transformação livre")
-            .setView(scroll).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(dialog,which)->{
-                try{
-                    float nx=fieldValue(x),ny=fieldValue(y),nw=fieldValue(w),
-                        nh=fieldValue(h),angle=fieldValue(rotate),
-                        skx=fieldValue(skewH),sky=fieldValue(skewV);
-                    float oldW=Math.max(1,Math.abs(layer.scaleX)*layer.naturalWidth());
-                    float oldH=Math.max(1,Math.abs(layer.scaleY)*layer.naturalHeight());
-                    // The last edited axis would be preferable; use changed W as primary.
-                    if(chain.isChecked()&&Math.abs(nw-oldW)>.01f)
-                        nh=nw*(oldH/oldW);
-                    else if(chain.isChecked()&&Math.abs(nh-oldH)>.01f)
-                        nw=nh*(oldW/oldH);
-                    float sx=nw/Math.max(1,layer.naturalWidth());
-                    float sy=nh/Math.max(1,layer.naturalHeight());
-                    if(!Float.isFinite(nx)||!Float.isFinite(ny)||
-                       !Float.isFinite(sx)||!Float.isFinite(sy)||
-                       sx<.01f||sy<.01f||sx>16||sy>16||
-                       !Float.isFinite(angle)||Math.abs(angle)>36000||
-                       !Float.isFinite(skx)||!Float.isFinite(sky)||
-                       Math.abs(skx)>65||Math.abs(sky)>65)
-                       throw new NumberFormatException();
-                    keepAspect=chain.isChecked();
-                    document.checkpoint();layer.x=nx;layer.y=ny;layer.rotation=angle;
-                    layer.skewX=skx;layer.skewY=sky;
-                    layer.scaleX=Math.copySign(sx,layer.scaleX);
-                    layer.scaleY=Math.copySign(sy,layer.scaleY);
-                    changed(true);
-                }catch(Exception error){message("Valores de transformação inválidos");}
-            }).show();
+        showTextPanel=false;showTransformPanel=true;selectedTool=Tool.TRANSFORM;
+        toolMode.setText("Transformar");updateToolbar();updatePanels();canvas.invalidate();
     }
     private void selectionCommand(String cmd){
         if("Selecionar tudo".equals(cmd))document.select(new RectF(0,0,document.width,document.height));
@@ -875,7 +830,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Retângulo":document.addShape(StudioDocument.Type.RECTANGLE,foreground,200,160);break;
             case "Elipse":document.addShape(StudioDocument.Type.ELLIPSE,foreground,200,160);break;
             case "Transformar":activateTool(Tool.TRANSFORM);transformDialog();return;
-            case "Mesclagem":blendDialog();return;
+            case "Mesclagem":showTextPanel=false;showTransformPanel=false;
+                updatePanels();blendDialog();return;
             case "Converter em objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.RASTER){
                     message("Selecione uma camada raster desbloqueada");return;
@@ -894,13 +850,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private void blendDialog(){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked)return;
-        StudioDocument.Blend[] blends=StudioDocument.Blend.values();
-        String[] labels={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear"};
-        new AlertDialog.Builder(activity).setTitle("Modo de mesclagem")
-            .setSingleChoiceItems(labels,layer.blend.ordinal(),(dialog,which)->{
-                document.checkpoint();layer.blend=blends[which];
-                changed(true);dialog.dismiss();
-            }).setNegativeButton("Cancelar",null).show();
+        PopupMenu popup=new PopupMenu(activity,blendButton);
+        for(StudioDocument.Blend mode:StudioDocument.Blend.values())
+            popup.getMenu().add(0,mode.ordinal(),mode.ordinal(),
+                (mode==layer.blend?"✓ ":"")+blendName(mode));
+        popup.setOnMenuItemClickListener(item->{
+            StudioDocument.Blend mode=StudioDocument.Blend.values()[item.getItemId()];
+            if(layer.blend!=mode){
+                document.checkpoint();layer.blend=mode;changed(true);
+            }
+            return true;
+        });
+        popup.show();
     }
     private void maskCommand(String cmd){
         StudioDocument.Layer l=document.active();
@@ -909,8 +870,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             switch(cmd){
                 case "Criar máscara branca":StudioLayerEffects.createMask(document,true);break;
                 case "Criar máscara preta":StudioLayerEffects.createMask(document,false);break;
-                case "Pintar preto":selectedTool=Tool.MASK_HIDE;toolMode.setText("Ocultar na máscara");return;
-                case "Pintar branco":selectedTool=Tool.MASK_REVEAL;toolMode.setText("Revelar na máscara");return;
+                case "Pintar preto":activateTool(Tool.MASK_HIDE);return;
+                case "Pintar branco":activateTool(Tool.MASK_REVEAL);return;
                 case "Inverter máscara":StudioLayerEffects.invertMask(document);break;
                 case "Ativar/desativar":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
@@ -927,14 +888,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }catch(Exception e){message(e.getMessage());}
     }
     private void maskDensityDialog(StudioDocument.Layer l){
-        SeekBar density=new SeekBar(activity);density.setMax(100);density.setProgress(l.maskDensity);
-        LinearLayout box=new LinearLayout(activity);box.setPadding(dp(22),dp(10),dp(22),dp(10));
-        box.addView(density,new LinearLayout.LayoutParams(-1,dp(48)));
-        new AlertDialog.Builder(activity).setTitle("Densidade da máscara")
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                document.checkpoint();l.maskDensity=density.getProgress();changed(true);
-            }).show();
+        showTextPanel=false;showTransformPanel=false;
+        editingEffects=true;editingShadow=false;selectedFilterIndex=-2;
+        updatePanels();
     }
     private void filterCommand(String cmd){
         StudioDocument.Layer layer=document.active();
@@ -986,68 +942,38 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     private void parameterDialog(StudioDocument.Layer layer,
                                  StudioLayerEffects.Effect current,int index){
-        int min=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?1:-100;
-        int max=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?8:100;
-        SeekBar bar=new SeekBar(activity);bar.setMax(max-min);
-        bar.setProgress(current.value-min);
-        LinearLayout box=new LinearLayout(activity);
-        box.setPadding(dp(23),dp(10),dp(23),dp(10));
-        box.addView(bar,new LinearLayout.LayoutParams(-1,dp(50)));
-        // Do not mutate the committed stack before Confirm; Cancel is clean.
-        new AlertDialog.Builder(activity)
-            .setTitle(current.kind.name()+" · "+current.value)
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(dialog,which)->{
-                StudioLayerEffects.Effect replacement=current.copy();
-                replacement.value=bar.getProgress()+min;
-                try{StudioLayerEffects.validate(replacement);}
-                catch(Exception e){message(e.getMessage());return;}
-                document.checkpoint();
-                if(index<0)layer.effects.add(replacement);
-                else layer.effects.set(index,replacement);
-                changed(true);
-            }).show();
+        if(layer.locked)return;
+        if(index<0){
+            document.checkpoint();
+            layer.effects.add(current.copy());index=layer.effects.size()-1;
+            changed(true);
+        }
+        editingEffects=true;editingShadow=false;selectedFilterIndex=index;
+        showTextPanel=false;showTransformPanel=false;
+        updatePanels();
     }
     private void styleCommand(String cmd){
-        StudioDocument.Layer l=document.active();
-        if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
         if("Remover sombra".equals(cmd)){
-            if(l.shadowEnabled){document.checkpoint();l.shadowEnabled=false;changed(true);}
+            if(layer.shadowEnabled){
+                document.checkpoint();layer.shadowEnabled=false;changed(true);
+            }
             return;
         }
-        if((long)l.naturalWidth()*l.naturalHeight()>
+        if((long)layer.naturalWidth()*layer.naturalHeight()>
             StudioLayerEffects.MAX_EFFECT_PIXELS){
             message("Sombra limitada a 2 MP nesta versão");return;
         }
-        LinearLayout box=new LinearLayout(activity);
-        box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(5),dp(18),dp(5));
-        EditText radius=numberField("Raio 1–16",false);
-        radius.setText(String.valueOf(l.shadowRadius));box.addView(radius);
-        EditText shift=numberField("Deslocamento X/Y",false);
-        shift.setText(String.valueOf(l.shadowX));box.addView(shift);
-        EditText transparency=numberField("Opacidade 0–100",false);
-        transparency.setText(String.valueOf(Math.round(l.shadowOpacity*100)));
-        box.addView(transparency);
-        new AlertDialog.Builder(activity).setTitle("Sombra projetada")
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                try{
-                    float r=Float.parseFloat(radius.getText().toString());
-                    float x=Float.parseFloat(shift.getText().toString());
-                    int o=Integer.parseInt(transparency.getText().toString());
-                    if(!Float.isFinite(r)||r<1||r>16||!Float.isFinite(x)||
-                       Math.abs(x)>128||o<0||o>100)throw new IllegalArgumentException();
-                    document.checkpoint();l.shadowRadius=r;l.shadowX=x;l.shadowY=x;
-                    l.shadowOpacity=o/100f;l.shadowEnabled=true;changed(true);
-                }catch(Exception e){message("Valores de sombra inválidos");}
-            }).show();
+        editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
+        showTextPanel=false;showTransformPanel=false;updatePanels();
     }
     private void viewCommand(String cmd){
         if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
         else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
         else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
-        else if(cmd.equals("Camadas")){showTextPanel=false;updatePanels();}
-        else if(cmd.equals("Texto")){showTextPanel=true;updatePanels();}
+        else if(cmd.equals("Camadas")){showTextPanel=false;showTransformPanel=false;updatePanels();}
+        else if(cmd.equals("Texto")){showTextPanel=true;showTransformPanel=false;updatePanels();}
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
     }
     /** Layer thumbnails show actual source pixels, never an invented mock preview. */
