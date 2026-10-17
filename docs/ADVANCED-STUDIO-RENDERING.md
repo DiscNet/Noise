@@ -1,0 +1,7 @@
+# Advanced Studio — pipeline Fase 1
+
+Compositor `StudioDocument.render(Canvas)`: o mesmo código renderiza canvas de interação e `composite()` de PNG, evitando diferenças de ordem/opacidade entre prévia e exportação. Plano inicial transparente ou branco, em ordem bottom-to-top. Cada camada raster aplica bitmap no (x,y), alpha clamped 0..255 e modo real `SRC_OVER`, `MULTIPLY` ou `SCREEN`. Android >=29: `Paint.setBlendMode`; Android 26-28: `PorterDuffXfermode`. Esses modos devem ser verificados em testes de pixel (incluindo canais alfa) antes de sinalizar compatibilidade profissional.
+
+O checkerboard é decoração do editor e não é exportado. A dimensão da saída é exatamente a do documento.
+
+Restrições: renderização CPU/UI na prévia; fase inicial não implementa tiles, máscaras, modelos ICC, HDR nem GPU compositor multicamadas. O pipeline existente OpenGL ES 2.0 de edição fotográfica não foi modificado. Refatorar composição em passes GPU, cache de layers e tiles somente com testes de borda e alfa. Não apresentar demais mesclagens como disponíveis.
