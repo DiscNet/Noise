@@ -25,7 +25,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final StudioProjectStore store;
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler main=new Handler(Looper.getMainLooper());
-    private StudioDocument document;
+    private StudioDocument document,parentSmartDocument;
+    private String smartOwnerId,editingMaskId;
+    private boolean paintingMask;
     private final LinearLayout page,menubar,tools,layersList,propertyPanel,layerPane,textPanel;
     private final ScrollView layerScroll,textScroll;
     private final HashMap<Tool,FrameLayout> toolGroups=new HashMap<>();
@@ -77,17 +79,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
         menuScroll.setBackgroundColor(0xff16141c);
         menuScroll.addView(menubar);
         page.addView(menuScroll,new LinearLayout.LayoutParams(-1,dp(52)));
-        commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Voltar"},
+        commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Fechar conteúdo inteligente","Voltar"},
             this::fileCommand);
         commandMenu("Editar",new String[]{"Desfazer","Refazer","Transformação livre","Girar 90° horário","Girar 90° anti-horário","Girar 180°","Espelhar horizontal","Espelhar vertical"},
             this::editCommand);
-        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Converter em objeto inteligente","Rasterizar objeto inteligente","Painel"},
+        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Converter em objeto inteligente","Editar conteúdo inteligente","Rasterizar objeto inteligente","Painel"},
             this::layerCommand);
-        commandMenu("Selecionar",new String[]{"Selecionar tudo","Desmarcar","Recortar seleção"},
+        commandMenu("Selecionar",new String[]{"Selecionar tudo","Selecionar pixels da camada","Inverter seleção","Desmarcar","Limpar","Preencher com cor","Recortar seleção"},
             this::selectionCommand);
         commandMenu("Imagem",new String[]{"Aplicar recorte","Cancelar recorte","Brilho / Contraste / Saturação"},
             this::imageCommand);
-        commandMenu("Máscaras",new String[]{"Criar máscara branca","Criar máscara preta","Pintar preto","Pintar branco","Inverter máscara","Ativar/desativar","Densidade","Excluir máscara"},
+        commandMenu("Máscaras",new String[]{"Criar máscara branca","Criar máscara preta","Editar máscara","Editar pixels","Pintar preto","Pintar branco","Aplicar máscara","Vincular/desvincular","Visualizar máscara","Inverter máscara","Ativar/desativar","Densidade","Excluir máscara"},
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
@@ -913,6 +915,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Importar camada":host.importImage();break;
             case "Salvar .noise":scheduleSaveNow();break;
             case "Exportar PNG":export();break;
+            case "Fechar conteúdo inteligente":if(parentSmartDocument!=null)closeSmartEditor();else message("Nenhum objeto inteligente aberto");break;
             case "Voltar":onBack();break;
         }
     }
@@ -930,20 +933,70 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Transformar":activateTool(Tool.TRANSFORM);transformDialog();return;
             case "Mesclagem":showTextPanel=false;showTransformPanel=false;
                 updatePanels();blendDialog();return;
+            case "Editar conteúdo inteligente":openSmartEditor(active);return;
             case "Converter em objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.RASTER){
                     message("Selecione uma camada raster desbloqueada");return;
                 }
-                document.checkpoint();active.type=StudioDocument.Type.SMART;break;
+                document.checkpoint();
+                StudioDocument inside=StudioDocument.blank(active.name,
+                    active.bitmap.getWidth(),active.bitmap.getHeight(),true);
+                inside.add("Conteúdo",active.bitmap.copy(Bitmap.Config.ARGB_8888,true));
+                inside.markSaved();active.smartContent=inside;
+                active.type=StudioDocument.Type.SMART;break;
             case "Rasterizar objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.SMART){
                     message("Selecione um objeto inteligente incorporado");return;
                 }
-                document.checkpoint();active.type=StudioDocument.Type.RASTER;break;
+                document.checkpoint();active.type=StudioDocument.Type.RASTER;
+                active.smartContent=null;break;
             case "Painel":case "Camadas":showLayers=!showLayers;
                 propertyPanel.setVisibility(showLayers?VISIBLE:GONE);return;
         }
         changed(true);
+    }
+    private void openSmartEditor(StudioDocument.Layer owner){
+        if(owner==null||owner.type!=StudioDocument.Type.SMART||owner.locked){
+            message("Selecione um objeto inteligente desbloqueado");return;
+        }
+        if(parentSmartDocument!=null){message("Feche primeiro o conteúdo atual");return;}
+        if(owner.smartContent==null){
+            StudioDocument content=StudioDocument.blank(owner.name,
+                owner.bitmap.getWidth(),owner.bitmap.getHeight(),true);
+            content.add("Conteúdo",owner.bitmap.copy(Bitmap.Config.ARGB_8888,true));
+            content.markSaved();owner.smartContent=content;
+        }
+        parentSmartDocument=document;smartOwnerId=owner.id;
+        document=owner.smartContent.snapshot();
+        editingMaskId=null;paintingMask=false;
+        selectedTool=Tool.BRUSH;showTextPanel=false;showTransformPanel=false;
+        updateUi();message("Editando conteúdo inteligente • Arquivo > Fechar conteúdo");
+    }
+    private void syncSmartEditor(){
+        if(parentSmartDocument==null)return;
+        StudioDocument.Layer owner=null;
+        for(StudioDocument.Layer l:parentSmartDocument.layers)
+            if(l.id.equals(smartOwnerId)){owner=l;break;}
+        if(owner==null)return;
+        owner.smartContent=document.snapshot();
+        owner.bitmap=document.composite();
+    }
+    private void closeSmartEditor(){
+        if(parentSmartDocument==null)return;
+        syncSmartEditor();
+        document=parentSmartDocument;parentSmartDocument=null;smartOwnerId=null;
+        editingMaskId=null;paintingMask=false;
+        changed(true);message("Conteúdo inteligente atualizado");
+    }
+    private void selectMask(StudioDocument.Layer layer,boolean mask){
+        if(layer==null)return;
+        document.activeId=layer.id;
+        paintingMask=mask&&layer.mask!=null;
+        editingMaskId=paintingMask?layer.id:null;
+        if(paintingMask)selectedTool=Tool.BRUSH;
+        updateUi();
+        message(paintingMask?"Pintando na máscara (branco revela; preto oculta)":
+            "Editando pixels da camada");
     }
     private void blendDialog(){
         StudioDocument.Layer layer=document.active();
@@ -1495,7 +1548,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private void scheduleSaveNow(){
         if(closed)return;
         main.removeCallbacks(autosave);
-        final StudioDocument snapshot=document.snapshot();
+        if(parentSmartDocument!=null)syncSmartEditor();
+        final StudioDocument snapshot=(parentSmartDocument!=null?
+            parentSmartDocument:document).snapshot();
         final StudioDocument original=document;
         final int stamp=revision;
         io.execute(()->{
@@ -1510,7 +1565,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         });
     }
     private void export(){
-        final StudioDocument snapshot=document.snapshot();
+        if(parentSmartDocument!=null)syncSmartEditor();
+        final StudioDocument snapshot=(parentSmartDocument!=null?
+            parentSmartDocument:document).snapshot();
         io.execute(()->{
             try{
                 store.exportPng(snapshot);
@@ -1522,6 +1579,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(!closed)Toast.makeText(activity,value,Toast.LENGTH_SHORT).show();
     }
     public void onBack(){
+        if(parentSmartDocument!=null){closeSmartEditor();return;}
         if(document.dirty)scheduleSaveNow();
         host.exit();
     }
