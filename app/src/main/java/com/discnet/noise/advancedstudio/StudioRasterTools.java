@@ -11,8 +11,6 @@ public final class StudioRasterTools {
         StudioDocument.Layer l=d.active();
         if(l==null||l.locked||l.type!=StudioDocument.Type.RASTER||l.bitmap==null)
             throw new IllegalStateException("Selecione uma camada raster desbloqueada");
-        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0f||l.skewX!=0f||l.skewY!=0f)
-            throw new IllegalStateException("Rasterize a transformação antes de pintar");
         return l;
     }
     public static final class Stroke {
@@ -33,9 +31,8 @@ public final class StudioRasterTools {
             if(erase)pen.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
         }
         private void clip(){
-            if(doc.selection!=null)
-                canvas.clipRect(doc.selection.left-layer.x,doc.selection.top-layer.y,
-                    doc.selection.right-layer.x,doc.selection.bottom-layer.y);
+            // Selection is enforced pixel-accurately on finish, including
+            // rotated, skewed and non-rectangular alpha selections.
         }
         public void start(float x,float y,float pressure){
             previousX=x;previousY=y;
@@ -53,7 +50,7 @@ public final class StudioRasterTools {
             StudioLayerEffects.invalidate(layer);
         }
         public void finish(){
-            if(doc.selectionPixels!=null)
+            if(doc.hasSelection())
                 restrictToSelection(doc,layer,original,painted);
         } // One undo checkpoint covers the complete gesture.
     }
@@ -70,13 +67,13 @@ public final class StudioRasterTools {
     }
     private static void restrictToSelection(StudioDocument d,StudioDocument.Layer l,
                                             Bitmap before,Bitmap after){
-        if(d.selectionPixels==null||before==null)return;
+        if(!d.hasSelection()||before==null)return;
         int w=after.getWidth(),h=after.getHeight();
         int[] old=new int[w*h],now=new int[w*h];
         before.getPixels(old,0,w,0,0,w,h);after.getPixels(now,0,w,0,0,w,h);
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-            int xx=Math.round(l.x+x),yy=Math.round(l.y+y);
-            if(!d.containsSelection(xx,yy))now[y*w+x]=old[y*w+x];
+            float[] p=StudioTransformMath.point(l,x+.5f,y+.5f);
+            if(!d.containsSelection(p[0],p[1]))now[y*w+x]=old[y*w+x];
         }
         after.setPixels(now,0,w,0,0,w,h);
     }
@@ -88,8 +85,6 @@ public final class StudioRasterTools {
         if(!maskTarget&&l.type!=StudioDocument.Type.RASTER)
             throw new IllegalStateException("Pinte somente em camadas rasterizadas");
         if(maskTarget&&l.mask==null)throw new IllegalStateException("A camada não possui máscara");
-        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0||l.skewX!=0||l.skewY!=0)
-            throw new IllegalStateException("Rasterize a transformação antes de editar os pixels");
         Bitmap original=maskTarget?l.mask:l.bitmap;
         if(original==null)throw new IllegalStateException("Sem pixels");
         int w=original.getWidth(),h=original.getHeight();
@@ -99,8 +94,8 @@ public final class StudioRasterTools {
             clear?Color.TRANSPARENT:color;
         boolean changed=false;
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-            float xx=x+l.x,yy=y+l.y;
-            if(d.hasSelection()&&!d.containsSelection(xx+.5f,yy+.5f))continue;
+            float[] coord=StudioTransformMath.point(l,x+.5f,y+.5f);
+            if(d.hasSelection()&&!d.containsSelection(coord[0],coord[1]))continue;
             pixels[y*w+x]=maskTarget&&clear?Color.BLACK:result;
             changed=true;
         }
@@ -126,8 +121,8 @@ public final class StudioRasterTools {
         while(head<tail){
             int idx=queue[head++],px=idx%w,py=idx/w;
             if(!matches(pix[idx],target,tolerance))continue;
-            float dx=px+l.x,dy=py+l.y;
-            if(d.hasSelection()&&!d.containsSelection(dx,dy))continue;
+            float[] coord=StudioTransformMath.point(l,px+.5f,py+.5f);
+            if(d.hasSelection()&&!d.containsSelection(coord[0],coord[1]))continue;
             pix[idx]=fill;changed++;
             if(px>0)tail=enqueue(idx-1,visited,queue,tail);
             if(px<w-1)tail=enqueue(idx+1,visited,queue,tail);
@@ -157,13 +152,12 @@ public final class StudioRasterTools {
         Bitmap copy=l.bitmap.copy(Bitmap.Config.ARGB_8888,true);
         if(copy==null)throw new IllegalStateException("Memória insuficiente");
         Canvas c=new Canvas(copy);
-        if(d.selection!=null)c.clipRect(d.selection.left-l.x,d.selection.top-l.y,
-                d.selection.right-l.x,d.selection.bottom-l.y);
+
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         if(Math.hypot(x2-x1,y2-y1)<1){x2=x1+1;y2=y1;}
         p.setShader(new LinearGradient(x1,y1,x2,y2,start,end,Shader.TileMode.CLAMP));
         c.drawRect(0,0,copy.getWidth(),copy.getHeight(),p);
-        if(d.selectionPixels!=null)restrictToSelection(d,l,l.bitmap,copy);
+        if(d.hasSelection())restrictToSelection(d,l,l.bitmap,copy);
         d.checkpoint();l.bitmap=copy;
     }
     /** Explicit raster adjustment, not a collection of duplicate sliders. */
@@ -186,17 +180,7 @@ public final class StudioRasterTools {
         p.setColorFilter(new ColorMatrixColorFilter(matrix));
         canvas.drawBitmap(l.bitmap,0,0,p);
         // Adjust only selected pixels; retain original outside the selection.
-        if(d.hasSelection()){
-            Bitmap clipped=l.bitmap.copy(Bitmap.Config.ARGB_8888,true);
-            Canvas selected=new Canvas(clipped);
-            selected.clipRect(d.selection.left-l.x,d.selection.top-l.y,
-                d.selection.right-l.x,d.selection.bottom-l.y);
-            Paint transfer=new Paint();
-            transfer.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC));
-            selected.drawBitmap(next,0,0,transfer);
-            next.recycle();next=clipped;
-        }
-        if(d.selectionPixels!=null)restrictToSelection(d,l,l.bitmap,next);
+        if(d.hasSelection())restrictToSelection(d,l,l.bitmap,next);
         d.checkpoint();l.bitmap=next;
     }
 }
