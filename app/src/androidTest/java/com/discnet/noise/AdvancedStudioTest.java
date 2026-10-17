@@ -38,10 +38,10 @@ final class AdvancedStudioTest {
         doc.moveOrder(-1);
         check(doc.layers.indexOf(copy)==1,"Layer reorder changes document z-order");
         doc.activeId=red.id;
-        red.locked=true;
+        doc.active().locked=true;
         doc.remove();
         check(doc.layers.size()==3,"Locked layer cannot be removed");
-        red.locked=false;
+        doc.active().locked=false;
         StudioProjectStore storage=new StudioProjectStore(activity);
         storage.save(doc);
         StudioDocument restored=storage.load(doc.id);
