@@ -282,9 +282,7 @@ public final class StudioLayerEffects {
             pen.setStrokeJoin(Paint.Join.ROUND);pen.setStyle(Paint.Style.STROKE);
         }
         private void clip(){
-            if(doc.selection!=null)
-                canvas.clipRect(doc.selection.left-layer.x,doc.selection.top-layer.y,
-                    doc.selection.right-layer.x,doc.selection.bottom-layer.y);
+            // Selection is applied after painting with transformed-pixel precision.
         }
         public void start(float x,float y){
             previousX=x;previousY=y;canvas.save();clip();
@@ -294,16 +292,20 @@ public final class StudioLayerEffects {
             invalidate(layer);
         }
         public void finish(){
-            if(doc.selectionPixels==null)return;
+            if(!doc.hasSelection())return;
             int w=modified.getWidth(),h=modified.getHeight();
             int[] px=new int[w*h],old=new int[w*h];
             modified.getPixels(px,0,w,0,0,w,h);
             original.getPixels(old,0,w,0,0,w,h);
             for(int y=0;y<h;y++)for(int x=0;x<w;x++)
-                if(!doc.containsSelection(x+layer.x+.5f,y+layer.y+.5f))
+                if(!selectedPoint(x,y))
                     px[y*w+x]=old[y*w+x];
             modified.setPixels(px,0,w,0,0,w,h);
             invalidate(layer);
+        }
+        private boolean selectedPoint(int x,int y){
+            float[] p=StudioTransformMath.point(layer,x+.5f,y+.5f);
+            return doc.containsSelection(p[0],p[1]);
         }
         public void move(float x,float y){
             canvas.save();clip();canvas.drawLine(previousX,previousY,x,y,pen);
