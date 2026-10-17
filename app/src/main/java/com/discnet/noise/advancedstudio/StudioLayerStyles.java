@@ -123,6 +123,20 @@ public final class StudioLayerStyles {
             default:return t;
         }
     }
+    private static final LruCache<String,Bitmap> STYLE_CACHE=
+        new LruCache<String,Bitmap>(24*1024*1024){
+            @Override protected int sizeOf(String key,Bitmap value){return value.getByteCount();}
+        };
+    private static Bitmap cached(Bitmap source,Style s,int padding){
+        String k;
+        try{k=System.identityHashCode(source)+":"+source.getGenerationId()+":"+padding+
+            ":"+s.toJson().toString();}
+        catch(JSONException ignored){return drawStyle(source,s,padding);}
+        Bitmap result=STYLE_CACHE.get(k);
+        if(result!=null&&!result.isRecycled())return result;
+        result=drawStyle(source,s,padding);
+        STYLE_CACHE.put(k,result);return result;
+    }
     private static Paint compositingPaint(Style s,float opacity){
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
         p.setAlpha(Math.round(255*cap(opacity)));
@@ -261,9 +275,9 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
                 (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
                 s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
-            Bitmap fx=drawStyle(source,s,padding);
+            Bitmap fx=cached(source,s,padding);
             canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
-            fx.recycle();
+
         }
         canvas.drawBitmap(source,0,0,paint);
         for(Style s:layer.styles)if(s.enabled&&
@@ -271,9 +285,9 @@ public final class StudioLayerStyles {
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
              s.kind==Kind.BEVEL_EMBOSS||
              s.kind==Kind.STROKE&&"INSIDE".equals(s.position))){
-            Bitmap fx=drawStyle(source,s,padding);
+            Bitmap fx=cached(source,s,padding);
             canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
-            fx.recycle();
+
         }
     }
 }
