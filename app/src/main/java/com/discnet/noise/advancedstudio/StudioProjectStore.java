@@ -51,6 +51,8 @@ public final class StudioProjectStore {
                 zip.closeEntry();
                 HashSet<String> written=new HashSet<>();
                 for(StudioDocument.Layer l:d.layers){
+                    if(l.type!=StudioDocument.Type.RASTER)continue;
+                    if(l.bitmap==null)throw new IOException("Raster sem imagem");
                     String path="layers/"+l.id+".png";
                     if(!written.add(path))throw new IOException("ID de camada duplicado");
                     zip.putNextEntry(new ZipEntry(path));
@@ -90,14 +92,15 @@ public final class StudioProjectStore {
                 String layerId=item.getString("id");
                 if(!layerId.matches("[0-9a-fA-F-]{36}")||!seen.add(layerId))
                     throw new IOException("Camada inválida");
-                String relative="layers/"+layerId+".png";
-                if(!relative.equals(item.getString("image")))
-                    throw new IOException("Caminho de arquivo proibido");
-                ZipEntry resource=zip.getEntry(relative);
-                if(resource==null||resource.getSize()>MAX_ZIP_BYTES)
-                    throw new IOException("Conteúdo da camada ausente");
-                Bitmap bitmap;
-                try(InputStream in=zip.getInputStream(resource)){
+                Bitmap bitmap=null;
+                if("RASTER".equals(item.optString("type","RASTER"))){
+                    String relative="layers/"+layerId+".png";
+                    if(!relative.equals(item.getString("image")))
+                        throw new IOException("Caminho de arquivo proibido");
+                    ZipEntry resource=zip.getEntry(relative);
+                    if(resource==null||resource.getSize()>MAX_ZIP_BYTES)
+                        throw new IOException("Conteúdo da camada ausente");
+                    try(InputStream in=zip.getInputStream(resource)){
                     byte[] content=readLimited(in,MAX_ZIP_BYTES);
                     BitmapFactory.Options check=new BitmapFactory.Options();
                     check.inJustDecodeBounds=true;
@@ -110,6 +113,7 @@ public final class StudioProjectStore {
                         throw new IOException("Documento excede orçamento de memória");
                     bitmap=BitmapFactory.decodeByteArray(content,0,content.length);
                     if(bitmap==null)throw new IOException("Imagem da camada inválida");
+                }
                 }
                 doc.layers.add(StudioDocument.decodeLayer(item,bitmap));
             }
