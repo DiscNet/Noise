@@ -18,3 +18,6 @@ Um dedo em Mover altera a posição da camada selecionada e registra comando de 
 
 ## Fases seguintes
 Fase 2: brush engine, eraser, formas/texto editáveis, seleções e transformações. Fase 3: máscaras, styles, filtros com semântica correta. Fase 4: smart objects, ferramentas profissionais, tiles e interoperabilidade.
+
+## Evolução 1.41.0
+Camadas tipadas (RASTER, TEXT, RECTANGLE, ELLIPSE). Texto e geometria serializados parametricamente e renderizados pelo mesmo compositor de exportação, sem bitmap de texto no `.noise`. Stroke/fill/gradient ColorMatrix implementados em StudioRasterTools, cada edição raster substitui referência do Bitmap (copy-on-write) após checkpoint, permitindo undo pixel a pixel. Seleção é RectF no espaço do documento e limita operações de raster. Crop altera dimensões e offsets com undo, sem eliminar bitmaps de origem. UI mantém rotas independentes do editor original.

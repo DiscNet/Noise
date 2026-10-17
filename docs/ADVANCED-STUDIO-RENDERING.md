@@ -5,3 +5,6 @@ Compositor `StudioDocument.render(Canvas)`: o mesmo código renderiza canvas de 
 O checkerboard é decoração do editor e não é exportado. A dimensão da saída é exatamente a do documento.
 
 Restrições: renderização CPU/UI na prévia; fase inicial não implementa tiles, máscaras, modelos ICC, HDR nem GPU compositor multicamadas. O pipeline existente OpenGL ES 2.0 de edição fotográfica não foi modificado. Refatorar composição em passes GPU, cache de layers e tiles somente com testes de borda e alfa. Não apresentar demais mesclagens como disponíveis.
+
+## Renderizador 1.41.0
+Translação, rotação e escala independentes por camada dentro de clip da dimensão do documento, seguidas de blending/opacity. Camadas raster: source bitmap; camadas TEXT: Canvas drawText parametrizado; RECTANGLE/ELLIPSE: primitivas vetoriais Canvas. Mesmos comandos para preview e export. Escopo restrito a raster 8 bits/sRGB, sem paths complexos ou glyph shapers profissionais. Alteração de pixels via copy-on-write/Canvas, com clip em seleção retangular. API 29+ suporta Overlay/Darken/Lighten além de Multiply/Screen; fallback Android 26-28 será expandido em versão posterior.

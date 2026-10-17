@@ -13,21 +13,21 @@ Estados: IDENTIFICADO (documentação), ANALISADO (requisitos e comportamento es
 | Adicionar / duplicar / excluir | IMPLEMENTADO; aguardando CI | StudioDocument, limita 40 |
 | Renomear / visibilidade / bloqueio | IMPLEMENTADO; aguardando CI | AdvancedStudioScreen |
 | Ordem / opacidade | IMPLEMENTADO; aguardando CI | painel layers e composição |
-| Normal / Multiply / Screen | IMPLEMENTADO; aguardando CI | renderizador CPU Android Canvas + Paint |
+| Normal / Multiply / Screen | IMPLEMENTADO; aguardando CI, além Overlay/Darken/Lighten em API 29+ | Renderizador Canvas |
 | Demais blend modes | PENDENTE | Sem nomes apontando para implementação falsa |
 | Ferramenta Move, pan e pinch | IMPLEMENTADO; aguardando CI | StudioCanvas; ainda sem snap |
 | Documentos múltiplos em abas | PENDENTE | Persistência permite documentos isolados em disco |
 | Histórico undo/redo de propriedades | IMPLEMENTADO; aguardando CI | 24 snapshots de metadata; não persiste após reabrir |
-| Projeto nativo .noise | IMPLEMENTADO; aguardando CI | ZIP manifesto + PNG por camada |
+| Projeto nativo .noise | V2 IMPLEMENTADO, aguardando CI; abre v1 | ZIP: PNG por raster; texto/vetor JSON paramétrico |
 | Recuperação automática (debounce) | IMPLEMENTADO; aguardando CI | após operações; não há journal incremental |
 | Salvar + reabrir camadas e posição | IMPLEMENTADO; aguardando CI | StudioProjectStore |
-| Exportação PNG MediaStore | IMPLEMENTADO; aguardando CI | Android 10+ nesta fase |
+| Exportação PNG MediaStore | IMPLEMENTADO; aguardando CI | Android 10+; compositor inclui texto e formas |
 | Importar imagem como camada | IMPLEMENTADO; aguardando CI | ACTION_OPEN_DOCUMENT; pixels originais; sem PSD |
-| Brush / Eraser / Clone / Healing | PENDENTE | Núcleo de raster precisa brush engine |
-| Seleções / Crop / Transform Livre | PENDENTE | Não expostos como funcionais |
-| Texto editável / vetores / shapes | PENDENTE | Tipos documentais posteriores |
-| Máscaras raster / vetoriais | PENDENTE | Pipeline v2 |
-| Adjustment layers / Filters | PENDENTE | Não reutilizar sliders globais incorretamente |
+| Brush / Eraser / Clone / Healing | Brush e Eraser IMPLEMENTADOS, aguardando CI; Clone e Healing PENDENTES | StudioRasterTools; gesto único e pixels com Undo |
+| Seleções / Crop / Transform Livre | Seleção retangular, crop confirmável, mover/escalar/rotacionar IMPLEMENTADOS; demais modos PENDENTES | StudioCanvas e StudioDocument |
+| Texto editável / vetores / shapes | Texto e formas retângulo/elipse IMPLEMENTADOS; Pen/Bezier e múltiplos estilos PENDENTES | Tipo sem bitmap, metadados reais no .noise |
+| Máscaras raster / vetoriais | PENDENTE | Seleção geométrica não é máscara de camada |
+| Adjustment layers / Filters | Brilho/Contraste/Saturação raster IMPLEMENTADOS; Adjustment layers e demais filtros PENDENTES | ColorMatrix raster, undo |
 | Layer Styles / Smart Filters | PENDENTE | Pipeline por passes |
 | Liquify | PENDENTE | Deslocamento persistente requer outro módulo |
 | PSD/SVG/TIFF import estruturada | PENDENTE | Formatos não anunciados como completos |
@@ -38,3 +38,6 @@ Estados: IDENTIFICADO (documentação), ANALISADO (requisitos e comportamento es
 | Documentação funcional Photopea | ANALISADO (parcial) | PHOTOPEA-FEATURE-AUDIT.md |
 
 Status atualizado somente por evidência de ferramentas, jamais por desejo de paridade com Photopea.
+
+## Fase 2 — 1.41.0 (CI pendente)
+Pintura raster e borracha (pressão) com bitmap copy-on-write e um checkpoint por traço, preenchimento contíguo com tolerância, gradiente linear, seleção retangular, crop confirmável, transformação numérica, formas retângulo/elipse e texto paramétrico. Ajustes raster Brilho/Contraste/Saturação. Riscos/pendências: máscara, paths Bezier, suavização avançada de pincéis, seleção complexa, transformação perspectiva/warp, gradientes radial/angular, tipografia rica, filtros avançados, reamostragem de transformações. O status TESTADO requer CI aprovado.
