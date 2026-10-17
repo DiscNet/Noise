@@ -369,6 +369,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
             title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
             title.setOnLongClickListener(v->{
+                document.activeId=layer.id;
+                updateUi();
                 if(layer.type==StudioDocument.Type.TEXT)textDialog();
                 else rename(layer);
                 return true;});
@@ -610,6 +612,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     case BRUSH:case ERASER:
                         try{
                             StudioDocument.Layer layer=document.active();
+                            if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
                             stroke=StudioRasterTools.begin(document,foreground,
                                 brushSize,brushOpacity/100f,selectedTool==Tool.ERASER,
                                 startDocX-layer.x,startDocY-layer.y,e.getPressure());
@@ -619,6 +622,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     case BUCKET:
                         try{
                             StudioDocument.Layer layer=document.active();
+                            if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
                             StudioRasterTools.bucket(document,
                                 Math.round(startDocX-layer.x),Math.round(startDocY-layer.y),
                                 foreground,24);
@@ -715,6 +719,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         &&action==MotionEvent.ACTION_UP){
                     try{
                         StudioDocument.Layer l=document.active();
+                        if(l==null)throw new IllegalStateException("Selecione uma camada raster");
                         StudioRasterTools.gradient(document,
                             startDocX-l.x,startDocY-l.y,docX(e.getX())-l.x,
                             docY(e.getY())-l.y,foreground,Color.TRANSPARENT);
