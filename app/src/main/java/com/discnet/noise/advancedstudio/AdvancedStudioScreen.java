@@ -989,7 +989,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             content.add("Conteúdo",owner.bitmap.copy(Bitmap.Config.ARGB_8888,true));
             content.markSaved();owner.smartContent=content;
         }
-        parentSmartDocument=document;smartOwnerId=owner.id;
+        parentSmartDocument=document;parentSmartDocument.checkpoint();smartOwnerId=owner.id;
         document=owner.smartContent.snapshot();
         editingMaskId=null;paintingMask=false;
         selectedTool=Tool.BRUSH;showTextPanel=false;showTransformPanel=false;
@@ -1825,8 +1825,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         try{
                             StudioDocument.Layer l=document.active();
                             if(l==null)throw new IllegalStateException("Selecione uma máscara");
+                            float[] local=StudioTransformMath.inversePoint(l,startDocX,startDocY);
                             maskStroke=StudioLayerEffects.beginMaskStroke(document,
-                                startDocX-l.x,startDocY-l.y,
+                                local[0],local[1],
                                 selectedTool==Tool.MASK_REVEAL,brushSize);
                             invalidate();
                         }catch(Exception error){message(error.getMessage());}
@@ -1850,13 +1851,16 @@ public final class AdvancedStudioScreen extends FrameLayout {
                                     Math.round(Color.red(foreground)*.299f+
                                     Color.green(foreground)*.587f+
                                     Color.blue(foreground)*.114f);
+                                float[] local=StudioTransformMath.inversePoint(layer,startDocX,startDocY);
                                 maskStroke=StudioLayerEffects.beginMaskStroke(document,
-                                    startDocX-layer.x,startDocY-layer.y,gray,brushSize);
+                                    local[0],local[1],gray,brushSize);
                                 invalidate();break;
                             }
                             stroke=StudioRasterTools.begin(document,foreground,
                                 brushSize,brushOpacity/100f,selectedTool==Tool.ERASER,
-                                startDocX-layer.x,startDocY-layer.y,e.getPressure());
+                                StudioTransformMath.inversePoint(layer,startDocX,startDocY)[0],
+                                StudioTransformMath.inversePoint(layer,startDocX,startDocY)[1],
+                                e.getPressure());
                             invalidate();
                         }catch(Exception error){message(error.getMessage());}
                         break;
@@ -1865,7 +1869,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             StudioDocument.Layer layer=document.active();
                             if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
                             StudioRasterTools.bucket(document,
-                                Math.round(startDocX-layer.x),Math.round(startDocY-layer.y),
+                                Math.round(StudioTransformMath.inversePoint(layer,startDocX,startDocY)[0]),
+                                Math.round(StudioTransformMath.inversePoint(layer,startDocX,startDocY)[1]),
                                 foreground,24);
                             changed(true);
                         }catch(Exception error){message(error.getMessage());}
@@ -1908,10 +1913,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 float dx=e.getX()-lastX,dy=e.getY()-lastY;
                 if(stroke!=null){
                     StudioDocument.Layer l=stroke.layer;
-                    stroke.move(x-l.x,y-l.y);invalidate();
+                    float[] local=StudioTransformMath.inversePoint(l,x,y);
+                    stroke.move(local[0],local[1]);invalidate();
                 }else if(maskStroke!=null){
                     StudioDocument.Layer l=maskStroke.layer;
-                    maskStroke.move(x-l.x,y-l.y);invalidate();
+                    float[] local=StudioTransformMath.inversePoint(l,x,y);
+                    maskStroke.move(local[0],local[1]);invalidate();
                 }else if(gestureRect!=null){
                     gestureRect.set(startDocX,startDocY,x,y);gestureRect.sort();
                     invalidate();
@@ -2013,8 +2020,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         StudioDocument.Layer l=document.active();
                         if(l==null)throw new IllegalStateException("Selecione uma camada raster");
                         StudioRasterTools.gradient(document,
-                            startDocX-l.x,startDocY-l.y,docX(e.getX())-l.x,
-                            docY(e.getY())-l.y,foreground,Color.TRANSPARENT);
+                            StudioTransformMath.inversePoint(l,startDocX,startDocY)[0],
+                            StudioTransformMath.inversePoint(l,startDocX,startDocY)[1],
+                            StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[0],
+                            StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[1],
+                            foreground,Color.TRANSPARENT);
                         changed(true);
                     }catch(Exception ex){message(ex.getMessage());}
                 }
