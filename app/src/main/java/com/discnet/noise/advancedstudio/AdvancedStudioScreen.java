@@ -128,17 +128,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dock=new LinearLayout(a);dock.setOrientation(LinearLayout.VERTICAL);
         dock.setBackgroundColor(panel);
         if(wide)body.addView(dock,new LinearLayout.LayoutParams(dp(220),-1));
-        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(238)));
+        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(295)));
         propertyPanel=dock;
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
         dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
-        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;updatePanels();});
+        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
         layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
         dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
-        TextView textTab=action("TEXTO",()->{showTextPanel=true;updatePanels();});
+        TextView textTab=action("TEXTO",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
         textTab.setTextSize(11);
-        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(61),-1));
+        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(52),-1));
+        dockHead.addView(action("TRANSF.",this::transformDialog),new LinearLayout.LayoutParams(dp(64),-1));
         dockHead.addView(action("＋",()->layerCommand("Nova camada")));
         dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
         dockHead.addView(action("↑",()->layerCommand("Para cima")));
@@ -146,23 +147,75 @@ public final class AdvancedStudioScreen extends FrameLayout {
         dockHead.addView(action("×",()->layerCommand("Excluir")));
         layerPane=new LinearLayout(a);layerPane.setOrientation(LinearLayout.VERTICAL);
         dock.addView(layerPane,new LinearLayout.LayoutParams(-1,0,1));
+        blendButton=action("Normal  ⌄",this::blendDialog);
+        LinearLayout blendRow=new LinearLayout(a);
+        blendRow.setGravity(Gravity.CENTER_VERTICAL);
+        blendRow.setPadding(dp(10),0,dp(10),0);
+        blendRow.setBackgroundColor(0xff211c29);
+        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(35)));
+        blendRow.addView(text("MESCLAGEM",10,muted),
+            new LinearLayout.LayoutParams(dp(78),dp(33)));
+        blendButton.setTextColor(accent);blendButton.setTextSize(12);
+        blendRow.addView(blendButton,new LinearLayout.LayoutParams(0,dp(34),1));
+        LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
+        alphaRow.setPadding(dp(10),0,dp(10),0);
+        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(35)));
+        opacityLabel=text("OPACIDADE",10,muted);
+        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(79),-1));
+        opacity=new SeekBar(a);opacity.setMax(100);
+        opacity.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        opacity.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
+        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        opacityInput=new EditText(a);opacityInput.setSingleLine(true);
+        opacityInput.setTextSize(12);opacityInput.setTextColor(accent);
+        opacityInput.setGravity(Gravity.CENTER);
+        opacityInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        opacityInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        opacityInput.setSelectAllOnFocus(true);
+        alphaRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(48),dp(32)));
+        opacityInput.setOnEditorActionListener((v,action,event)->{
+            try{
+                StudioDocument.Layer selected=document.active();
+                int n=Integer.parseInt(opacityInput.getText().toString().trim());
+                if(selected!=null&&!selected.locked&&n>=0&&n<=100){
+                    document.checkpoint();selected.opacity=n/100f;
+                    changed(true);
+                }
+            }catch(Exception error){message("Opacidade deve estar entre 0 e 100");}
+            opacityInput.clearFocus();return true;
+        });
         layerScroll=new ScrollView(a);layerScroll.setFillViewport(false);
         layerPane.addView(layerScroll,new LinearLayout.LayoutParams(-1,0,1));
         layersList=new LinearLayout(a);layersList.setOrientation(LinearLayout.VERTICAL);
         layerScroll.addView(layersList);
-        LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
-        alphaRow.setPadding(dp(9),0,dp(9),0);
-        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(36)));
-        opacityLabel=text("Opacidade",11,muted);
-        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(89),-1));
-        opacity=new SeekBar(a);opacity.setMax(100);
-        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        effectsScroll=new ScrollView(a);
+        effectsScroll.setVisibility(GONE);
+        layerPane.addView(effectsScroll,new LinearLayout.LayoutParams(-1,0,1));
+        effectControls=new LinearLayout(a);effectControls.setOrientation(LinearLayout.VERTICAL);
+        effectControls.setPadding(dp(7),dp(5),dp(7),dp(5));
+        effectsScroll.addView(effectControls);
+        layerEffectsBar=new LinearLayout(a);
+        layerEffectsBar.setOrientation(LinearLayout.VERTICAL);
+        layerEffectsBar.setBackgroundColor(0xff221c2a);
+        layerPane.addView(layerEffectsBar,new LinearLayout.LayoutParams(-1,dp(67)));
+        TextView fxCaption=text("ESTILOS  •  EFEITOS DA CAMADA",10,accent);
+        fxCaption.setPadding(dp(11),dp(4),dp(4),0);
+        layerEffectsBar.addView(fxCaption,new LinearLayout.LayoutParams(-1,dp(22)));
+        HorizontalScrollView actionsScroll=new HorizontalScrollView(a);
+        actionsScroll.setHorizontalScrollBarEnabled(false);
+        layerEffectsBar.addView(actionsScroll,new LinearLayout.LayoutParams(-1,dp(45)));
+        effectActions=new LinearLayout(a);effectActions.setGravity(Gravity.CENTER_VERTICAL);
+        effectActions.setPadding(dp(7),0,dp(7),0);actionsScroll.addView(effectActions);
         textScroll=new ScrollView(a);textScroll.setFillViewport(false);
         dock.addView(textScroll,new LinearLayout.LayoutParams(-1,0,1));
         textPanel=new LinearLayout(a);textPanel.setOrientation(LinearLayout.VERTICAL);
         textPanel.setPadding(dp(10),dp(6),dp(10),dp(12));
-        textScroll.addView(textPanel);
-        textScroll.setVisibility(GONE);
+        textScroll.addView(textPanel);textScroll.setVisibility(GONE);
+        transformScroll=new ScrollView(a);transformScroll.setFillViewport(false);
+        dock.addView(transformScroll,new LinearLayout.LayoutParams(-1,0,1));
+        transformPanel=new LinearLayout(a);transformPanel.setOrientation(LinearLayout.VERTICAL);
+        transformPanel.setPadding(dp(9),dp(5),dp(9),dp(12));
+        transformScroll.addView(transformPanel);transformScroll.setVisibility(GONE);
         opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             boolean started;
             @Override public void onStartTrackingTouch(SeekBar b){started=false;}
@@ -172,7 +225,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(!fromUser||l==null||l.locked)return;
                 if(!started){document.checkpoint();started=true;}
                 l.opacity=progress/100f;
-                canvas.invalidate();opacityLabel.setText("Opacidade "+progress+"%");
+                canvas.invalidate();
+                if(!opacityInput.hasFocus())opacityInput.setText(String.valueOf(progress));
             }
         });
 
@@ -917,7 +971,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
         StudioDocument.Layer current=document.active();
         opacity.setEnabled(current!=null&&!current.locked);
         opacity.setProgress(current==null?100:Math.round(current.opacity*100));
-        opacityLabel.setText(current==null?"Opacidade":("Opacidade "+opacity.getProgress()+"%"));
+        if(!opacityInput.hasFocus())opacityInput.setText(String.valueOf(opacity.getProgress()));
+        blendButton.setText(current==null?"Normal  ⌄":blendName(current.blend)+"  ⌄");
         updatePanels();updateToolbar();
         canvas.invalidate();
     }
