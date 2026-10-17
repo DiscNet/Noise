@@ -9,6 +9,8 @@ public final class StudioTypography {
     private StudioTypography(){}
     public static Typeface font(StudioDocument.Layer layer){
         int style=(layer.fontBold?Typeface.BOLD:0)|(layer.fontItalic?Typeface.ITALIC:0);
+        Typeface custom=StudioFontLibrary.resolve(layer.fontFamily,style);
+        if(custom!=null)return custom;
         try {return Typeface.create(layer.fontFamily,style);}
         catch(Exception ignored){return Typeface.create("sans-serif",style);}
     }
