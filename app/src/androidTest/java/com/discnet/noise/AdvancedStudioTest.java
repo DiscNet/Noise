@@ -219,8 +219,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==4,
-            "Advanced Studio writes native project format version 4");
+        check(restoredFx.toJson().getInt("format")==5,
+            "Advanced Studio writes native project format version 5");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -245,6 +245,37 @@ final class AdvancedStudioTest {
             "Smart embedded layer retains independent bitmap data");
         new File(activity.getFilesDir(),"advanced_studio/"+
             enhanced.id+".noise").delete();
+        StudioDocument styledEffects=StudioDocument.blank("Layer style roundtrip",128,128,true);
+        StudioDocument.Layer decorated=styledEffects.addShape(
+            StudioDocument.Type.RECTANGLE,0xfff7ede8,52,44);
+        decorated.x=27;decorated.y=30;
+        for(StudioLayerStyles.Kind kind:StudioLayerStyles.Kind.values()){
+            StudioLayerStyles.Style fx=new StudioLayerStyles.Style(kind);
+            fx.size=4;fx.opacity=.82f;fx.contour="CUSTOM";
+            fx.customCurve=new float[]{0,.1f,.75f,.95f,1};
+            if(kind==StudioLayerStyles.Kind.INNER_GLOW)fx.sourceCenter=true;
+            decorated.styles.add(fx);
+        }
+        check(decorated.styles.size()==8,"All eight independent layer styles are available");
+        Bitmap stylePreview=styledEffects.composite();
+        check(stylePreview.getPixel(36,38)!=Color.TRANSPARENT,
+            "Layer style pipeline renders actual composited pixels");
+        stylePreview.recycle();
+        storage.save(styledEffects);
+        StudioDocument styledReloaded=storage.load(styledEffects.id);
+        StudioDocument.Layer loadedStyled=styledReloaded.active();
+        check(loadedStyled!=null&&loadedStyled.styles.size()==8,
+            "All editable layer effects persist to native .noise");
+        check(loadedStyled.styles.get(4).sourceCenter,
+            "Inner glow source Center survives project roundtrip");
+        check(loadedStyled.styles.get(0).customCurve[2]==.75f,
+            "Bevel custom contour points persist");
+        styledReloaded.checkpoint();loadedStyled.styles.get(0).opacity=.33f;
+        check(styledReloaded.undo()&&
+            Math.abs(styledReloaded.active().styles.get(0).opacity-.82f)<.001f,
+            "Undo restores previous layer style parameters");
+        new File(activity.getFilesDir(),"advanced_studio/"+
+            styledEffects.id+".noise").delete();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
