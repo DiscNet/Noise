@@ -326,6 +326,188 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }
         changed(true);
     }
+    private void textCommand(String cmd){
+        if("Novo texto".equals(cmd)){textDialog();return;}
+        showTextPanel=true;updatePanels();
+    }
+    private boolean canApplyText(StudioDocument.Layer original,StudioDocument.Layer draft){
+        if(draft.text.length()>8192||draft.text.trim().isEmpty()){
+            message("Texto inválido");return false;
+        }
+        if(original.mask!=null&&(long)draft.naturalWidth()*draft.naturalHeight()>
+            StudioLayerEffects.MAX_EFFECT_PIXELS){
+            message("O texto excede o tamanho permitido pela máscara");return false;
+        }
+        return true;
+    }
+    private void applyTextDraft(StudioDocument.Layer current,StudioDocument.Layer draft){
+        if(current==null||current.locked||current.type!=StudioDocument.Type.TEXT)return;
+        if(!canApplyText(current,draft))return;
+        document.checkpoint();
+        current.fontFamily=draft.fontFamily;current.fontBold=draft.fontBold;
+        current.fontItalic=draft.fontItalic;current.fontSize=draft.fontSize;
+        current.color=draft.color;current.letterSpacing=draft.letterSpacing;
+        current.lineSpacing=draft.lineSpacing;current.textAlign=draft.textAlign;
+        current.x=draft.x;current.y=draft.y;
+        current.scaleX=draft.scaleX;current.scaleY=draft.scaleY;
+        StudioLayerEffects.resizeMask(current);changed(true);
+    }
+    private void textTitle(String title){
+        TextView heading=text(title,10,accent);
+        heading.setPadding(dp(7),dp(9),0,dp(3));
+        textPanel.addView(heading,new LinearLayout.LayoutParams(-1,dp(31)));
+    }
+    private void textOption(String title,String value,Runnable action){
+        LinearLayout row=new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(9),0,dp(9),0);
+        TextView label=text(title,12,ink),detail=text(value,12,accent);
+        row.addView(label,new LinearLayout.LayoutParams(0,dp(41),1));
+        detail.setSingleLine(true);detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(detail,new LinearLayout.LayoutParams(dp(138),dp(41)));
+        row.setOnClickListener(v->action.run());
+        row.setBackgroundColor(0xff241f2b);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(42));
+        lp.bottomMargin=dp(3);textPanel.addView(row,lp);
+    }
+    private void updatePanels(){
+        if(closed)return;
+        layerPane.setVisibility(showTextPanel?GONE:VISIBLE);
+        textScroll.setVisibility(showTextPanel?VISIBLE:GONE);
+        if(!showTextPanel)return;
+        textPanel.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.type!=StudioDocument.Type.TEXT){
+            textTitle("CARACTERE / PARÁGRAFO");
+            textOption("Nova camada de texto","+",this::textDialog);
+            TextView help=text("Selecione uma camada de texto para alterar fonte, tamanho, cor, alinhamento e posição.",12,muted);
+            textPanel.addView(help);
+            return;
+        }
+        TextView preview=text(layer.text,18,layer.color);
+        preview.setTypeface(StudioTypography.font(layer));
+        preview.setSingleLine(true);preview.setMaxLines(1);
+        preview.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        preview.setPadding(dp(10),dp(7),dp(10),dp(7));
+        preview.setBackgroundColor(0xff38313f);
+        textPanel.addView(preview,new LinearLayout.LayoutParams(-1,dp(42)));
+        textTitle("CARACTERE");
+        textOption("Conteúdo","Editar",this::textDialog);
+        textOption("Fonte",layer.fontFamily,()->textSetting("font"));
+        textOption("Tamanho",Math.round(layer.fontSize)+" px",()->textSetting("size"));
+        textOption("Cor",String.format(Locale.ROOT,"#%06X",layer.color&0xffffff),()->textSetting("color"));
+        textOption("Negrito",layer.fontBold?"Ativado":"Desativado",()->textSetting("bold"));
+        textOption("Itálico",layer.fontItalic?"Ativado":"Desativado",()->textSetting("italic"));
+        textOption("Espaç. letras",String.format(Locale.ROOT,"%.2f em",layer.letterSpacing),
+            ()->textSetting("tracking"));
+        textTitle("PARÁGRAFO");
+        textOption("Alinhamento",layer.textAlign,()->textSetting("align"));
+        textOption("Entrelinhas",String.format(Locale.ROOT,"%.2f",layer.lineSpacing),
+            ()->textSetting("leading"));
+        textTitle("GEOMETRIA");
+        textOption("Posição X",Math.round(layer.x)+" px",()->textSetting("x"));
+        textOption("Posição Y",Math.round(layer.y)+" px",()->textSetting("y"));
+        textOption("Largura",Math.round(layer.scaleX*layer.naturalWidth())+" px",
+            ()->textSetting("width"));
+        textOption("Altura",Math.round(layer.scaleY*layer.naturalHeight())+" px",
+            ()->textSetting("height"));
+        textOption("Transformação completa","Abrir",this::transformDialog);
+    }
+    private void textSetting(String what){
+        StudioDocument.Layer current=document.active();
+        if(current==null||current.type!=StudioDocument.Type.TEXT||current.locked){
+            message("Selecione uma camada de texto desbloqueada");return;
+        }
+        if("bold".equals(what)||"italic".equals(what)){
+            StudioDocument.Layer next=current.copy();
+            if("bold".equals(what))next.fontBold=!next.fontBold;else next.fontItalic=!next.fontItalic;
+            applyTextDraft(current,next);return;
+        }
+        if("align".equals(what)){
+            String[] choices={"Esquerda","Centro","Direita"};
+            String[] ids={"LEFT","CENTER","RIGHT"};
+            new AlertDialog.Builder(activity).setTitle("Alinhamento do parágrafo")
+                .setSingleChoiceItems(choices,Arrays.asList(ids).indexOf(current.textAlign),
+                    (dialog,index)->{
+                        StudioDocument.Layer next=current.copy();next.textAlign=ids[index];
+                        applyTextDraft(current,next);dialog.dismiss();
+                    }).setNegativeButton("Cancelar",null).show();
+            return;
+        }
+        if("font".equals(what)){
+            String[] fonts={"sans-serif","sans-serif-light","sans-serif-condensed",
+                "sans-serif-black","serif","serif-monospace","monospace","cursive"};
+            new AlertDialog.Builder(activity).setTitle("Família tipográfica")
+                .setSingleChoiceItems(fonts,Arrays.asList(fonts).indexOf(current.fontFamily),
+                    (dialog,index)->{
+                        StudioDocument.Layer next=current.copy();next.fontFamily=fonts[index];
+                        applyTextDraft(current,next);dialog.dismiss();
+                    }).setNeutralButton("Outra fonte do sistema",(dialog,which)->{
+                        EditText family=numberField("Nome da família de fonte",false);
+                        family.setText(current.fontFamily);
+                        new AlertDialog.Builder(activity).setTitle("Família de fonte")
+                            .setView(family).setNegativeButton("Cancelar",null)
+                            .setPositiveButton("Aplicar",(d,w)->{
+                                StudioDocument.Layer next=current.copy();
+                                next.fontFamily=family.getText().toString().trim();
+                                if(next.fontFamily.isEmpty()||next.fontFamily.length()>64){
+                                    message("Nome de fonte inválido");return;
+                                }
+                                applyTextDraft(current,next);
+                            }).show();
+                    }).setNegativeButton("Cancelar",null).show();
+            return;
+        }
+        float value;
+        switch(what){
+            case "size":value=current.fontSize;break;
+            case "tracking":value=current.letterSpacing;break;
+            case "leading":value=current.lineSpacing;break;
+            case "x":value=current.x;break;
+            case "y":value=current.y;break;
+            case "width":value=Math.abs(current.scaleX*current.naturalWidth());break;
+            case "height":value=Math.abs(current.scaleY*current.naturalHeight());break;
+            default:value=0;
+        }
+        EditText input=numberField("color".equals(what)?"Cor hexadecimal":"Valor",false);
+        if("color".equals(what))
+            input.setText(String.format(Locale.ROOT,"#%06X",current.color&0xffffff));
+        else{
+            input.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED|
+                InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            input.setText(String.format(Locale.ROOT,"%.2f",value));
+        }
+        new AlertDialog.Builder(activity).setTitle("Texto · "+what).setView(input)
+            .setNegativeButton("Cancelar",null).setPositiveButton("Aplicar",(dialog,which)->{
+                try{
+                    StudioDocument.Layer draft=current.copy();
+                    float v="color".equals(what)?0:fieldValue(input);
+                    if(!Float.isFinite(v))throw new NumberFormatException();
+                    switch(what){
+                        case "size":
+                            if(v<8||v>600)throw new NumberFormatException();
+                            draft.fontSize=v;break;
+                        case "tracking":
+                            if(v<-.2f||v>1.5f)throw new NumberFormatException();
+                            draft.letterSpacing=v;break;
+                        case "leading":
+                            if(v<.5f||v>3)throw new NumberFormatException();
+                            draft.lineSpacing=v;break;
+                        case "color":draft.color=Color.parseColor(input.getText().toString().trim());break;
+                        case "x":draft.x=v;break;
+                        case "y":draft.y=v;break;
+                        case "width":case "height":
+                            if(v<1||v>StudioDocument.MAX_SIDE*16)throw new NumberFormatException();
+                            if("width".equals(what))draft.scaleX=
+                                Math.copySign(v/Math.max(1,current.naturalWidth()),current.scaleX);
+                            else draft.scaleY=
+                                Math.copySign(v/Math.max(1,current.naturalHeight()),current.scaleY);
+                            break;
+                    }
+                    applyTextDraft(current,draft);
+                }catch(Exception error){message("Valor de texto inválido");}
+            }).show();
+    }
     private void transformDialog(){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
