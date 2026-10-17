@@ -193,7 +193,7 @@ public final class StudioLayerStyles {
      */
     private static Bitmap drawStyle(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
         if(s.kind==Kind.BEVEL_EMBOSS)
-            return StudioBevelRenderer.render(layer,source,s,padding);
+            return StudioBevelRenderer.compose(layer,source,s,padding);
         return drawStyleCore(source,s,padding);
     }
     private static Bitmap drawStyleCore(Bitmap source,Style s,int padding){
