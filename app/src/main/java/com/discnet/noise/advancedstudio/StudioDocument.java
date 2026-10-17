@@ -10,20 +10,22 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=3, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
-    public enum Type { RASTER,TEXT,RECTANGLE,ELLIPSE }
+    public static final int FORMAT_VERSION=4, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
     public static final class Layer {
         public final String id;
         public String name;
         public Type type=Type.RASTER;
         public Bitmap bitmap;
-        public float x,y,scaleX=1f,scaleY=1f,rotation;
+        public float x,y,scaleX=1f,scaleY=1f,rotation,skewX,skewY;
         public float opacity=1f;
         public boolean visible=true,locked=false;
         public Blend blend=Blend.NORMAL;
         public String text="";
-        public float fontSize=64f;
+        public float fontSize=64f,letterSpacing=0f,lineSpacing=1.16f;
+        public String fontFamily="sans-serif",textAlign="LEFT";
+        public boolean fontBold,fontItalic;
         public int color=Color.WHITE,objectWidth=240,objectHeight=160;
         public Bitmap mask;
         public boolean maskEnabled=true,shadowEnabled=false;
@@ -35,19 +37,23 @@ public final class StudioDocument {
             this.id=id;this.name=name;this.bitmap=bitmap;
         }
         public int naturalWidth(){
-            return type==Type.RASTER?(bitmap==null?0:bitmap.getWidth()):
-                type==Type.TEXT?Math.max(1,Math.round(text.length()*fontSize*.61f)):objectWidth;
+            return (type==Type.RASTER||type==Type.SMART)?(bitmap==null?0:bitmap.getWidth()):
+                type==Type.TEXT?StudioTypography.width(this):objectWidth;
         }
         public int naturalHeight(){
-            return type==Type.RASTER?(bitmap==null?0:bitmap.getHeight()):
-                type==Type.TEXT?Math.round(fontSize*1.4f):objectHeight;
+            return (type==Type.RASTER||type==Type.SMART)?(bitmap==null?0:bitmap.getHeight()):
+                type==Type.TEXT?StudioTypography.height(this):objectHeight;
         }
         Layer copyWithNewId(){
             Layer l=copy();Layer newer=new Layer(UUID.randomUUID().toString(),name+" cópia",l.bitmap);
             newer.type=l.type;newer.x=l.x+18;newer.y=l.y+18;
             newer.scaleX=l.scaleX;newer.scaleY=l.scaleY;newer.rotation=l.rotation;
+            newer.skewX=l.skewX;newer.skewY=l.skewY;
             newer.opacity=l.opacity;newer.visible=l.visible;newer.locked=l.locked;
             newer.blend=l.blend;newer.text=l.text;newer.fontSize=l.fontSize;
+            newer.fontFamily=l.fontFamily;newer.fontBold=l.fontBold;newer.fontItalic=l.fontItalic;
+            newer.letterSpacing=l.letterSpacing;newer.lineSpacing=l.lineSpacing;
+            newer.textAlign=l.textAlign;
             newer.color=l.color;newer.objectWidth=l.objectWidth;
             newer.objectHeight=l.objectHeight;
             newer.mask=l.mask;newer.maskEnabled=l.maskEnabled;
@@ -61,8 +67,11 @@ public final class StudioDocument {
         Layer copy(){
             Layer l=new Layer(id,name,bitmap);l.type=type;
             l.x=x;l.y=y;l.scaleX=scaleX;l.scaleY=scaleY;l.rotation=rotation;
+            l.skewX=skewX;l.skewY=skewY;
             l.opacity=opacity;l.visible=visible;l.locked=locked;l.blend=blend;
             l.text=text;l.fontSize=fontSize;l.color=color;
+            l.fontFamily=fontFamily;l.fontBold=fontBold;l.fontItalic=fontItalic;
+            l.letterSpacing=letterSpacing;l.lineSpacing=lineSpacing;l.textAlign=textAlign;
             l.objectWidth=objectWidth;l.objectHeight=objectHeight;
             l.mask=mask;l.maskEnabled=maskEnabled;l.maskDensity=maskDensity;
             l.shadowEnabled=shadowEnabled;l.shadowRadius=shadowRadius;
@@ -75,11 +84,15 @@ public final class StudioDocument {
             JSONObject j=new JSONObject().put("id",id).put("name",name)
                 .put("type",type.name()).put("x",x).put("y",y)
                 .put("scaleX",scaleX).put("scaleY",scaleY).put("rotation",rotation)
+                .put("skewX",skewX).put("skewY",skewY)
                 .put("opacity",opacity).put("visible",visible).put("locked",locked)
                 .put("blend",blend.name()).put("text",text).put("fontSize",fontSize)
+                .put("fontFamily",fontFamily).put("fontBold",fontBold)
+                .put("fontItalic",fontItalic).put("letterSpacing",letterSpacing)
+                .put("lineSpacing",lineSpacing).put("textAlign",textAlign)
                 .put("color",color).put("objectWidth",objectWidth)
                 .put("objectHeight",objectHeight);
-            if(type==Type.RASTER)j.put("image","layers/"+id+".png");
+            if(type==Type.RASTER||type==Type.SMART)j.put("image","layers/"+id+".png");
             if(mask!=null)j.put("mask","masks/"+id+".png");
             j.put("maskEnabled",maskEnabled).put("maskDensity",maskDensity);
             j.put("shadowEnabled",shadowEnabled).put("shadowRadius",shadowRadius)
@@ -228,6 +241,8 @@ public final class StudioDocument {
             canvas.save();
             canvas.translate(l.x,l.y);
             canvas.rotate(l.rotation);
+            canvas.skew((float)Math.tan(Math.toRadians(l.skewX)),
+                (float)Math.tan(Math.toRadians(l.skewY)));
             canvas.scale(l.scaleX,l.scaleY);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
@@ -246,14 +261,10 @@ public final class StudioDocument {
             if(StudioLayerEffects.requiresProcessing(l)||l.shadowEnabled){
                 StudioLayerEffects.draw(canvas,l,p);
             }else switch(l.type){
-                case RASTER:if(l.bitmap!=null&&!l.bitmap.isRecycled())
+                case SMART:case RASTER:if(l.bitmap!=null&&!l.bitmap.isRecycled())
                     canvas.drawBitmap(l.bitmap,0,0,p);break;
                 case TEXT:
-                    p.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
-                    p.setTextSize(l.fontSize);
-                    String[] lines=l.text.split("\n",-1);
-                    for(int i=0;i<lines.length;i++)
-                        canvas.drawText(lines[i],0,l.fontSize*(i+1)*1.16f,p);
+                    StudioTypography.draw(canvas,l,p);
                     break;
                 case RECTANGLE:canvas.drawRect(0,0,l.objectWidth,l.objectHeight,p);break;
                 case ELLIPSE:canvas.drawOval(0,0,l.objectWidth,l.objectHeight,p);break;
@@ -278,7 +289,7 @@ public final class StudioDocument {
     }
     static StudioDocument fromJson(JSONObject j)throws Exception{
         int format=j.getInt("format");
-        if(format!=1&&format!=2&&format!=FORMAT_VERSION)
+        if(format!=1&&format!=2&&format!=3&&format!=FORMAT_VERSION)
             throw new java.io.IOException("Versão .noise incompatível");
         StudioDocument d=new StudioDocument(j.getString("id"),j.getString("name"),
             j.getInt("width"),j.getInt("height"),j.optInt("dpi",72));
@@ -299,9 +310,12 @@ public final class StudioDocument {
         l.scaleX=(float)j.optDouble("scaleX",1);
         l.scaleY=(float)j.optDouble("scaleY",1);
         l.rotation=(float)j.optDouble("rotation",0);
+        l.skewX=(float)j.optDouble("skewX",0);l.skewY=(float)j.optDouble("skewY",0);
         if(!Float.isFinite(l.x)||!Float.isFinite(l.y)||
            !Float.isFinite(l.scaleX)||!Float.isFinite(l.scaleY)||
            Math.abs(l.scaleX)>64||Math.abs(l.scaleY)>64||
+            !Float.isFinite(l.rotation)||!Float.isFinite(l.skewX)||
+            !Float.isFinite(l.skewY)||Math.abs(l.skewX)>70||Math.abs(l.skewY)>70||
            l.scaleX==0||l.scaleY==0)
             throw new java.io.IOException("Transformação inválida");
         l.opacity=(float)Math.max(0,Math.min(1,j.optDouble("opacity",1)));
@@ -311,11 +325,24 @@ public final class StudioDocument {
         l.text=j.optString("text","");
         if(l.text.length()>8192)throw new java.io.IOException("Texto muito longo");
         l.fontSize=(float)j.optDouble("fontSize",64);
+        l.fontFamily=j.optString("fontFamily","sans-serif");
+        l.fontBold=j.optBoolean("fontBold",false);
+        l.fontItalic=j.optBoolean("fontItalic",false);
+        l.letterSpacing=(float)j.optDouble("letterSpacing",0);
+        l.lineSpacing=(float)j.optDouble("lineSpacing",1.16);
+        l.textAlign=j.optString("textAlign","LEFT");
+        if(!Float.isFinite(l.fontSize)||l.fontSize<1||l.fontSize>600||
+            l.fontFamily.length()>64||!Float.isFinite(l.letterSpacing)||
+            l.letterSpacing<-.2f||l.letterSpacing>1.5f||
+            !Float.isFinite(l.lineSpacing)||l.lineSpacing<.5f||l.lineSpacing>3f||
+            !(l.textAlign.equals("LEFT")||l.textAlign.equals("CENTER")||
+              l.textAlign.equals("RIGHT")))
+            throw new java.io.IOException("Parâmetros de texto inválidos");
         l.color=j.optInt("color",Color.WHITE);
         l.objectWidth=j.optInt("objectWidth",240);l.objectHeight=j.optInt("objectHeight",160);
         if(l.objectWidth<1||l.objectWidth>MAX_SIDE||l.objectHeight<1||l.objectHeight>MAX_SIDE)
             throw new java.io.IOException("Objeto inválido");
-        if(l.type==Type.RASTER&&source==null)
+        if((l.type==Type.RASTER||l.type==Type.SMART)&&source==null)
             throw new java.io.IOException("Camada raster sem pixels");
         l.maskEnabled=j.optBoolean("maskEnabled",true);
         l.maskDensity=j.optInt("maskDensity",100);
