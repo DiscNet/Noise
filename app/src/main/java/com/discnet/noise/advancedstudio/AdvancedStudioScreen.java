@@ -847,13 +847,36 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolMode.setText("Transformar");updateToolbar();updatePanels();canvas.invalidate();
     }
     private void selectionCommand(String cmd){
-        if("Selecionar tudo".equals(cmd))document.select(new RectF(0,0,document.width,document.height));
-        else if("Desmarcar".equals(cmd))document.deselect();
-        else if("Recortar seleção".equals(cmd)&&document.selection!=null){
-            pendingCrop=new RectF(document.selection);selectedTool=Tool.CROP;
-            toolMode.setText("Recorte");canvas.invalidate();return;
-        }
-        changed(true);
+        try{
+            switch(cmd){
+                case "Selecionar tudo":
+                    document.select(new RectF(0,0,document.width,document.height));break;
+                case "Selecionar pixels da camada":
+                    document.selectPixels(document.active());break;
+                case "Inverter seleção":document.invertSelection();break;
+                case "Desmarcar":document.deselect();break;
+                case "Limpar":
+                    StudioRasterTools.clearOrFill(document,Color.TRANSPARENT,true,paintingMask);
+                    break;
+                case "Preencher com cor":
+                    StudioColorPicker.show(activity,"Preencher seleção",foreground,color->{
+                        try{
+                            StudioRasterTools.clearOrFill(document,color,false,paintingMask);
+                            changed(true);
+                        }catch(Exception ex){message(ex.getMessage());}
+                    });
+                    return;
+                case "Recortar seleção":
+                    if(document.selection==null){
+                        message("O recorte requer uma seleção retangular");return;
+                    }
+                    pendingCrop=new RectF(document.selection);
+                    selectedTool=Tool.CROP;toolMode.setText("Recorte");
+                    canvas.invalidate();return;
+                default:return;
+            }
+            changed(true);
+        }catch(Exception e){message(e.getMessage());}
     }
     private void imageCommand(String cmd){
         if("Cancelar recorte".equals(cmd)){pendingCrop=null;canvas.invalidate();return;}
@@ -1019,17 +1042,41 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
         try{
             switch(cmd){
-                case "Criar máscara branca":StudioLayerEffects.createMask(document,true);break;
-                case "Criar máscara preta":StudioLayerEffects.createMask(document,false);break;
-                case "Pintar preto":activateTool(Tool.MASK_HIDE);return;
-                case "Pintar branco":activateTool(Tool.MASK_REVEAL);return;
+                case "Criar máscara branca":
+                    StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);break;
+                case "Criar máscara preta":
+                    StudioLayerEffects.createMask(document,false);
+                    selectMask(l,true);break;
+                case "Editar máscara":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);return;
+                case "Editar pixels":selectMask(l,false);return;
+                case "Pintar preto":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);activateTool(Tool.MASK_HIDE);return;
+                case "Pintar branco":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);activateTool(Tool.MASK_REVEAL);return;
+                case "Aplicar máscara":
+                    StudioLayerEffects.applyMask(document);
+                    paintingMask=false;editingMaskId=null;break;
+                case "Vincular/desvincular":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    document.checkpoint();l.maskLinked=!l.maskLinked;break;
+                case "Visualizar máscara":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    new AlertDialog.Builder(activity).setTitle("Prévia da máscara")
+                        .setView(new MaskThumb(activity,l)).setPositiveButton("Fechar",null).show();
+                    return;
                 case "Inverter máscara":StudioLayerEffects.invertMask(document);break;
                 case "Ativar/desativar":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
                     document.checkpoint();l.maskEnabled=!l.maskEnabled;break;
                 case "Excluir máscara":
                     if(l.mask==null)return;
-                    document.checkpoint();l.mask=null;break;
+                    document.checkpoint();l.mask=null;
+                    paintingMask=false;editingMaskId=null;break;
                 case "Densidade":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
                     maskDensityDialog(l);return;
@@ -1360,9 +1407,28 @@ public final class AdvancedStudioScreen extends FrameLayout {
             c.drawText(mark,w-dp(13),h-dp(5),p);
         }
     }
+    private final class MaskThumb extends View{
+        private final StudioDocument.Layer owner;
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        MaskThumb(Context ctx,StudioDocument.Layer l){super(ctx);owner=l;
+            setContentDescription("Miniatura da máscara; tocar para editar");}
+        @Override protected void onDraw(Canvas c){
+            super.onDraw(c);
+            if(owner.mask==null)return;
+            p.setColor(0xffffffff);p.setStyle(Paint.Style.FILL);
+            c.drawRoundRect(2,2,getWidth()-2,getHeight()-2,dp(4),dp(4),p);
+            p.setColor(Color.WHITE);
+            c.drawBitmap(owner.mask,null,new Rect(4,4,getWidth()-4,getHeight()-4),p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dp(2));
+            p.setColor(paintingMask&&owner.id.equals(editingMaskId)?accent:0xff554961);
+            c.drawRect(1,1,getWidth()-1,getHeight()-1,p);
+            p.setStyle(Paint.Style.FILL);
+        }
+    }
     private void updateUi(){
         if(closed)return;
-        docTab.setText(document.name+"  •  "+(document.dirty?"● ":"")+".noise");
+        docTab.setText((parentSmartDocument!=null?"◆ ":"")+document.name+"  •  "+(document.dirty?"● ":"")+".noise");
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
         layersList.removeAllViews();
         for(int i=document.layers.size()-1;i>=0;i--){
@@ -1376,11 +1442,19 @@ public final class AdvancedStudioScreen extends FrameLayout {
             row.addView(visibility,new LinearLayout.LayoutParams(dp(34),dp(40)));
             LayerThumb thumbnail=new LayerThumb(activity,layer);
             row.addView(thumbnail,new LinearLayout.LayoutParams(dp(49),dp(43)));
-            thumbnail.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
-            TextView title=text(layer.name,12,ink);title.setSingleLine(true);
+            thumbnail.setOnClickListener(v->selectMask(layer,false));
+            if(layer.type==StudioDocument.Type.SMART)
+                thumbnail.setOnLongClickListener(v->{openSmartEditor(layer);return true;});
+            if(layer.mask!=null){
+                MaskThumb maskPreview=new MaskThumb(activity,layer);
+                row.addView(maskPreview,new LinearLayout.LayoutParams(dp(41),dp(40)));
+                maskPreview.setOnClickListener(v->selectMask(layer,true));
+            }
+            TextView title=text((layer.type==StudioDocument.Type.SMART?"◆ ":"")+layer.name,12,ink);
+            title.setSingleLine(true);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
-            title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
+            title.setOnClickListener(v->selectMask(layer,false));
             title.setOnLongClickListener(v->{
                 document.activeId=layer.id;
                 updateUi();
