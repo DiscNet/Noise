@@ -680,6 +680,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private float lastX,lastY,lastMidX,lastMidY,startDocX,startDocY;
         private RectF gestureRect;
         private StudioRasterTools.Stroke stroke;
+        private StudioLayerEffects.MaskStroke maskStroke;
         StudioCanvas(Context c){
             super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             zoomDetector=new ScaleGestureDetector(c,
@@ -756,9 +757,19 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 lastX=e.getX();lastY=e.getY();
                 startDocX=docX(lastX);startDocY=docY(lastY);
                 gestureMoving=false;gestureUsed=false;resize=false;
-                gestureRect=null;stroke=null;
+                gestureRect=null;stroke=null;maskStroke=null;
                 if(!inDocument(startDocX,startDocY))return true;
                 switch(selectedTool){
+                    case MASK_HIDE:case MASK_REVEAL:
+                        try{
+                            StudioDocument.Layer l=document.active();
+                            if(l==null)throw new IllegalStateException("Selecione uma máscara");
+                            maskStroke=StudioLayerEffects.beginMaskStroke(document,
+                                startDocX-l.x,startDocY-l.y,
+                                selectedTool==Tool.MASK_REVEAL,brushSize);
+                            invalidate();
+                        }catch(Exception error){message(error.getMessage());}
+                        break;
                     case BRUSH:case ERASER:
                         try{
                             StudioDocument.Layer layer=document.active();
@@ -795,6 +806,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }
             if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
                 if(stroke!=null){stroke.finish();stroke=null;changed(true);}
+                if(maskStroke!=null){maskStroke=null;changed(true);}
                 gestureRect=null;
                 lastMidX=(e.getX(0)+e.getX(1))*.5f;
                 lastMidY=(e.getY(0)+e.getY(1))*.5f;
@@ -813,6 +825,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(stroke!=null){
                     StudioDocument.Layer l=stroke.layer;
                     stroke.move(x-l.x,y-l.y);invalidate();
+                }else if(maskStroke!=null){
+                    StudioDocument.Layer l=maskStroke.layer;
+                    maskStroke.move(x-l.x,y-l.y);invalidate();
                 }else if(gestureRect!=null){
                     gestureRect.set(startDocX,startDocY,x,y);gestureRect.sort();
                     invalidate();
@@ -845,6 +860,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
                 if(stroke!=null){
                     stroke.finish();stroke=null;changed(true);
+                }else if(maskStroke!=null){
+                    maskStroke=null;changed(true);
                 }else if(gestureMoving)changed(true);
                 if(gestureRect!=null&&!gestureUsed&&action==MotionEvent.ACTION_UP){
                     RectF rect=new RectF(gestureRect);
