@@ -107,8 +107,19 @@ public final class StudioDocument {
     }
     public Layer add(String label,Bitmap source){
         if(layers.size()>=MAX_LAYERS)throw new IllegalStateException("Limite de camadas");
+        // A new raster layer is real pixel storage, not an empty UI row.
+        // Bound decoded data to control RAM on mid-range Android devices.
+        long occupied=0;
+        for(Layer old:layers)if(old.bitmap!=null)
+            occupied+=(long)old.bitmap.getWidth()*old.bitmap.getHeight();
+        Bitmap pixels=source==null?
+            Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888):source;
+        if(occupied+(long)pixels.getWidth()*pixels.getHeight()>36_000_000){
+            if(source==null)pixels.recycle();
+            throw new IllegalStateException("Memória de camadas: limite desta fase atingido");
+        }
         checkpoint();
-        Layer layer=new Layer(UUID.randomUUID().toString(),label,source);
+        Layer layer=new Layer(UUID.randomUUID().toString(),label,pixels);
         layers.add(layer);activeId=layer.id;
         return layer;
     }
