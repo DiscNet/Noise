@@ -135,11 +135,11 @@ public final class StudioInspectorField extends LinearLayout {
             slider.setProgress(Math.round((value-min)/(max-min)*1000f));
     }
     private void commitInput(){
-        if(editing||!input.hasFocus())return;
+        if(editing)return;
         editing=true;
         try{
             float exact=Float.parseFloat(input.getText().toString().trim().replace(',','.'));
-            if(Float.isFinite(exact)){
+            if(Float.isFinite(exact)&&Math.abs(clamp(exact)-value)>.0001f){
                 callback.begin();value=clamp(exact);
                 callback.preview(value);callback.finish();
             }
