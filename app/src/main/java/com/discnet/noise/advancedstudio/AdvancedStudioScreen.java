@@ -30,7 +30,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final StudioCanvas canvas;
     private final TextView docTab,info,opacityLabel;
     private final SeekBar opacity;
-    private boolean hand,closed,showLayers=true;
+    enum Tool { MOVE,HAND,BRUSH,ERASER,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE }
+    private Tool selectedTool=Tool.MOVE;
+    private boolean closed,showLayers=true;
+    private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
+    private RectF pendingCrop;
+    private TextView toolMode;
     private int revision,savedRevision;
     private int ink=0xfff5f2f8,muted=0xffa9a4b0,accent=0xffbe9aeb;
     private final int surface=0xff101016,panel=0xff19171f;
@@ -55,8 +60,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::fileCommand);
         commandMenu("Editar",new String[]{"Desfazer","Refazer"},
             value->{if(value.equals("Desfazer"))document.undo();else document.redo();changed(false);});
-        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Painel"},
+        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Painel"},
             this::layerCommand);
+        commandMenu("Selecionar",new String[]{"Selecionar tudo","Desmarcar","Recortar seleção"},
+            this::selectionCommand);
+        commandMenu("Imagem",new String[]{"Aplicar recorte","Cancelar recorte","Brilho / Contraste / Saturação"},
+            this::imageCommand);
         commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas"},
             this::viewCommand);
 
@@ -66,7 +75,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         contextBar.setBackgroundColor(0xff201c28);
         docTab=text("",13,ink);docTab.setSingleLine(true);
         contextBar.addView(docTab,new LinearLayout.LayoutParams(0,-1,1));
-        TextView toolMode=text("Mover",12,accent);contextBar.addView(toolMode);
+        toolMode=text("Mover",12,accent);contextBar.addView(toolMode);
         page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
 
         LinearLayout body=new LinearLayout(a);
@@ -77,15 +86,23 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(wide)body.addView(working,new LinearLayout.LayoutParams(0,-1,1));
         else body.addView(working,new LinearLayout.LayoutParams(-1,0,1));
         tools=new LinearLayout(a);tools.setOrientation(LinearLayout.VERTICAL);
-        tools.setPadding(dp(3),dp(8),dp(3),dp(8));
+        tools.setPadding(dp(2),dp(5),dp(2),dp(5));
         tools.setBackgroundColor(0xff16141c);
-        working.addView(tools,new LinearLayout.LayoutParams(dp(51),-1));
-        TextView moveTool=tool("Mover");
-        TextView handTool=tool("Mão");
-        tools.addView(moveTool,new LinearLayout.LayoutParams(-1,dp(53)));
-        tools.addView(handTool,new LinearLayout.LayoutParams(-1,dp(53)));
-        moveTool.setOnClickListener(v->{hand=false;toolMode.setText("Mover");});
-        handTool.setOnClickListener(v->{hand=true;toolMode.setText("Mão");});
+        ScrollView toolScroll=new ScrollView(a);
+        toolScroll.setFillViewport(false);
+        toolScroll.setVerticalScrollBarEnabled(false);
+        toolScroll.addView(tools);
+        working.addView(toolScroll,new LinearLayout.LayoutParams(dp(60),-1));
+        toolButton("Mover",Tool.MOVE);
+        toolButton("Mão",Tool.HAND);
+        toolButton("Pincel",Tool.BRUSH);
+        toolButton("Borracha",Tool.ERASER);
+        toolButton("Seleção",Tool.SELECTION);
+        toolButton("Recorte",Tool.CROP);
+        toolButton("Balde",Tool.BUCKET);
+        toolButton("Gradiente",Tool.GRADIENT);
+        toolButton("Retâng.",Tool.RECTANGLE);
+        toolButton("Elipse",Tool.ELLIPSE);
         editor=new FrameLayout(a);editor.setBackgroundColor(0xff0a090d);
         working.addView(editor,new LinearLayout.LayoutParams(0,-1,1));
         canvas=new StudioCanvas(a);
@@ -136,6 +153,23 @@ public final class AdvancedStudioScreen extends FrameLayout {
         footer.addView(action("−",()->canvas.zoomBy(.8f)));
         footer.addView(action("+",()->canvas.zoomBy(1.25f)));
         page.addView(footer,new LinearLayout.LayoutParams(-1,dp(37)));
+        LinearLayout properties=new LinearLayout(a);properties.setGravity(Gravity.CENTER_VERTICAL);
+        properties.setPadding(dp(7),0,dp(7),0);
+        properties.setBackgroundColor(0xff201b27);
+        page.addView(properties,new LinearLayout.LayoutParams(-1,dp(45)));
+        properties.addView(action("Cor",this::colorDialog));
+        TextView widthLabel=text("Pincel",11,muted);
+        properties.addView(widthLabel);
+        SeekBar size=new SeekBar(a);size.setMax(119);size.setProgress(brushSize-1);
+        properties.addView(size,new LinearLayout.LayoutParams(0,dp(42),1));
+        size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int v,boolean from){
+                if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
+            }
+        });
+        properties.addView(action("Texto",this::textDialog));
         updateUi();
         if(imported!=null)scheduleSave();
     }
@@ -146,6 +180,107 @@ public final class AdvancedStudioScreen extends FrameLayout {
         t.setGravity(Gravity.CENTER_VERTICAL);t.setPadding(dp(5),0,dp(5),0);
         t.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
         return t;
+    }
+    private void toolButton(String title,Tool mode){
+        TextView button=tool(title);
+        tools.addView(button,new LinearLayout.LayoutParams(-1,dp(49)));
+        button.setOnClickListener(v->{selectedTool=mode;toolMode.setText(title);canvas.invalidate();});
+        button.setOnLongClickListener(v->{toolMode.setText(title);return true;});
+    }
+    private void colorDialog(){
+        EditText input=numberField("#RRGGBB",false);
+        input.setText(String.format(java.util.Locale.ROOT,"#%06X",foreground&0xffffff));
+        new AlertDialog.Builder(activity).setTitle("Cor principal · HEX")
+            .setView(input).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(d,w)->{
+                try{foreground=Color.parseColor(input.getText().toString().trim());}
+                catch(Exception e){message("Cor hexadecimal inválida");}
+            }).show();
+    }
+    private void textDialog(){
+        StudioDocument.Layer current=document.active();
+        boolean editing=current!=null&&current.type==StudioDocument.Type.TEXT;
+        EditText input=numberField("Texto editável",false);
+        input.setSingleLine(false);input.setMinLines(2);
+        input.setText(editing?current.text:"Noise!");
+        new AlertDialog.Builder(activity).setTitle(editing?"Editar texto":"Nova camada de texto")
+            .setView(input).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(dialog,which)->{
+                String value=input.getText().toString();
+                if(value.trim().isEmpty()){message("Insira um texto");return;}
+                if(value.length()>8192){message("Texto muito longo");return;}
+                if(editing){if(current.locked){message("Camada bloqueada");return;}
+                    document.checkpoint();current.text=value;current.color=foreground;
+                }else document.addText(value,foreground,64f);
+                changed(true);
+            }).show();
+    }
+    private void transformDialog(){
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        LinearLayout fields=new LinearLayout(activity);
+        fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(20),0,dp(20),0);
+        EditText rotate=numberField("Rotação",false);
+        rotate.setText(String.valueOf(layer.rotation));fields.addView(rotate);
+        EditText sx=numberField("Escala horizontal",false);
+        sx.setText(String.valueOf(layer.scaleX));fields.addView(sx);
+        EditText sy=numberField("Escala vertical",false);
+        sy.setText(String.valueOf(layer.scaleY));fields.addView(sy);
+        new AlertDialog.Builder(activity).setTitle("Transformação livre — valores")
+            .setView(fields).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(dialog,which)->{
+                try{
+                    float angle=Float.parseFloat(rotate.getText().toString());
+                    float x=Float.parseFloat(sx.getText().toString());
+                    float y=Float.parseFloat(sy.getText().toString());
+                    if(!Float.isFinite(angle)||!Float.isFinite(x)||!Float.isFinite(y)
+                        ||Math.abs(x)>.0f&&Math.abs(x)<.01f
+                        ||Math.abs(y)>.0f&&Math.abs(y)<.01f
+                        ||x==0||y==0||Math.abs(x)>16||Math.abs(y)>16)
+                        throw new NumberFormatException();
+                    document.checkpoint();layer.rotation=angle;
+                    layer.scaleX=x;layer.scaleY=y;changed(true);
+                }catch(Exception e){message("Transformação inválida");}
+            }).show();
+    }
+    private void selectionCommand(String cmd){
+        if("Selecionar tudo".equals(cmd))document.select(new RectF(0,0,document.width,document.height));
+        else if("Desmarcar".equals(cmd))document.deselect();
+        else if("Recortar seleção".equals(cmd)&&document.selection!=null){
+            pendingCrop=new RectF(document.selection);selectedTool=Tool.CROP;
+            toolMode.setText("Recorte");canvas.invalidate();return;
+        }
+        changed(true);
+    }
+    private void imageCommand(String cmd){
+        if("Cancelar recorte".equals(cmd)){pendingCrop=null;canvas.invalidate();return;}
+        if("Aplicar recorte".equals(cmd)){
+            if(pendingCrop==null){message("Defina a área de recorte");return;}
+            try{document.crop(pendingCrop);pendingCrop=null;changed(true);}
+            catch(Exception e){message(e.getMessage());}return;
+        }
+        if("Brilho / Contraste / Saturação".equals(cmd))adjustDialog();
+    }
+    private void adjustDialog(){
+        LinearLayout box=new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20),0,dp(20),0);
+        EditText brightness=numberField("Brilho (-100 a 100)",false);
+        EditText contrast=numberField("Contraste (-100 a 100)",false);
+        EditText saturation=numberField("Saturação (-100 a 100)",false);
+        brightness.setText("0");contrast.setText("0");saturation.setText("0");
+        box.addView(brightness);box.addView(contrast);box.addView(saturation);
+        new AlertDialog.Builder(activity).setTitle("Ajustes na camada raster")
+            .setView(box).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Aplicar",(d,w)->{
+                try{
+                    StudioRasterTools.adjust(document,
+                        Integer.parseInt(brightness.getText().toString()),
+                        Integer.parseInt(contrast.getText().toString()),
+                        Integer.parseInt(saturation.getText().toString()));
+                    changed(true);
+                }catch(Exception e){message("Ajuste: "+e.getMessage());}
+            }).show();
     }
     private TextView tool(String s){
         TextView v=text(s,11,ink);v.setGravity(Gravity.CENTER);
@@ -188,10 +323,26 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Excluir":document.remove();break;
             case "Para cima":document.moveOrder(1);break;
             case "Para baixo":document.moveOrder(-1);break;
+            case "Texto editável":textDialog();return;
+            case "Retângulo":document.addShape(StudioDocument.Type.RECTANGLE,foreground,200,160);break;
+            case "Elipse":document.addShape(StudioDocument.Type.ELLIPSE,foreground,200,160);break;
+            case "Transformar":transformDialog();return;
+            case "Mesclagem":blendDialog();return;
             case "Painel":case "Camadas":showLayers=!showLayers;
                 propertyPanel.setVisibility(showLayers?VISIBLE:GONE);return;
         }
         changed(true);
+    }
+    private void blendDialog(){
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked)return;
+        StudioDocument.Blend[] blends=StudioDocument.Blend.values();
+        String[] labels={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear"};
+        new AlertDialog.Builder(activity).setTitle("Modo de mesclagem")
+            .setSingleChoiceItems(labels,layer.blend.ordinal(),(dialog,which)->{
+                document.checkpoint();layer.blend=blends[which];
+                changed(true);dialog.dismiss();
+            }).setNegativeButton("Cancelar",null).show();
     }
     private void viewCommand(String cmd){
         if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
@@ -217,7 +368,10 @@ public final class AdvancedStudioScreen extends FrameLayout {
             TextView title=text(layer.name,12,ink);title.setSingleLine(true);
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
             title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
-            title.setOnLongClickListener(v->{rename(layer);return true;});
+            title.setOnLongClickListener(v->{
+                if(layer.type==StudioDocument.Type.TEXT)textDialog();
+                else rename(layer);
+                return true;});
             TextView lock=action(layer.locked?"L":"—",()->{
                 document.checkpoint();layer.locked=!layer.locked;changed(true);
             });
