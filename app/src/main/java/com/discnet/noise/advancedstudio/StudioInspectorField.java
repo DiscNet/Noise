@@ -81,7 +81,7 @@ public final class StudioInspectorField extends LinearLayout {
         plus.setOnClickListener(v->nudge(step));
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             private boolean began;
-            @Override public void onStartTrackingTouch(SeekBar b){began=true;callback.begin();}
+            @Override public void onStartTrackingTouch(SeekBar b){endTypingForDrag();began=true;callback.begin();}
             @Override public void onProgressChanged(SeekBar b,int progress,boolean fromUser){
                 if(!fromUser)return;
                 if(!began){began=true;callback.begin();}
@@ -95,6 +95,7 @@ public final class StudioInspectorField extends LinearLayout {
         title.setOnTouchListener((v,event)->{
             switch(event.getActionMasked()){
                 case MotionEvent.ACTION_DOWN:
+                    endTypingForDrag();
                     touchX=event.getRawX();initialValue=value;dragging=false;return true;
                 case MotionEvent.ACTION_MOVE:
                     if(!dragging&&Math.abs(event.getRawX()-touchX)>dp(5)){
@@ -123,8 +124,14 @@ public final class StudioInspectorField extends LinearLayout {
             if(!focused)commitInput();
         });
     }
+    private void endTypingForDrag(){
+        if(input.hasFocus()){
+            editing=true;input.clearFocus();editing=false;
+            refresh(false);
+        }
+    }
     private void nudge(float difference){
-        callback.begin();value=clamp(value+difference);
+        endTypingForDrag();callback.begin();value=clamp(value+difference);
         refresh(false);callback.preview(value);callback.finish();
     }
     private void refresh(boolean fromSlider){
