@@ -218,7 +218,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(value.trim().isEmpty()){message("Insira um texto");return;}
                 if(value.length()>8192){message("Texto muito longo");return;}
                 if(editing){if(current.locked){message("Camada bloqueada");return;}
+                    long projected=(long)Math.max(1,Math.round(value.length()*current.fontSize*.61f))
+                        *Math.max(1,Math.round(current.fontSize*1.4f));
+                    if(current.mask!=null&&projected>StudioLayerEffects.MAX_EFFECT_PIXELS){
+                        message("Texto grande demais para máscara vinculada");return;
+                    }
                     document.checkpoint();current.text=value;current.color=foreground;
+                    StudioLayerEffects.resizeMask(current);
                 }else document.addText(value,foreground,64f);
                 changed(true);
             }).show();
