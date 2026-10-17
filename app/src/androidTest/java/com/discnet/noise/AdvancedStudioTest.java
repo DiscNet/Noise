@@ -131,6 +131,66 @@ final class AdvancedStudioTest {
             "Non-destructive crop is fully reversible");
         new File(activity.getFilesDir(),"advanced_studio/"+vectors.id+".noise").delete();
 
+        // Phase 3: masks are grayscale alpha sources, independent from raster.
+        StudioDocument masked=StudioDocument.blank("Professional layers",64,64,true);
+        Bitmap opaque=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888);
+        opaque.eraseColor(Color.RED);
+        StudioDocument.Layer source=masked.add("Original preservado",opaque);
+        StudioLayerEffects.createMask(masked,true);
+        Bitmap unmodified=masked.composite();
+        check(unmodified.getPixel(30,30)==Color.RED,
+            "White mask reveals the original content without modifying it");
+        unmodified.recycle();
+        StudioLayerEffects.MaskStroke hiding=StudioLayerEffects.beginMaskStroke(
+            masked,20,20,false,16f);
+        hiding.move(28,20);
+        Bitmap disappeared=masked.composite();
+        check(Color.alpha(disappeared.getPixel(24,20))==0,
+            "Black mask brush hides pixels in actual layer compositor");
+        disappeared.recycle();
+        check(source.bitmap.getPixel(24,20)==Color.RED,
+            "Mask never damages the source raster image");
+        check(masked.undo()&&masked.composite().getPixel(24,20)==Color.RED,
+            "Undo restores previous mask bitmap without losing original");
+        check(masked.redo()&&Color.alpha(masked.composite().getPixel(24,20))==0,
+            "Redo re-applies painted mask");
+        StudioLayerEffects.invertMask(masked);
+        check(Color.alpha(masked.composite().getPixel(24,20))>200,
+            "Inverting a mask truly changes visible alpha");
+        masked.undo();
+        masked.active().maskEnabled=false;
+        check(masked.composite().getPixel(24,20)==Color.RED,
+            "Disabling mask restores all original pixels");
+        masked.active().maskEnabled=true;
+        StudioLayerEffects.Effect bright=new StudioLayerEffects.Effect(
+            StudioLayerEffects.Kind.BRIGHTNESS,40);
+        masked.checkpoint();masked.active().effects.add(bright);
+        StudioLayerEffects.Effect soft=new StudioLayerEffects.Effect(
+            StudioLayerEffects.Kind.GAUSSIAN_BLUR,3);
+        masked.checkpoint();masked.active().effects.add(soft);
+        Bitmap compositedFx=masked.composite();
+        check(compositedFx.getPixel(30,30)!=Color.TRANSPARENT,
+            "Stacked effects produce visible output after masks");
+        compositedFx.recycle();
+        check(masked.active().bitmap.getPixel(30,30)==Color.RED,
+            "Non-destructive filter chain does not modify original bitmap");
+        masked.active().shadowEnabled=true;
+        masked.active().shadowX=8f;masked.active().shadowY=8f;
+        masked.active().shadowRadius=4f;
+        storage.save(masked);
+        StudioDocument restoredFx=storage.load(masked.id);
+        check(restoredFx.layers.size()==1&&restoredFx.layers.get(0).mask!=null,
+            "Layer mask remains separate and readable in .noise v3");
+        check(restoredFx.layers.get(0).effects.size()==2 &&
+            restoredFx.layers.get(0).effects.get(1).kind==
+                StudioLayerEffects.Kind.GAUSSIAN_BLUR,
+            "Filter stack order and parameters survive closing/reopening");
+        check(restoredFx.layers.get(0).shadowEnabled&&
+            restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
+            "Drop shadow and untouched source pixels survive project persistence");
+        check(restoredFx.toJson().getInt("format")==3,
+            "Advanced Studio writes native project format version 3");
+        new File(activity.getFilesDir(),"advanced_studio/"+masked.id+".noise").delete();
         final AdvancedStudioScreen[] opened={null};
         test.runOnMainSync(()->{
             opened[0]=new AdvancedStudioScreen(activity,new AdvancedStudioScreen.Host(){
