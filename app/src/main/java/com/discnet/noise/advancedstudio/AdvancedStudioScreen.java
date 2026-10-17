@@ -524,8 +524,10 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final class StudioCanvas extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         private final ScaleGestureDetector zoomDetector;
-        private boolean gestureMoving,gestureUsed;
-        private float lastX,lastY,lastMidX,lastMidY;
+        private boolean gestureMoving,gestureUsed,resize;
+        private float lastX,lastY,lastMidX,lastMidY,startDocX,startDocY;
+        private RectF gestureRect;
+        private StudioRasterTools.Stroke stroke;
         StudioCanvas(Context c){
             super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             zoomDetector=new ScaleGestureDetector(c,
@@ -545,16 +547,34 @@ public final class AdvancedStudioScreen extends FrameLayout {
         float scale(){return fit()*document.zoom;}
         float left(){return (getWidth()-document.width*scale())*.5f+document.panX;}
         float top(){return (getHeight()-document.height*scale())*.5f+document.panY;}
+        float docX(float x){return (x-left())/scale();}
+        float docY(float y){return (y-top())/scale();}
+        boolean inDocument(float x,float y){
+            return x>=0&&x<document.width&&y>=0&&y<document.height;
+        }
+        private RectF activeBounds(StudioDocument.Layer l){
+            if(l==null)return null;
+            float w=l.naturalWidth()*Math.abs(l.scaleX);
+            float h=l.naturalHeight()*Math.abs(l.scaleY);
+            return new RectF(l.x,l.y,l.x+w,l.y+h);
+        }
+        private void outline(Canvas canvas,RectF bounds,int color){
+            if(bounds==null)return;
+            paint.setColor(color);paint.setShader(null);paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(.8f,1.5f/scale()));
+            canvas.drawRect(bounds,paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
         @Override protected void onDraw(Canvas c){
             super.onDraw(c);
             if(document==null)return;
-            float scale=scale();
+            float s=scale();
             c.drawColor(0xff0c0b0f);
-            c.save();c.translate(left(),top());c.scale(scale,scale);
-            paint.setColor(Color.WHITE);paint.setStyle(Paint.Style.FILL);
+            c.save();c.translate(left(),top());c.scale(s,s);
+            paint.setShader(null);paint.setColor(Color.WHITE);paint.setStyle(Paint.Style.FILL);
             c.drawRect(0,0,document.width,document.height,paint);
-            // Checkerboard visible underneath transparent pixels.
-            final int cell=48;
+            // Checkerboard is viewport-only decoration, never exported.
+            int cell=48;
             paint.setColor(0xffddd9e0);
             for(int y=0;y<document.height;y+=cell)
                 for(int x=0;x<document.width;x+=cell)
@@ -562,14 +582,19 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         c.drawRect(x,y,Math.min(x+cell,document.width),
                             Math.min(y+cell,document.height),paint);
             document.render(c);
-            StudioDocument.Layer l=document.active();
-            if(l!=null&&l.bitmap!=null){
-                paint.setColor(0xffbd91e9);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(1,1.4f/scale));
-                c.drawRect(l.x,l.y,l.x+l.bitmap.getWidth(),l.y+l.bitmap.getHeight(),paint);
-                paint.setStyle(Paint.Style.FILL);
+            StudioDocument.Layer current=document.active();
+            if(selectedTool==Tool.MOVE&&current!=null){
+                RectF bounds=activeBounds(current);
+                outline(c,bounds,0xffbd91e9);
+                if(bounds!=null){
+                    paint.setColor(0xfff1e9fd);
+                    c.drawRect(bounds.right-5/s,bounds.bottom-5/s,
+                        bounds.right+5/s,bounds.bottom+5/s,paint);
+                }
             }
+            outline(c,document.selection,0xffdbb4ff);
+            outline(c,pendingCrop,0xffedf0ee);
+            if(gestureRect!=null)outline(c,gestureRect,0xfff2cdf6);
             c.restore();
         }
         @Override public boolean onTouchEvent(MotionEvent e){
@@ -577,12 +602,49 @@ public final class AdvancedStudioScreen extends FrameLayout {
             int action=e.getActionMasked();
             if(action==MotionEvent.ACTION_DOWN){
                 lastX=e.getX();lastY=e.getY();
-                gestureMoving=false;gestureUsed=false;return true;
+                startDocX=docX(lastX);startDocY=docY(lastY);
+                gestureMoving=false;gestureUsed=false;resize=false;
+                gestureRect=null;stroke=null;
+                if(!inDocument(startDocX,startDocY))return true;
+                switch(selectedTool){
+                    case BRUSH:case ERASER:
+                        try{
+                            StudioDocument.Layer layer=document.active();
+                            stroke=StudioRasterTools.begin(document,foreground,
+                                brushSize,brushOpacity/100f,selectedTool==Tool.ERASER,
+                                startDocX-layer.x,startDocY-layer.y,e.getPressure());
+                            invalidate();
+                        }catch(Exception error){message(error.getMessage());}
+                        break;
+                    case BUCKET:
+                        try{
+                            StudioDocument.Layer layer=document.active();
+                            StudioRasterTools.bucket(document,
+                                Math.round(startDocX-layer.x),Math.round(startDocY-layer.y),
+                                foreground,24);
+                            changed(true);
+                        }catch(Exception error){message(error.getMessage());}
+                        break;
+                    case SELECTION:case CROP:case RECTANGLE:case ELLIPSE:
+                        gestureRect=new RectF(startDocX,startDocY,startDocX,startDocY);
+                        invalidate();break;
+                    case MOVE:
+                        StudioDocument.Layer current=document.active();
+                        RectF bounds=activeBounds(current);
+                        resize=current!=null&&bounds!=null
+                            &&Math.abs(startDocX-bounds.right)<18/scale()
+                            &&Math.abs(startDocY-bounds.bottom)<18/scale();
+                        break;
+                    default:break;
+                }
+                return true;
             }
             if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
+                if(stroke!=null){stroke.finish();stroke=null;changed(true);}
+                gestureRect=null;
                 lastMidX=(e.getX(0)+e.getX(1))*.5f;
                 lastMidY=(e.getY(0)+e.getY(1))*.5f;
-                gestureUsed=true;return true;
+                gestureUsed=true;invalidate();return true;
             }
             if(action==MotionEvent.ACTION_MOVE){
                 if(e.getPointerCount()>1){
@@ -592,27 +654,75 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     lastMidX=mx;lastMidY=my;invalidate();gestureUsed=true;return true;
                 }
                 if(gestureUsed)return true;
+                float x=docX(e.getX()),y=docY(e.getY());
                 float dx=e.getX()-lastX,dy=e.getY()-lastY;
-                if(hand){
-                    document.panX+=dx;document.panY+=dy;
+                if(stroke!=null){
+                    StudioDocument.Layer l=stroke.layer;
+                    stroke.move(x-l.x,y-l.y);invalidate();
+                }else if(gestureRect!=null){
+                    gestureRect.set(startDocX,startDocY,x,y);gestureRect.sort();
                     invalidate();
-                }else{
-                    StudioDocument.Layer active=document.active();
-                    if(active!=null&&!active.locked){
+                }else if(selectedTool==Tool.HAND){
+                    document.panX+=dx;document.panY+=dy;invalidate();
+                }else if(selectedTool==Tool.MOVE){
+                    StudioDocument.Layer current=document.active();
+                    if(current!=null&&!current.locked){
                         if(!gestureMoving&&Math.abs(dx)+Math.abs(dy)>1.5f){
                             document.checkpoint();gestureMoving=true;
                         }
                         if(gestureMoving){
-                            active.x+=Math.round(dx/scale());
-                            active.y+=Math.round(dy/scale());invalidate();
+                            if(resize){
+                                float originalW=Math.max(1,current.naturalWidth());
+                                float originalH=Math.max(1,current.naturalHeight());
+                                current.scaleX=Math.max(.05f,Math.min(12f,
+                                    (x-current.x)/originalW));
+                                current.scaleY=Math.max(.05f,Math.min(12f,
+                                    (y-current.y)/originalH));
+                            }else{
+                                current.x+=dx/scale();
+                                current.y+=dy/scale();
+                            }
+                            invalidate();
                         }
                     }
                 }
                 lastX=e.getX();lastY=e.getY();return true;
             }
             if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
-                if(gestureMoving)changed(true);
-                gestureMoving=false;gestureUsed=false;return true;
+                if(stroke!=null){
+                    stroke.finish();stroke=null;changed(true);
+                }else if(gestureMoving)changed(true);
+                if(gestureRect!=null&&!gestureUsed&&action==MotionEvent.ACTION_UP){
+                    RectF rect=new RectF(gestureRect);
+                    rect.intersect(0,0,document.width,document.height);
+                    if(rect.width()>2&&rect.height()>2){
+                        switch(selectedTool){
+                            case SELECTION:document.select(rect);changed(true);break;
+                            case CROP:pendingCrop=rect;break;
+                            case RECTANGLE:case ELLIPSE:
+                                try{
+                                    StudioDocument.Layer layer=document.addShape(
+                                        selectedTool==Tool.RECTANGLE?
+                                            StudioDocument.Type.RECTANGLE:StudioDocument.Type.ELLIPSE,
+                                        foreground,Math.round(rect.width()),Math.round(rect.height()));
+                                    layer.x=rect.left;layer.y=rect.top;changed(true);
+                                }catch(Exception ex){message(ex.getMessage());}
+                                break;
+                            default:break;
+                        }
+                    }
+                }else if(selectedTool==Tool.GRADIENT&&!gestureUsed
+                        &&action==MotionEvent.ACTION_UP){
+                    try{
+                        StudioDocument.Layer l=document.active();
+                        StudioRasterTools.gradient(document,
+                            startDocX-l.x,startDocY-l.y,docX(e.getX())-l.x,
+                            docY(e.getY())-l.y,foreground,Color.TRANSPARENT);
+                        changed(true);
+                    }catch(Exception ex){message(ex.getMessage());}
+                }
+                gestureRect=null;gestureMoving=false;gestureUsed=false;resize=false;
+                invalidate();return true;
             }
             return true;
         }
