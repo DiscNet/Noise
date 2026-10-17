@@ -1353,7 +1353,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         StudioDocument.Layer l=document.addText("Texto",foreground,64f);
                         l.x=startDocX;l.y=startDocY;
                         showTextPanel=true;changed(true);textDialog();
-                    }catch(Exception e){message(e.getMessage());}
+                    }catch(Exception error){message(error.getMessage());}
                 }else if(selectedTool==Tool.GRADIENT&&!gestureUsed
                         &&action==MotionEvent.ACTION_UP){
                     try{
