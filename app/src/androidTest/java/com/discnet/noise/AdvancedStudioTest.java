@@ -390,9 +390,9 @@ final class AdvancedStudioTest {
         int hardDifference=0,softDifference=0,partialCoverage=0;
         for(int y=0;y<92;y++)for(int x=0;x<160;x++){
             int smooth=smoothRender.getPixel(x,y),hard=hardRender.getPixel(x,y);
-            int soft=softRender.getPixel(x,y);
+            int softBevelPixel=softRender.getPixel(x,y);
             if(smooth!=hard)hardDifference++;
-            if(soft!=hard)softDifference++;
+            if(softBevelPixel!=hard)softDifference++;
             int a=Color.alpha(hard);
             if(a>4&&a<251)partialCoverage++;
         }
