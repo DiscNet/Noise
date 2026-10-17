@@ -25,7 +25,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final StudioProjectStore store;
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler main=new Handler(Looper.getMainLooper());
-    private StudioDocument document;
+    private StudioDocument document,parentSmartDocument;
+    private String smartOwnerId,editingMaskId;
+    private boolean paintingMask;
     private final LinearLayout page,menubar,tools,layersList,propertyPanel,layerPane,textPanel;
     private final ScrollView layerScroll,textScroll;
     private final HashMap<Tool,FrameLayout> toolGroups=new HashMap<>();
@@ -77,17 +79,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
         menuScroll.setBackgroundColor(0xff16141c);
         menuScroll.addView(menubar);
         page.addView(menuScroll,new LinearLayout.LayoutParams(-1,dp(52)));
-        commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Voltar"},
+        commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Fechar conteúdo inteligente","Voltar"},
             this::fileCommand);
         commandMenu("Editar",new String[]{"Desfazer","Refazer","Transformação livre","Girar 90° horário","Girar 90° anti-horário","Girar 180°","Espelhar horizontal","Espelhar vertical"},
             this::editCommand);
-        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Converter em objeto inteligente","Rasterizar objeto inteligente","Painel"},
+        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Converter em objeto inteligente","Editar conteúdo inteligente","Rasterizar objeto inteligente","Painel"},
             this::layerCommand);
-        commandMenu("Selecionar",new String[]{"Selecionar tudo","Desmarcar","Recortar seleção"},
+        commandMenu("Selecionar",new String[]{"Selecionar tudo","Selecionar pixels da camada","Inverter seleção","Desmarcar","Limpar","Preencher com cor","Recortar seleção"},
             this::selectionCommand);
         commandMenu("Imagem",new String[]{"Aplicar recorte","Cancelar recorte","Brilho / Contraste / Saturação"},
             this::imageCommand);
-        commandMenu("Máscaras",new String[]{"Criar máscara branca","Criar máscara preta","Pintar preto","Pintar branco","Inverter máscara","Ativar/desativar","Densidade","Excluir máscara"},
+        commandMenu("Máscaras",new String[]{"Criar máscara branca","Criar máscara preta","Editar máscara","Editar pixels","Pintar preto","Pintar branco","Aplicar máscara","Vincular/desvincular","Visualizar máscara","Inverter máscara","Ativar/desativar","Densidade","Excluir máscara"},
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
@@ -845,13 +847,36 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolMode.setText("Transformar");updateToolbar();updatePanels();canvas.invalidate();
     }
     private void selectionCommand(String cmd){
-        if("Selecionar tudo".equals(cmd))document.select(new RectF(0,0,document.width,document.height));
-        else if("Desmarcar".equals(cmd))document.deselect();
-        else if("Recortar seleção".equals(cmd)&&document.selection!=null){
-            pendingCrop=new RectF(document.selection);selectedTool=Tool.CROP;
-            toolMode.setText("Recorte");canvas.invalidate();return;
-        }
-        changed(true);
+        try{
+            switch(cmd){
+                case "Selecionar tudo":
+                    document.select(new RectF(0,0,document.width,document.height));break;
+                case "Selecionar pixels da camada":
+                    document.selectPixels(document.active());break;
+                case "Inverter seleção":document.invertSelection();break;
+                case "Desmarcar":document.deselect();break;
+                case "Limpar":
+                    StudioRasterTools.clearOrFill(document,Color.TRANSPARENT,true,paintingMask);
+                    break;
+                case "Preencher com cor":
+                    StudioColorPicker.show(activity,"Preencher seleção",foreground,color->{
+                        try{
+                            StudioRasterTools.clearOrFill(document,color,false,paintingMask);
+                            changed(true);
+                        }catch(Exception ex){message(ex.getMessage());}
+                    });
+                    return;
+                case "Recortar seleção":
+                    if(document.selection==null){
+                        message("O recorte requer uma seleção retangular");return;
+                    }
+                    pendingCrop=new RectF(document.selection);
+                    selectedTool=Tool.CROP;toolMode.setText("Recorte");
+                    canvas.invalidate();return;
+                default:return;
+            }
+            changed(true);
+        }catch(Exception e){message(e.getMessage());}
     }
     private void imageCommand(String cmd){
         if("Cancelar recorte".equals(cmd)){pendingCrop=null;canvas.invalidate();return;}
@@ -913,6 +938,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Importar camada":host.importImage();break;
             case "Salvar .noise":scheduleSaveNow();break;
             case "Exportar PNG":export();break;
+            case "Fechar conteúdo inteligente":if(parentSmartDocument!=null)closeSmartEditor();else message("Nenhum objeto inteligente aberto");break;
             case "Voltar":onBack();break;
         }
     }
@@ -930,20 +956,70 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Transformar":activateTool(Tool.TRANSFORM);transformDialog();return;
             case "Mesclagem":showTextPanel=false;showTransformPanel=false;
                 updatePanels();blendDialog();return;
+            case "Editar conteúdo inteligente":openSmartEditor(active);return;
             case "Converter em objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.RASTER){
                     message("Selecione uma camada raster desbloqueada");return;
                 }
-                document.checkpoint();active.type=StudioDocument.Type.SMART;break;
+                document.checkpoint();
+                StudioDocument inside=StudioDocument.blank(active.name,
+                    active.bitmap.getWidth(),active.bitmap.getHeight(),true);
+                inside.add("Conteúdo",active.bitmap.copy(Bitmap.Config.ARGB_8888,true));
+                inside.markSaved();active.smartContent=inside;
+                active.type=StudioDocument.Type.SMART;break;
             case "Rasterizar objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.SMART){
                     message("Selecione um objeto inteligente incorporado");return;
                 }
-                document.checkpoint();active.type=StudioDocument.Type.RASTER;break;
+                document.checkpoint();active.type=StudioDocument.Type.RASTER;
+                active.smartContent=null;break;
             case "Painel":case "Camadas":showLayers=!showLayers;
                 propertyPanel.setVisibility(showLayers?VISIBLE:GONE);return;
         }
         changed(true);
+    }
+    private void openSmartEditor(StudioDocument.Layer owner){
+        if(owner==null||owner.type!=StudioDocument.Type.SMART||owner.locked){
+            message("Selecione um objeto inteligente desbloqueado");return;
+        }
+        if(parentSmartDocument!=null){message("Feche primeiro o conteúdo atual");return;}
+        if(owner.smartContent==null){
+            StudioDocument content=StudioDocument.blank(owner.name,
+                owner.bitmap.getWidth(),owner.bitmap.getHeight(),true);
+            content.add("Conteúdo",owner.bitmap.copy(Bitmap.Config.ARGB_8888,true));
+            content.markSaved();owner.smartContent=content;
+        }
+        parentSmartDocument=document;parentSmartDocument.checkpoint();smartOwnerId=owner.id;
+        document=owner.smartContent.snapshot();
+        editingMaskId=null;paintingMask=false;
+        selectedTool=Tool.BRUSH;showTextPanel=false;showTransformPanel=false;
+        updateUi();message("Editando conteúdo inteligente • Arquivo > Fechar conteúdo");
+    }
+    private void syncSmartEditor(){
+        if(parentSmartDocument==null)return;
+        StudioDocument.Layer owner=null;
+        for(StudioDocument.Layer l:parentSmartDocument.layers)
+            if(l.id.equals(smartOwnerId)){owner=l;break;}
+        if(owner==null)return;
+        owner.smartContent=document.snapshot();
+        owner.bitmap=document.composite();
+    }
+    private void closeSmartEditor(){
+        if(parentSmartDocument==null)return;
+        syncSmartEditor();
+        document=parentSmartDocument;parentSmartDocument=null;smartOwnerId=null;
+        editingMaskId=null;paintingMask=false;
+        changed(true);message("Conteúdo inteligente atualizado");
+    }
+    private void selectMask(StudioDocument.Layer layer,boolean mask){
+        if(layer==null)return;
+        document.activeId=layer.id;
+        paintingMask=mask&&layer.mask!=null;
+        editingMaskId=paintingMask?layer.id:null;
+        if(paintingMask)selectedTool=Tool.BRUSH;
+        updateUi();
+        message(paintingMask?"Pintando na máscara (branco revela; preto oculta)":
+            "Editando pixels da camada");
     }
     private void blendDialog(){
         StudioDocument.Layer layer=document.active();
@@ -966,17 +1042,41 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
         try{
             switch(cmd){
-                case "Criar máscara branca":StudioLayerEffects.createMask(document,true);break;
-                case "Criar máscara preta":StudioLayerEffects.createMask(document,false);break;
-                case "Pintar preto":activateTool(Tool.MASK_HIDE);return;
-                case "Pintar branco":activateTool(Tool.MASK_REVEAL);return;
+                case "Criar máscara branca":
+                    StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);break;
+                case "Criar máscara preta":
+                    StudioLayerEffects.createMask(document,false);
+                    selectMask(l,true);break;
+                case "Editar máscara":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);return;
+                case "Editar pixels":selectMask(l,false);return;
+                case "Pintar preto":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);activateTool(Tool.MASK_HIDE);return;
+                case "Pintar branco":
+                    if(l.mask==null)StudioLayerEffects.createMask(document,true);
+                    selectMask(l,true);activateTool(Tool.MASK_REVEAL);return;
+                case "Aplicar máscara":
+                    StudioLayerEffects.applyMask(document);
+                    paintingMask=false;editingMaskId=null;break;
+                case "Vincular/desvincular":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    document.checkpoint();l.maskLinked=!l.maskLinked;break;
+                case "Visualizar máscara":
+                    if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
+                    new AlertDialog.Builder(activity).setTitle("Prévia da máscara")
+                        .setView(new MaskThumb(activity,l)).setPositiveButton("Fechar",null).show();
+                    return;
                 case "Inverter máscara":StudioLayerEffects.invertMask(document);break;
                 case "Ativar/desativar":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
                     document.checkpoint();l.maskEnabled=!l.maskEnabled;break;
                 case "Excluir máscara":
                     if(l.mask==null)return;
-                    document.checkpoint();l.mask=null;break;
+                    document.checkpoint();l.mask=null;
+                    paintingMask=false;editingMaskId=null;break;
                 case "Densidade":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
                     maskDensityDialog(l);return;
@@ -1307,9 +1407,28 @@ public final class AdvancedStudioScreen extends FrameLayout {
             c.drawText(mark,w-dp(13),h-dp(5),p);
         }
     }
+    private final class MaskThumb extends View{
+        private final StudioDocument.Layer owner;
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        MaskThumb(Context ctx,StudioDocument.Layer l){super(ctx);owner=l;
+            setContentDescription("Miniatura da máscara; tocar para editar");}
+        @Override protected void onDraw(Canvas c){
+            super.onDraw(c);
+            if(owner.mask==null)return;
+            p.setColor(0xffffffff);p.setStyle(Paint.Style.FILL);
+            c.drawRoundRect(2,2,getWidth()-2,getHeight()-2,dp(4),dp(4),p);
+            p.setColor(Color.WHITE);
+            c.drawBitmap(owner.mask,null,new Rect(4,4,getWidth()-4,getHeight()-4),p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(dp(2));
+            p.setColor(paintingMask&&owner.id.equals(editingMaskId)?accent:0xff554961);
+            c.drawRect(1,1,getWidth()-1,getHeight()-1,p);
+            p.setStyle(Paint.Style.FILL);
+        }
+    }
     private void updateUi(){
         if(closed)return;
-        docTab.setText(document.name+"  •  "+(document.dirty?"● ":"")+".noise");
+        docTab.setText((parentSmartDocument!=null?"◆ ":"")+document.name+"  •  "+(document.dirty?"● ":"")+".noise");
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
         layersList.removeAllViews();
         for(int i=document.layers.size()-1;i>=0;i--){
@@ -1323,11 +1442,19 @@ public final class AdvancedStudioScreen extends FrameLayout {
             row.addView(visibility,new LinearLayout.LayoutParams(dp(34),dp(40)));
             LayerThumb thumbnail=new LayerThumb(activity,layer);
             row.addView(thumbnail,new LinearLayout.LayoutParams(dp(49),dp(43)));
-            thumbnail.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
-            TextView title=text(layer.name,12,ink);title.setSingleLine(true);
+            thumbnail.setOnClickListener(v->selectMask(layer,false));
+            if(layer.type==StudioDocument.Type.SMART)
+                thumbnail.setOnLongClickListener(v->{openSmartEditor(layer);return true;});
+            if(layer.mask!=null){
+                MaskThumb maskPreview=new MaskThumb(activity,layer);
+                row.addView(maskPreview,new LinearLayout.LayoutParams(dp(41),dp(40)));
+                maskPreview.setOnClickListener(v->selectMask(layer,true));
+            }
+            TextView title=text((layer.type==StudioDocument.Type.SMART?"◆ ":"")+layer.name,12,ink);
+            title.setSingleLine(true);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
-            title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
+            title.setOnClickListener(v->selectMask(layer,false));
             title.setOnLongClickListener(v->{
                 document.activeId=layer.id;
                 updateUi();
@@ -1495,7 +1622,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private void scheduleSaveNow(){
         if(closed)return;
         main.removeCallbacks(autosave);
-        final StudioDocument snapshot=document.snapshot();
+        if(parentSmartDocument!=null)syncSmartEditor();
+        final StudioDocument snapshot=(parentSmartDocument!=null?
+            parentSmartDocument:document).snapshot();
         final StudioDocument original=document;
         final int stamp=revision;
         io.execute(()->{
@@ -1510,7 +1639,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         });
     }
     private void export(){
-        final StudioDocument snapshot=document.snapshot();
+        if(parentSmartDocument!=null)syncSmartEditor();
+        final StudioDocument snapshot=(parentSmartDocument!=null?
+            parentSmartDocument:document).snapshot();
         io.execute(()->{
             try{
                 store.exportPng(snapshot);
@@ -1522,6 +1653,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         if(!closed)Toast.makeText(activity,value,Toast.LENGTH_SHORT).show();
     }
     public void onBack(){
+        if(parentSmartDocument!=null){closeSmartEditor();return;}
         if(document.dirty)scheduleSaveNow();
         host.exit();
     }
@@ -1543,6 +1675,27 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private RectF gestureRect;
         private StudioRasterTools.Stroke stroke;
         private StudioLayerEffects.MaskStroke maskStroke;
+        private Bitmap pixelAnts,selectionRef;
+        private Bitmap buildPixelAnts(){
+            Bitmap mask=document.selectionPixels;
+            if(mask==null)return null;
+            if(mask==selectionRef&&pixelAnts!=null&&!pixelAnts.isRecycled())return pixelAnts;
+            selectionRef=mask;
+            if(pixelAnts!=null)pixelAnts.recycle();
+            int w=mask.getWidth(),h=mask.getHeight();
+            int[] p=new int[w*h];mask.getPixels(p,0,w,0,0,w,h);
+            int[] edges=new int[p.length];
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+                int i=y*w+x;
+                if(Color.alpha(p[i])<128)continue;
+                if(x==0||y==0||x==w-1||y==h-1||
+                    Color.alpha(p[i-1])<128||Color.alpha(p[i+1])<128||
+                    Color.alpha(p[i-w])<128||Color.alpha(p[i+w])<128)
+                    edges[i]=((x+y)/4)%2==0?0xffffffff:0xff211926;
+            }
+            pixelAnts=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+            pixelAnts.setPixels(edges,0,w,0,0,w,h);return pixelAnts;
+        }
         StudioCanvas(Context c){
             super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             zoomDetector=new ScaleGestureDetector(c,
@@ -1646,6 +1799,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(selectedTool==Tool.TRANSFORM&&current!=null)
                 transformOverlay(c,current);
             outline(c,document.selection,0xffdbb4ff);
+            if(document.selectionPixels!=null){
+                Bitmap ants=buildPixelAnts();
+                if(ants!=null){
+                    paint.setColor(Color.WHITE);paint.setAlpha(255);
+                    paint.setFilterBitmap(false);c.drawBitmap(ants,0,0,paint);
+                    paint.setFilterBitmap(true);
+                }
+            }
             outline(c,pendingCrop,0xffedf0ee);
             if(gestureRect!=null)outline(c,gestureRect,0xfff2cdf6);
             c.restore();
@@ -1664,8 +1825,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         try{
                             StudioDocument.Layer l=document.active();
                             if(l==null)throw new IllegalStateException("Selecione uma máscara");
+                            float[] local=StudioTransformMath.inversePoint(l,startDocX,startDocY);
                             maskStroke=StudioLayerEffects.beginMaskStroke(document,
-                                startDocX-l.x,startDocY-l.y,
+                                local[0],local[1],
                                 selectedTool==Tool.MASK_REVEAL,brushSize);
                             invalidate();
                         }catch(Exception error){message(error.getMessage());}
@@ -1674,9 +1836,31 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         try{
                             StudioDocument.Layer layer=document.active();
                             if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
+                            if(layer.type==StudioDocument.Type.SMART&&!paintingMask){
+                                final StudioDocument.Layer owner=layer;
+                                new AlertDialog.Builder(activity).setTitle("Objeto inteligente")
+                                    .setItems(new String[]{"Editar conteúdo","Rasterizar","Cancelar"},
+                                        (d,index)->{
+                                            if(index==0)openSmartEditor(owner);
+                                            if(index==1)layerCommand("Rasterizar objeto inteligente");
+                                        }).show();
+                                break;
+                            }
+                            if(paintingMask&&layer.mask!=null&&layer.id.equals(editingMaskId)){
+                                int gray=selectedTool==Tool.ERASER?0:
+                                    Math.round(Color.red(foreground)*.299f+
+                                    Color.green(foreground)*.587f+
+                                    Color.blue(foreground)*.114f);
+                                float[] local=StudioTransformMath.inversePoint(layer,startDocX,startDocY);
+                                maskStroke=StudioLayerEffects.beginMaskStroke(document,
+                                    local[0],local[1],gray,brushSize);
+                                invalidate();break;
+                            }
                             stroke=StudioRasterTools.begin(document,foreground,
                                 brushSize,brushOpacity/100f,selectedTool==Tool.ERASER,
-                                startDocX-layer.x,startDocY-layer.y,e.getPressure());
+                                StudioTransformMath.inversePoint(layer,startDocX,startDocY)[0],
+                                StudioTransformMath.inversePoint(layer,startDocX,startDocY)[1],
+                                e.getPressure());
                             invalidate();
                         }catch(Exception error){message(error.getMessage());}
                         break;
@@ -1685,7 +1869,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             StudioDocument.Layer layer=document.active();
                             if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
                             StudioRasterTools.bucket(document,
-                                Math.round(startDocX-layer.x),Math.round(startDocY-layer.y),
+                                Math.round(StudioTransformMath.inversePoint(layer,startDocX,startDocY)[0]),
+                                Math.round(StudioTransformMath.inversePoint(layer,startDocX,startDocY)[1]),
                                 foreground,24);
                             changed(true);
                         }catch(Exception error){message(error.getMessage());}
@@ -1710,7 +1895,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }
             if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
                 if(stroke!=null){stroke.finish();stroke=null;changed(true);}
-                if(maskStroke!=null){maskStroke=null;changed(true);}
+                if(maskStroke!=null){maskStroke.finish();maskStroke=null;changed(true);}
                 gestureRect=null;
                 lastMidX=(e.getX(0)+e.getX(1))*.5f;
                 lastMidY=(e.getY(0)+e.getY(1))*.5f;
@@ -1728,10 +1913,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 float dx=e.getX()-lastX,dy=e.getY()-lastY;
                 if(stroke!=null){
                     StudioDocument.Layer l=stroke.layer;
-                    stroke.move(x-l.x,y-l.y);invalidate();
+                    float[] local=StudioTransformMath.inversePoint(l,x,y);
+                    stroke.move(local[0],local[1]);invalidate();
                 }else if(maskStroke!=null){
                     StudioDocument.Layer l=maskStroke.layer;
-                    maskStroke.move(x-l.x,y-l.y);invalidate();
+                    float[] local=StudioTransformMath.inversePoint(l,x,y);
+                    maskStroke.move(local[0],local[1]);invalidate();
                 }else if(gestureRect!=null){
                     gestureRect.set(startDocX,startDocY,x,y);gestureRect.sort();
                     invalidate();
@@ -1796,7 +1983,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(stroke!=null){
                     stroke.finish();stroke=null;changed(true);
                 }else if(maskStroke!=null){
-                    maskStroke=null;changed(true);
+                    maskStroke.finish();maskStroke=null;changed(true);
                 }else if(gestureMoving)changed(true);
                 if(gestureRect!=null&&!gestureUsed&&action==MotionEvent.ACTION_UP){
                     RectF rect=new RectF(gestureRect);
@@ -1816,6 +2003,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                                 break;
                             default:break;
                         }
+                    }else if(selectedTool==Tool.SELECTION&&document.hasSelection()){
+                        document.deselect();changed(true);
                     }
                 }else if(selectedTool==Tool.TEXT&&!gestureUsed
                         &&action==MotionEvent.ACTION_UP
@@ -1831,8 +2020,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         StudioDocument.Layer l=document.active();
                         if(l==null)throw new IllegalStateException("Selecione uma camada raster");
                         StudioRasterTools.gradient(document,
-                            startDocX-l.x,startDocY-l.y,docX(e.getX())-l.x,
-                            docY(e.getY())-l.y,foreground,Color.TRANSPARENT);
+                            StudioTransformMath.inversePoint(l,startDocX,startDocY)[0],
+                            StudioTransformMath.inversePoint(l,startDocX,startDocY)[1],
+                            StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[0],
+                            StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[1],
+                            foreground,Color.TRANSPARENT);
                         changed(true);
                     }catch(Exception ex){message(ex.getMessage());}
                 }

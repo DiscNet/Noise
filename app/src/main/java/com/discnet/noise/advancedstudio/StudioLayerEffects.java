@@ -240,6 +240,20 @@ public final class StudioLayerEffects {
         bitmap.eraseColor(white?Color.WHITE:Color.BLACK);
         doc.checkpoint();layer.mask=bitmap;layer.maskEnabled=true;layer.maskDensity=100;
     }
+    public static void applyMask(StudioDocument doc){
+        StudioDocument.Layer l=doc.active();
+        if(l==null||l.locked||l.mask==null)
+            throw new IllegalStateException("Selecione uma máscara desbloqueada");
+        Bitmap bitmap=sourceBitmap(l);
+        if(bitmap==null)throw new IllegalStateException("Sem pixels na camada");
+        Bitmap result=mask(bitmap,l.mask,l.maskDensity);
+        if(bitmap!=l.bitmap)bitmap.recycle();
+        doc.checkpoint();
+        l.bitmap=result;l.mask=null;l.type=StudioDocument.Type.RASTER;
+        l.smartContent=null;
+        l.maskEnabled=true;l.maskDensity=100;
+        invalidate(l);
+    }
     public static void invertMask(StudioDocument doc){
         StudioDocument.Layer layer=doc.active();
         if(layer==null||layer.mask==null||layer.locked)
@@ -258,17 +272,17 @@ public final class StudioLayerEffects {
         final Paint pen=new Paint(Paint.ANTI_ALIAS_FLAG);
         final StudioDocument.Layer layer;
         final StudioDocument doc;
+        final Bitmap original,modified;
         float previousX,previousY;
-        MaskStroke(StudioDocument doc,StudioDocument.Layer l,Bitmap copy,int gray,float width){
+        MaskStroke(StudioDocument doc,StudioDocument.Layer l,Bitmap copy,Bitmap before,int gray,float width){
             this.doc=doc;layer=l;canvas=new Canvas(copy);
-            pen.setColor(gray>=128?Color.WHITE:Color.BLACK);
+            original=before;modified=copy;
+            int g=Math.max(0,Math.min(255,gray));pen.setColor(Color.rgb(g,g,g));
             pen.setStrokeWidth(width);pen.setStrokeCap(Paint.Cap.ROUND);
             pen.setStrokeJoin(Paint.Join.ROUND);pen.setStyle(Paint.Style.STROKE);
         }
         private void clip(){
-            if(doc.selection!=null)
-                canvas.clipRect(doc.selection.left-layer.x,doc.selection.top-layer.y,
-                    doc.selection.right-layer.x,doc.selection.bottom-layer.y);
+            // Selection is applied after painting with transformed-pixel precision.
         }
         public void start(float x,float y){
             previousX=x;previousY=y;canvas.save();clip();
@@ -276,6 +290,22 @@ public final class StudioLayerEffects {
             canvas.drawCircle(x,y,pen.getStrokeWidth()/2,pen);
             pen.setStyle(Paint.Style.STROKE);canvas.restore();
             invalidate(layer);
+        }
+        public void finish(){
+            if(!doc.hasSelection())return;
+            int w=modified.getWidth(),h=modified.getHeight();
+            int[] px=new int[w*h],old=new int[w*h];
+            modified.getPixels(px,0,w,0,0,w,h);
+            original.getPixels(old,0,w,0,0,w,h);
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+                if(!selectedPoint(x,y))
+                    px[y*w+x]=old[y*w+x];
+            modified.setPixels(px,0,w,0,0,w,h);
+            invalidate(layer);
+        }
+        private boolean selectedPoint(int x,int y){
+            float[] p=StudioTransformMath.point(layer,x+.5f,y+.5f);
+            return doc.containsSelection(p[0],p[1]);
         }
         public void move(float x,float y){
             canvas.save();clip();canvas.drawLine(previousX,previousY,x,y,pen);
@@ -285,15 +315,18 @@ public final class StudioLayerEffects {
     }
     public static MaskStroke beginMaskStroke(StudioDocument doc,float x,float y,
                                              boolean reveal,float size){
+        return beginMaskStroke(doc,x,y,reveal?255:0,size);
+    }
+    public static MaskStroke beginMaskStroke(StudioDocument doc,float x,float y,
+                                             int gray,float size){
         StudioDocument.Layer l=doc.active();
         if(l==null||l.locked||l.mask==null)
             throw new IllegalStateException("Selecione uma camada com máscara");
-        if(l.scaleX!=1f||l.scaleY!=1f||l.rotation!=0)
-            throw new IllegalStateException("Edite a máscara antes de transformar");
         Bitmap copy=l.mask.copy(Bitmap.Config.ARGB_8888,true);
         if(copy==null)throw new IllegalStateException("Memória insuficiente");
+        Bitmap before=l.mask;
         doc.checkpoint();l.mask=copy;
-        MaskStroke stroke=new MaskStroke(doc,l,copy,reveal?255:0,size);
+        MaskStroke stroke=new MaskStroke(doc,l,copy,before,gray,size);
         stroke.start(x,y);return stroke;
     }
 }

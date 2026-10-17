@@ -10,7 +10,7 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=5, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public static final int FORMAT_VERSION=6, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
     public static final class Layer {
@@ -28,7 +28,8 @@ public final class StudioDocument {
         public boolean fontBold,fontItalic;
         public int color=Color.WHITE,objectWidth=240,objectHeight=160;
         public Bitmap mask;
-        public boolean maskEnabled=true,shadowEnabled=false;
+        public boolean maskEnabled=true,maskLinked=true,shadowEnabled=false;
+        public StudioDocument smartContent;
         public int maskDensity=100;
         public float shadowRadius=5,shadowX=5,shadowY=5,shadowOpacity=.65f;
         public int shadowColor=Color.BLACK;
@@ -59,6 +60,7 @@ public final class StudioDocument {
             newer.color=l.color;newer.objectWidth=l.objectWidth;
             newer.objectHeight=l.objectHeight;
             newer.mask=l.mask;newer.maskEnabled=l.maskEnabled;
+            newer.maskLinked=l.maskLinked;newer.smartContent=l.smartContent==null?null:l.smartContent.snapshot();
             newer.maskDensity=l.maskDensity;
             newer.shadowEnabled=l.shadowEnabled;newer.shadowRadius=l.shadowRadius;
             newer.shadowX=l.shadowX;newer.shadowY=l.shadowY;
@@ -78,6 +80,7 @@ public final class StudioDocument {
             l.letterSpacing=letterSpacing;l.lineSpacing=lineSpacing;l.textAlign=textAlign;
             l.objectWidth=objectWidth;l.objectHeight=objectHeight;
             l.mask=mask;l.maskEnabled=maskEnabled;l.maskDensity=maskDensity;
+            l.maskLinked=maskLinked;l.smartContent=smartContent==null?null:smartContent.snapshot();
             l.shadowEnabled=shadowEnabled;l.shadowRadius=shadowRadius;
             l.shadowX=shadowX;l.shadowY=shadowY;
             l.shadowOpacity=shadowOpacity;l.shadowColor=shadowColor;
@@ -100,7 +103,9 @@ public final class StudioDocument {
                 .put("objectHeight",objectHeight);
             if(type==Type.RASTER||type==Type.SMART)j.put("image","layers/"+id+".png");
             if(mask!=null)j.put("mask","masks/"+id+".png");
-            j.put("maskEnabled",maskEnabled).put("maskDensity",maskDensity);
+            j.put("maskEnabled",maskEnabled).put("maskDensity",maskDensity)
+                .put("maskLinked",maskLinked);
+            if(smartContent!=null)j.put("smartContent",smartContent.toJson());
             j.put("shadowEnabled",shadowEnabled).put("shadowRadius",shadowRadius)
                 .put("shadowX",shadowX).put("shadowY",shadowY)
                 .put("shadowColor",shadowColor).put("shadowOpacity",shadowOpacity);
@@ -120,6 +125,7 @@ public final class StudioDocument {
     public final int dpi;
     public int background=Color.TRANSPARENT;
     public RectF selection;
+    public Bitmap selectionPixels;
     public float zoom=1f,panX,panY;
     public String activeId;
     public boolean dirty;
@@ -130,11 +136,13 @@ public final class StudioDocument {
         final ArrayList<Layer> layers=new ArrayList<>();
         final int width,height,background;
         final RectF selection;
+        final Bitmap selectionPixels;
         final String activeId;
         State(StudioDocument d){
             for(Layer l:d.layers)layers.add(l.copy());
             width=d.width;height=d.height;background=d.background;
             selection=d.selection==null?null:new RectF(d.selection);
+            selectionPixels=d.selectionPixels;
             activeId=d.activeId;
         }
     }
@@ -164,6 +172,7 @@ public final class StudioDocument {
         layers.clear();for(Layer l:s.layers)layers.add(l.copy());
         width=s.width;height=s.height;background=s.background;
         selection=s.selection==null?null:new RectF(s.selection);
+        selectionPixels=s.selectionPixels;
         activeId=s.activeId;dirty=true;
     }
     public boolean canUndo(){return !undo.isEmpty();}
@@ -229,9 +238,55 @@ public final class StudioDocument {
     public void select(RectF rect){
         RectF next=new RectF(rect);next.sort();
         next.intersect(0,0,width,height);
-        checkpoint();selection=next.isEmpty()?null:next;
+        checkpoint();selection=next.isEmpty()?null:next;selectionPixels=null;
     }
-    public void deselect(){if(selection!=null){checkpoint();selection=null;}}
+    public boolean hasSelection(){return selection!=null||selectionPixels!=null;}
+    public boolean containsSelection(float x,float y){
+        if(selectionPixels!=null){
+            int px=(int)x,py=(int)y;
+            return px>=0&&py>=0&&px<width&&py<height&&
+                Color.alpha(selectionPixels.getPixel(px,py))>=128;
+        }
+        return selection==null||selection.contains(x,y);
+    }
+    public void selectPixels(Layer layer){
+        if(layer==null)throw new IllegalArgumentException("Nenhuma camada");
+        if((long)width*height>4_194_304L)
+            throw new IllegalStateException("Seleção por pixels limitada a 4 MP");
+        Bitmap src=StudioLayerEffects.sourceBitmap(layer);
+        if(src==null)throw new IllegalStateException("Camada sem pixels");
+        Bitmap mask=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(mask);
+        Paint p=new Paint(Paint.FILTER_BITMAP_FLAG);
+        StudioTransformMath.apply(canvas,layer);
+        canvas.drawBitmap(src,0,0,p);
+        if(src!=layer.bitmap)src.recycle();
+        int[] arr=new int[width*height];mask.getPixels(arr,0,width,0,0,width,height);
+        for(int i=0;i<arr.length;i++)
+            arr[i]=Color.alpha(arr[i])>=32?Color.WHITE:Color.TRANSPARENT;
+        mask.setPixels(arr,0,width,0,0,width,height);
+        checkpoint();selection=null;selectionPixels=mask;
+    }
+    public void invertSelection(){
+        if(!hasSelection())throw new IllegalStateException("Nenhuma seleção");
+        if((long)width*height>4_194_304L)
+            throw new IllegalStateException("Inversão limitada a 4 MP");
+        Bitmap mask=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+        int[] pixels=new int[width*height];
+        if(selectionPixels!=null)
+            selectionPixels.getPixels(pixels,0,width,0,0,width,height);
+        else if(selection!=null){
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++)
+                if(selection.contains(x+.5f,y+.5f))pixels[y*width+x]=Color.WHITE;
+        }
+        for(int i=0;i<pixels.length;i++)
+            pixels[i]=Color.alpha(pixels[i])>=128?Color.TRANSPARENT:Color.WHITE;
+        mask.setPixels(pixels,0,width,0,0,width,height);
+        checkpoint();selection=null;selectionPixels=mask;
+    }
+    public void deselect(){
+        if(hasSelection()){checkpoint();selection=null;selectionPixels=null;}
+    }
     public void crop(RectF rectangle){
         RectF target=new RectF(rectangle);target.sort();
         target.intersect(0,0,width,height);
@@ -241,7 +296,7 @@ public final class StudioDocument {
             throw new IllegalArgumentException("Recorte inválido");
         checkpoint();width=right-left;height=bottom-top;
         for(Layer l:layers){l.x-=left;l.y-=top;}
-        selection=null;
+        selection=null;selectionPixels=null;
     }
     public void render(Canvas canvas){
         canvas.save();canvas.clipRect(0,0,width,height);
@@ -295,6 +350,7 @@ public final class StudioDocument {
             .put("id",id).put("name",name).put("width",width).put("height",height)
             .put("dpi",dpi).put("background",background).put("active",activeId)
             .put("zoom",zoom).put("panX",panX).put("panY",panY);
+        if(selectionPixels!=null)j.put("pixelSelection",true);
         if(selection!=null)j.put("selection",new JSONArray()
             .put(selection.left).put(selection.top).put(selection.right).put(selection.bottom));
         JSONArray items=new JSONArray();for(Layer l:layers)items.put(l.toJson());
@@ -302,7 +358,7 @@ public final class StudioDocument {
     }
     static StudioDocument fromJson(JSONObject j)throws Exception{
         int format=j.getInt("format");
-        if(format!=1&&format!=2&&format!=3&&format!=4&&format!=FORMAT_VERSION)
+        if(format<1||format>FORMAT_VERSION)
             throw new java.io.IOException("Versão .noise incompatível");
         StudioDocument d=new StudioDocument(j.getString("id"),j.getString("name"),
             j.getInt("width"),j.getInt("height"),j.optInt("dpi",72));
@@ -358,6 +414,7 @@ public final class StudioDocument {
         if((l.type==Type.RASTER||l.type==Type.SMART)&&source==null)
             throw new java.io.IOException("Camada raster sem pixels");
         l.maskEnabled=j.optBoolean("maskEnabled",true);
+        l.maskLinked=j.optBoolean("maskLinked",true);
         l.maskDensity=j.optInt("maskDensity",100);
         if(l.maskDensity<0||l.maskDensity>100)
             throw new java.io.IOException("Densidade de máscara inválida");
@@ -392,6 +449,7 @@ public final class StudioDocument {
         StudioDocument d=new StudioDocument(id,name,width,height,dpi);
         d.background=background;d.zoom=zoom;d.panX=panX;d.panY=panY;d.activeId=activeId;
         d.selection=selection==null?null:new RectF(selection);
+        d.selectionPixels=selectionPixels;
         for(Layer l:layers)d.layers.add(l.copy());
         d.dirty=dirty;return d;
     }

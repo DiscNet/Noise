@@ -219,8 +219,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==5,
-            "Advanced Studio writes native project format version 5");
+        check(restoredFx.toJson().getInt("format")==6,
+            "Advanced Studio writes native project format version 6");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -276,6 +276,59 @@ final class AdvancedStudioTest {
             "Undo restores previous layer style parameters");
         new File(activity.getFilesDir(),"advanced_studio/"+
             styledEffects.id+".noise").delete();
+        // True pixel selection must exclude transparent surroundings and
+        // preserve untouched pixels through brush, fill, clear and undo.
+        StudioDocument selectionDoc=StudioDocument.blank("Pixels",64,64,true);
+        Bitmap brushBase=Bitmap.createBitmap(20,20,Bitmap.Config.ARGB_8888);
+        brushBase.eraseColor(Color.TRANSPARENT);
+        for(int y=7;y<13;y++)for(int x=8;x<14;x++)
+            brushBase.setPixel(x,y,Color.GREEN);
+        StudioDocument.Layer painted=selectionDoc.add("Raster",brushBase);
+        painted.x=9;painted.y=12;
+        selectionDoc.selectPixels(painted);
+        check(selectionDoc.selectionPixels!=null&&
+            selectionDoc.containsSelection(18,20)&&!selectionDoc.containsSelection(10,13),
+            "Select pixels uses alpha, not the bounding rectangle");
+        StudioRasterTools.clearOrFill(selectionDoc,Color.RED,false,false);
+        check(painted.bitmap.getPixel(9,8)==Color.RED&&
+            painted.bitmap.getPixel(1,1)==Color.TRANSPARENT,
+            "Fill selection changes only truly selected raster pixels");
+        check(selectionDoc.undo(),"Raster fill is undoable");
+        painted=selectionDoc.active();
+        check(painted.bitmap.getPixel(9,8)==Color.GREEN,
+            "Undo restores original raster pixels");
+        selectionDoc.invertSelection();
+        check(!selectionDoc.containsSelection(18,20)&&
+            selectionDoc.containsSelection(10,13),
+            "Pixel selection inversion selects transparent surroundings");
+        selectionDoc.deselect();
+        check(!selectionDoc.hasSelection(),"Deselect removes pixel selection");
+        StudioLayerEffects.createMask(selectionDoc,true);
+        check(selectionDoc.active().mask.getPixel(5,5)==Color.WHITE,
+            "New mask is pure white by default");
+        selectionDoc.active().mask.setPixel(9,8,Color.BLACK);
+        StudioLayerEffects.applyMask(selectionDoc);
+        check(selectionDoc.active().mask==null&&
+            Color.alpha(selectionDoc.active().bitmap.getPixel(9,8))==0,
+            "Apply mask destructively bakes transparent pixels into raster");
+        Bitmap smartPixels=Bitmap.createBitmap(18,18,Bitmap.Config.ARGB_8888);
+        smartPixels.eraseColor(Color.BLUE);
+        StudioDocument smartDoc=StudioDocument.blank("Embedded",64,64,true);
+        StudioDocument.Layer smartOwner=smartDoc.add("Smart",smartPixels);
+        StudioDocument nested=StudioDocument.blank("Smart contents",18,18,true);
+        nested.add("Pixels",smartPixels.copy(Bitmap.Config.ARGB_8888,true));
+        smartOwner.type=StudioDocument.Type.SMART;smartOwner.smartContent=nested;
+        storage.save(smartDoc);
+        StudioDocument reopenedSmart=storage.load(smartDoc.id);
+        check(reopenedSmart.active().smartContent!=null&&
+            reopenedSmart.active().smartContent.layers.size()==1,
+            "Editable smart object persists independent child document");
+        StudioDocument inner=reopenedSmart.active().smartContent;
+        StudioRasterTools.clearOrFill(inner,Color.RED,false,false);
+        reopenedSmart.active().bitmap=inner.composite();
+        check(reopenedSmart.active().bitmap.getPixel(4,4)==Color.RED,
+            "Editing inside a smart object updates rendered parent instance");
+        new File(activity.getFilesDir(),"advanced_studio/"+smartDoc.id+".noise").delete();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);

@@ -33,6 +33,22 @@ public final class StudioTransformMath {
         float cos=(float)Math.cos(radians),sin=(float)Math.sin(radians);
         return new float[]{centerX(l)+u*cos-v*sin,centerY(l)+u*sin+v*cos};
     }
+    /** Maps a point from document coordinates into source bitmap coordinates.
+     * Inverts rotate -> skew -> scale, matching Canvas compositing exactly.
+     */
+    public static float[] inversePoint(StudioDocument.Layer l,float docX,float docY){
+        float x=docX-centerX(l),y=docY-centerY(l);
+        float radians=(float)Math.toRadians(l.rotation);
+        float co=(float)Math.cos(radians),si=(float)Math.sin(radians);
+        float u=x*co+y*si,v=-x*si+y*co;
+        float kx=(float)Math.tan(Math.toRadians(l.skewX));
+        float ky=(float)Math.tan(Math.toRadians(l.skewY));
+        float det=1-kx*ky;
+        if(Math.abs(det)<.0001f)det=Math.copySign(.0001f,det);
+        float sx=(u-kx*v)/det,sy=(v-ky*u)/det;
+        return new float[]{sx/l.scaleX+l.naturalWidth()*.5f,
+            sy/l.scaleY+l.naturalHeight()*.5f};
+    }
     public static RectF bounds(StudioDocument.Layer l){
         float w=l.naturalWidth(),h=l.naturalHeight();
         float[][] corners={point(l,0,0),point(l,w,0),
