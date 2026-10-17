@@ -41,3 +41,6 @@ Status atualizado somente por evidência de ferramentas, jamais por desejo de pa
 
 ## Fase 2 — 1.41.0 (CI pendente)
 Pintura raster e borracha (pressão) com bitmap copy-on-write e um checkpoint por traço, preenchimento contíguo com tolerância, gradiente linear, seleção retangular, crop confirmável, transformação numérica, formas retângulo/elipse e texto paramétrico. Ajustes raster Brilho/Contraste/Saturação. Riscos/pendências: máscara, paths Bezier, suavização avançada de pincéis, seleção complexa, transformação perspectiva/warp, gradientes radial/angular, tipografia rica, filtros avançados, reamostragem de transformações. O status TESTADO requer CI aprovado.
+
+## Fase 3A — 1.42.0
+IMPLEMENTADO (aguardando CI): máscara raster por camada (PNG próprio, branco/preto, inversão, densidade, pintura, Undo/Redo); pilha não destrutiva ordenável de GAUSSIAN_BLUR/BRIGHTNESS/SATURATION; sombra projetada editável; formato v3 com leitura v1/v2. LIMITADO: máscaras e efeitos até 2 MP por camada; parâmetros do filtro sem preview live ao arrastar, apenas ao confirmar; Gaussian processado por CPU. PENDENTE: máscaras vetoriais, clipping, brush mask feather, Pen, Liquify, retouch, curvas, smart objects, ajustes completos e demais layer styles. Os itens somente mudam para TESTADO após CI aprovado.
