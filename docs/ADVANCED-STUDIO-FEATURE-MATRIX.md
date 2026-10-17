@@ -44,3 +44,8 @@ Pintura raster e borracha (pressão) com bitmap copy-on-write e um checkpoint po
 
 ## Fase 3A — 1.42.0
 IMPLEMENTADO (aguardando CI): máscara raster por camada (PNG próprio, branco/preto, inversão, densidade, pintura, Undo/Redo); pilha não destrutiva ordenável de GAUSSIAN_BLUR/BRIGHTNESS/SATURATION; sombra projetada editável; formato v3 com leitura v1/v2. LIMITADO: máscaras e efeitos até 2 MP por camada; parâmetros do filtro sem preview live ao arrastar, apenas ao confirmar; Gaussian processado por CPU. PENDENTE: máscaras vetoriais, clipping, brush mask feather, Pen, Liquify, retouch, curvas, smart objects, ajustes completos e demais layer styles. Os itens somente mudam para TESTADO após CI aprovado.
+
+
+## Fase 3B parcial — 1.43.0 (status depende de CI)
+
+IMPLEMENTADO NO CÓDIGO: barra compacta com ícones vetoriais e agrupamento por toque prolongado; miniaturas das camadas a partir do conteúdo real; marcador raster / smart incorporado / texto / forma; painel Caractere/Parágrafo; tipografia paramétrica ampliada; ferramenta Transformar independente de Mover, com oito alças, pivô de rotação, propriedades X/Y/W/H, inclinação, proporção vinculada e presets de giros/espelhamentos; persistência v4 com leitura v1–v3. **AINDA NÃO TESTADO** em aparelho físico e com todos os gestos após a revisão visual. PENDENTE: Warp de malha e perspectiva livre, smart objects aninhados/PSD, paleta de fontes importadas, vetores Bézier, árvore de grupos e seleção múltipla de camadas.
