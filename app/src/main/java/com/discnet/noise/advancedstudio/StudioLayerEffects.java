@@ -208,6 +208,20 @@ public final class StudioLayerEffects {
         if(l.type!=StudioDocument.Type.RASTER&&!requiresProcessing(l))
             filtered.recycle();
     }
+    /** Keeps an attached raster mask aligned when editable text dimensions change. */
+    public static void resizeMask(StudioDocument.Layer l){
+        if(l.mask==null)return;
+        int w=l.naturalWidth(),h=l.naturalHeight();
+        if(w<1||h<1||(long)w*h>MAX_EFFECT_PIXELS)
+            throw new IllegalArgumentException("Texto maior que o limite da máscara");
+        if(l.mask.getWidth()==w&&l.mask.getHeight()==h)return;
+        Bitmap updated=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+        Canvas c=new Canvas(updated);
+        c.drawBitmap(l.mask,
+            new Rect(0,0,l.mask.getWidth(),l.mask.getHeight()),
+            new Rect(0,0,w,h),new Paint(Paint.FILTER_BITMAP_FLAG));
+        l.mask=updated;
+    }
     public static void createMask(StudioDocument doc,boolean white){
         StudioDocument.Layer layer=doc.active();
         if(layer==null||layer.locked)throw new IllegalStateException("Camada bloqueada");
