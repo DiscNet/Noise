@@ -186,5 +186,12 @@ public final class StudioDocument {
         catch(IllegalArgumentException e){throw new java.io.IOException("Mesclagem não suportada",e);}
         return l;
     }
+    public StudioDocument snapshot(){
+        StudioDocument d=new StudioDocument(id,name,width,height,dpi);
+        d.background=background;d.zoom=zoom;d.panX=panX;d.panY=panY;
+        d.activeId=activeId;
+        for(Layer layer:layers)d.layers.add(layer.copy());
+        d.dirty=dirty;return d;
+    }
     public void markSaved(){dirty=false;}
 }
