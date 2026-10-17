@@ -52,6 +52,7 @@ public final class StudioLayerEffects {
             .append(f.value).append(':').append(f.enabled);
         return b.toString();
     }
+    public static void invalidate(StudioDocument.Layer l){CACHE.remove(key(l));}
     public static boolean requiresProcessing(StudioDocument.Layer l){
         if(l.mask!=null&&l.maskEnabled)return true;
         for(Effect effect:l.effects)if(effect.enabled)return true;
@@ -250,10 +251,12 @@ public final class StudioLayerEffects {
             pen.setStyle(Paint.Style.FILL);
             canvas.drawCircle(x,y,pen.getStrokeWidth()/2,pen);
             pen.setStyle(Paint.Style.STROKE);canvas.restore();
+            invalidate(layer);
         }
         public void move(float x,float y){
             canvas.save();clip();canvas.drawLine(previousX,previousY,x,y,pen);
             canvas.restore();previousX=x;previousY=y;
+            invalidate(layer);
         }
     }
     public static MaskStroke beginMaskStroke(StudioDocument doc,float x,float y,
