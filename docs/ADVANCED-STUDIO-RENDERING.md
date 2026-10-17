@@ -8,3 +8,6 @@ Restrições: renderização CPU/UI na prévia; fase inicial não implementa til
 
 ## Renderizador 1.41.0
 Translação, rotação e escala independentes por camada dentro de clip da dimensão do documento, seguidas de blending/opacity. Camadas raster: source bitmap; camadas TEXT: Canvas drawText parametrizado; RECTANGLE/ELLIPSE: primitivas vetoriais Canvas. Mesmos comandos para preview e export. Escopo restrito a raster 8 bits/sRGB, sem paths complexos ou glyph shapers profissionais. Alteração de pixels via copy-on-write/Canvas, com clip em seleção retangular. API 29+ suporta Overlay/Darken/Lighten além de Multiply/Screen; fallback Android 26-28 será expandido em versão posterior.
+
+## Fase 3A: filtros, máscaras e sombra
+Ordem da camada com esses efeitos: gerar conteúdo (raster/texto/forma) -> executar stack de filtros ordenada (brilho/saturação com ColorMatrix; Gaussian com kernel separável e pré-multiplicação de canais) -> máscara raster com densidade e alfa -> sombra de camada como representação borrada do alfa da imagem mascarada -> opacity/blending no compositor -> outros layers em ordem z. Gaussian radius 1..8 e <=2 MP. O cache LRU de bitmaps renderizados usa chave com identidade da origem, máscara e parâmetros. Preview e export chamam StudioDocument.render(Canvas), mantendo ordem de passes idêntica.
