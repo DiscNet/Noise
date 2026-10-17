@@ -1675,6 +1675,27 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private RectF gestureRect;
         private StudioRasterTools.Stroke stroke;
         private StudioLayerEffects.MaskStroke maskStroke;
+        private Bitmap pixelAnts,selectionRef;
+        private Bitmap buildPixelAnts(){
+            Bitmap mask=document.selectionPixels;
+            if(mask==null)return null;
+            if(mask==selectionRef&&pixelAnts!=null&&!pixelAnts.isRecycled())return pixelAnts;
+            selectionRef=mask;
+            if(pixelAnts!=null)pixelAnts.recycle();
+            int w=mask.getWidth(),h=mask.getHeight();
+            int[] p=new int[w*h];mask.getPixels(p,0,w,0,0,w,h);
+            int[] edges=new int[p.length];
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+                int i=y*w+x;
+                if(Color.alpha(p[i])<128)continue;
+                if(x==0||y==0||x==w-1||y==h-1||
+                    Color.alpha(p[i-1])<128||Color.alpha(p[i+1])<128||
+                    Color.alpha(p[i-w])<128||Color.alpha(p[i+w])<128)
+                    edges[i]=((x+y)/4)%2==0?0xffffffff:0xff211926;
+            }
+            pixelAnts=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+            pixelAnts.setPixels(edges,0,w,0,0,w,h);return pixelAnts;
+        }
         StudioCanvas(Context c){
             super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             zoomDetector=new ScaleGestureDetector(c,
@@ -1778,6 +1799,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(selectedTool==Tool.TRANSFORM&&current!=null)
                 transformOverlay(c,current);
             outline(c,document.selection,0xffdbb4ff);
+            if(document.selectionPixels!=null){
+                Bitmap ants=buildPixelAnts();
+                if(ants!=null){
+                    paint.setColor(Color.WHITE);paint.setAlpha(255);
+                    paint.setFilterBitmap(false);c.drawBitmap(ants,0,0,paint);
+                    paint.setFilterBitmap(true);
+                }
+            }
             outline(c,pendingCrop,0xffedf0ee);
             if(gestureRect!=null)outline(c,gestureRect,0xfff2cdf6);
             c.restore();
@@ -1806,6 +1835,25 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         try{
                             StudioDocument.Layer layer=document.active();
                             if(layer==null)throw new IllegalStateException("Selecione uma camada raster");
+                            if(layer.type==StudioDocument.Type.SMART&&!paintingMask){
+                                final StudioDocument.Layer owner=layer;
+                                new AlertDialog.Builder(activity).setTitle("Objeto inteligente")
+                                    .setItems(new String[]{"Editar conteúdo","Rasterizar","Cancelar"},
+                                        (d,index)->{
+                                            if(index==0)openSmartEditor(owner);
+                                            if(index==1)layerCommand("Rasterizar objeto inteligente");
+                                        }).show();
+                                break;
+                            }
+                            if(paintingMask&&layer.mask!=null&&layer.id.equals(editingMaskId)){
+                                int gray=selectedTool==Tool.ERASER?0:
+                                    Math.round(Color.red(foreground)*.299f+
+                                    Color.green(foreground)*.587f+
+                                    Color.blue(foreground)*.114f);
+                                maskStroke=StudioLayerEffects.beginMaskStroke(document,
+                                    startDocX-layer.x,startDocY-layer.y,gray,brushSize);
+                                invalidate();break;
+                            }
                             stroke=StudioRasterTools.begin(document,foreground,
                                 brushSize,brushOpacity/100f,selectedTool==Tool.ERASER,
                                 startDocX-layer.x,startDocY-layer.y,e.getPressure());
@@ -1842,7 +1890,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }
             if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
                 if(stroke!=null){stroke.finish();stroke=null;changed(true);}
-                if(maskStroke!=null){maskStroke=null;changed(true);}
+                if(maskStroke!=null){maskStroke.finish();maskStroke=null;changed(true);}
                 gestureRect=null;
                 lastMidX=(e.getX(0)+e.getX(1))*.5f;
                 lastMidY=(e.getY(0)+e.getY(1))*.5f;
@@ -1928,7 +1976,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(stroke!=null){
                     stroke.finish();stroke=null;changed(true);
                 }else if(maskStroke!=null){
-                    maskStroke=null;changed(true);
+                    maskStroke.finish();maskStroke=null;changed(true);
                 }else if(gestureMoving)changed(true);
                 if(gestureRect!=null&&!gestureUsed&&action==MotionEvent.ACTION_UP){
                     RectF rect=new RectF(gestureRect);
@@ -1948,6 +1996,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                                 break;
                             default:break;
                         }
+                    }else if(selectedTool==Tool.SELECTION&&document.hasSelection()){
+                        document.deselect();changed(true);
                     }
                 }else if(selectedTool==Tool.TEXT&&!gestureUsed
                         &&action==MotionEvent.ACTION_UP
