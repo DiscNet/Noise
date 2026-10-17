@@ -17,15 +17,23 @@ public final class StudioBevelRenderer {
         int w=source.getWidth(),h=source.getHeight();
         int targetWidth=w+padding*2,targetHeight=h+padding*2;
         long pixels=(long)targetWidth*targetHeight;
-        int factor=1;
-        for(int candidate=4;candidate>=2;candidate--){
-            if(pixels*candidate*candidate<=MAX_WORK_PIXELS){
-                factor=candidate;break;
+        float factor=1f;
+        if(pixels>MAX_WORK_PIXELS){
+            // Avoid large full-resolution EDT buffers on limited-RAM Android.
+            // The result is resized to the full layer dimensions at the end.
+            factor=(float)Math.sqrt(MAX_WORK_PIXELS/(double)pixels)*.90f;
+        }else{
+            for(int candidate=4;candidate>=2;candidate--){
+                if(pixels*candidate*candidate<=MAX_WORK_PIXELS){
+                    factor=candidate;break;
+                }
             }
         }
+        int rw=Math.max(1,Math.round(w*factor));
+        int rh=Math.max(1,Math.round(h*factor));
+        int workPadding=Math.max(0,Math.round(padding*factor));
         Bitmap hi=null,composited=null;
         try{
-            int rw=w*factor,rh=h*factor;
             hi=Bitmap.createBitmap(rw,rh,Bitmap.Config.ARGB_8888);
             Canvas hiCanvas=new Canvas(hi);
             hiCanvas.scale(factor,factor);
@@ -45,13 +53,18 @@ public final class StudioBevelRenderer {
             }else{
                 hiCanvas.drawBitmap(source,0,0,p);
             }
-            composited=shade(hi,style,padding*factor,factor);
-            if(factor==1)return composited;
-            Bitmap downsampled=areaDownsample(composited,factor,
-                targetWidth,targetHeight);
-            return downsampled;
+            StudioLayerStyles.Style work=style.copy();
+            work.size*=factor;work.soften*=factor;
+            composited=shade(hi,work,workPadding,1);
+            if(factor==1f)return composited;
+            if(factor>=2f&&Math.abs(factor-Math.round(factor))<.001f&&
+                composited.getWidth()==targetWidth*Math.round(factor)&&
+                composited.getHeight()==targetHeight*Math.round(factor))
+                return areaDownsample(composited,Math.round(factor),targetWidth,targetHeight);
+            // Fallback is used only for large documents / odd dimensions.
+            return Bitmap.createScaledBitmap(composited,targetWidth,targetHeight,true);
         }finally{
-            if(composited!=null&&factor!=1&&!composited.isRecycled())
+            if(composited!=null&&factor!=1f&&!composited.isRecycled())
                 composited.recycle();
             if(hi!=null&&!hi.isRecycled())hi.recycle();
         }
