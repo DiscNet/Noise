@@ -211,10 +211,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         layerEffectsBar=new LinearLayout(a);
         layerEffectsBar.setOrientation(LinearLayout.VERTICAL);
         layerEffectsBar.setBackgroundColor(0xff221c2a);
-        layerPane.addView(layerEffectsBar,new LinearLayout.LayoutParams(-1,dp(67)));
-        TextView fxCaption=text("ESTILOS  •  EFEITOS DA CAMADA",10,accent);
-        fxCaption.setPadding(dp(11),dp(4),dp(4),0);
-        layerEffectsBar.addView(fxCaption,new LinearLayout.LayoutParams(-1,dp(22)));
+        layerPane.addView(layerEffectsBar,new LinearLayout.LayoutParams(-1,dp(46)));
         HorizontalScrollView actionsScroll=new HorizontalScrollView(a);
         actionsScroll.setHorizontalScrollBarEnabled(false);
         layerEffectsBar.addView(actionsScroll,new LinearLayout.LayoutParams(-1,dp(45)));
@@ -590,12 +587,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
         effectActions.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null)return;
-        effectActions.addView(action(editingEffects?"← Camadas":"＋ Estilo",
-            ()->{if(editingEffects){editingEffects=false;layerScroll.setVisibility(VISIBLE);
-                effectsScroll.setVisibility(GONE);updatePanels();}
-                else addStyleMenu(layer);}));
-        effectActions.addView(action("fx Estilos",()->addStyleMenu(layer)));
-        effectActions.addView(action("＋ Filtro",()->addFilterDialog(layer)));
+        if(editingEffects){
+            effectActions.addView(action("← Camadas",()->{
+                editingEffects=false;editingStyle=false;selectedFilterIndex=-1;
+                layerScroll.setVisibility(VISIBLE);effectsScroll.setVisibility(GONE);
+                updatePanels();
+            }));
+        }else{
+            effectActions.addView(action("fx",()->addStyleMenu(layer)));
+        }
+        effectActions.addView(action(layer.clippingMask?"✓ ↓ Corte":"↓ Máscara de corte",
+            ()->toggleClippingMask(layer)));
         for(int i=0;i<layer.effects.size();i++){
             final int position=i;
             StudioLayerEffects.Effect effect=layer.effects.get(i);
@@ -648,8 +650,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 ()->{document.checkpoint();layer.effects.remove(e);
                     editingEffects=false;editingStyle=false;selectedFilterIndex=-1;changed(true);}));
         }else{
-            textTitleTo(effectControls,"EFEITOS DA CAMADA");
-            effectControls.addView(action("Adicionar filtro",()->addFilterDialog(layer)));
+            textTitleTo(effectControls,"PROPRIEDADES DA CAMADA");
+            effectControls.addView(action("Editar estilos · fx",()->addStyleMenu(layer)));
         }
         effectsScroll.post(()->effectsScroll.scrollTo(0,last));
     }
@@ -1090,6 +1092,16 @@ public final class AdvancedStudioScreen extends FrameLayout {
         editingEffects=true;editingShadow=false;selectedFilterIndex=-2;
         updatePanels();
     }
+    private void toggleClippingMask(StudioDocument.Layer layer){
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        if(!layer.clippingMask&&document.layers.indexOf(layer)==0){
+            message("A máscara de corte precisa de uma camada abaixo");return;
+        }
+        document.checkpoint();
+        layer.clippingMask=!layer.clippingMask;
+        changed(true);
+        message(layer.clippingMask?"Máscara de corte ativada":"Máscara de corte removida");
+    }
     private void filterCommand(String cmd){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
@@ -1436,6 +1448,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             LinearLayout row=new LinearLayout(activity);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setBackgroundColor(layer.id.equals(document.activeId)?0xff34293d:panel);
+            if(layer.clippingMask)row.setPadding(dp(11),0,0,0);
             TextView visibility=action(layer.visible?"◉":"○",()->{
                 document.checkpoint();layer.visible=!layer.visible;changed(true);
             });
@@ -1450,7 +1463,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 row.addView(maskPreview,new LinearLayout.LayoutParams(dp(41),dp(40)));
                 maskPreview.setOnClickListener(v->selectMask(layer,true));
             }
-            TextView title=text((layer.type==StudioDocument.Type.SMART?"◆ ":"")+layer.name,12,ink);
+            TextView title=text((layer.clippingMask?"↓ ":"")+
+                (layer.type==StudioDocument.Type.SMART?"◆ ":"")+layer.name,12,ink);
             title.setSingleLine(true);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));

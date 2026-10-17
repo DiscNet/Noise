@@ -10,7 +10,7 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=6, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public static final int FORMAT_VERSION=7, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
     public static final class Layer {
@@ -20,7 +20,7 @@ public final class StudioDocument {
         public Bitmap bitmap;
         public float x,y,scaleX=1f,scaleY=1f,rotation,skewX,skewY;
         public float opacity=1f;
-        public boolean visible=true,locked=false;
+        public boolean visible=true,locked=false,clippingMask=false;
         public Blend blend=Blend.NORMAL;
         public String text="";
         public float fontSize=64f,letterSpacing=0f,lineSpacing=1.16f;
@@ -53,6 +53,7 @@ public final class StudioDocument {
             newer.scaleX=l.scaleX;newer.scaleY=l.scaleY;newer.rotation=l.rotation;
             newer.skewX=l.skewX;newer.skewY=l.skewY;
             newer.opacity=l.opacity;newer.visible=l.visible;newer.locked=l.locked;
+            newer.clippingMask=l.clippingMask;
             newer.blend=l.blend;newer.text=l.text;newer.fontSize=l.fontSize;
             newer.fontFamily=l.fontFamily;newer.fontBold=l.fontBold;newer.fontItalic=l.fontItalic;
             newer.letterSpacing=l.letterSpacing;newer.lineSpacing=l.lineSpacing;
@@ -75,6 +76,7 @@ public final class StudioDocument {
             l.x=x;l.y=y;l.scaleX=scaleX;l.scaleY=scaleY;l.rotation=rotation;
             l.skewX=skewX;l.skewY=skewY;
             l.opacity=opacity;l.visible=visible;l.locked=locked;l.blend=blend;
+            l.clippingMask=clippingMask;
             l.text=text;l.fontSize=fontSize;l.color=color;
             l.fontFamily=fontFamily;l.fontBold=fontBold;l.fontItalic=fontItalic;
             l.letterSpacing=letterSpacing;l.lineSpacing=lineSpacing;l.textAlign=textAlign;
@@ -95,7 +97,8 @@ public final class StudioDocument {
                 .put("scaleX",scaleX).put("scaleY",scaleY).put("rotation",rotation)
                 .put("skewX",skewX).put("skewY",skewY)
                 .put("opacity",opacity).put("visible",visible).put("locked",locked)
-                .put("blend",blend.name()).put("text",text).put("fontSize",fontSize)
+                .put("blend",blend.name()).put("clippingMask",clippingMask)
+                .put("text",text).put("fontSize",fontSize)
                 .put("fontFamily",fontFamily).put("fontBold",fontBold)
                 .put("fontItalic",fontItalic).put("letterSpacing",letterSpacing)
                 .put("lineSpacing",lineSpacing).put("textAlign",textAlign)
@@ -301,22 +304,83 @@ public final class StudioDocument {
     public void render(Canvas canvas){
         canvas.save();canvas.clipRect(0,0,width,height);
         if(Color.alpha(background)!=0)canvas.drawColor(background);
-        for(Layer l:layers){
+        for(int index=0;index<layers.size();index++){
+            Layer l=layers.get(index);
             if(!l.visible)continue;
+            Layer base=l.clippingMask?clippingBase(index):null;
+            if(l.clippingMask&&base!=null&&!base.visible)continue;
             canvas.save();
             try{
+            if(base!=null){
+                RectF clipBounds=StudioTransformMath.bounds(base);
+                if(!clipBounds.intersect(0,0,width,height))continue;
+                // Apply the clipped layer's global blend mode when the
+                // isolated group is restored, not against empty transparent
+                // pixels inside the offscreen group.
+                int checkpoint=canvas.saveLayer(clipBounds,layerBlendPaint(l));
+                drawOneLayer(canvas,l,true);
+                // A clipping chain uses the alpha of the first unclipped
+                // layer beneath it, never the RGB of that layer or the next
+                // clipped layer. Both layers stay visible independently.
+                canvas.save();
+                StudioTransformMath.apply(canvas,base);
+                Paint matte=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                matte.setAlpha(Math.round(Math.max(0,Math.min(1,base.opacity))*255));
+                matte.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+                Bitmap alphaSource=StudioLayerEffects.processed(base);
+                if(alphaSource!=null){
+                    canvas.drawBitmap(alphaSource,0,0,matte);
+                    if(alphaSource!=base.bitmap&&!StudioLayerEffects.requiresProcessing(base)
+                        &&!StudioLayerStyles.hasStyles(base))alphaSource.recycle();
+                }
+                canvas.restore();
+                canvas.restoreToCount(checkpoint);
+            }else{
+                drawOneLayer(canvas,l,false);
+            }
+            }catch(RuntimeException invalidLayer){
+                android.util.Log.e("NoiseStudio","Layer render failed: "+l.id,invalidLayer);
+            }finally{
+                canvas.restore();
+            }
+        }
+        canvas.restore();
+    }
+    private Layer clippingBase(int index){
+        int below=index-1;
+        while(below>=0&&layers.get(below).clippingMask)below--;
+        return below>=0?layers.get(below):null;
+    }
+    private Paint layerBlendPaint(Layer l){
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        if(Build.VERSION.SDK_INT>=29){
+            BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
+                l.blend==Blend.SCREEN?BlendMode.SCREEN:
+                l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
+                l.blend==Blend.DARKEN?BlendMode.DARKEN:
+                l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
+            p.setBlendMode(blend);
+        }else if(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN){
+            p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
+                PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
+        }
+        return p;
+    }
+    private void drawOneLayer(Canvas canvas,Layer l,boolean isolatedClip){
+        canvas.save();
+        try{
             StudioTransformMath.apply(canvas,l);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
             p.setAlpha(Math.round(Math.max(0,Math.min(1,l.opacity))*255));
-            if(Build.VERSION.SDK_INT>=29){
+            if(!isolatedClip&&Build.VERSION.SDK_INT>=29){
                 BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
                     l.blend==Blend.SCREEN?BlendMode.SCREEN:
                     l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
                     l.blend==Blend.DARKEN?BlendMode.DARKEN:
                     l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
                 p.setBlendMode(blend);
-            }else if(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN){
+            }else if(!isolatedClip&&(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN)){
                 p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
                     PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
             }
@@ -331,15 +395,9 @@ public final class StudioDocument {
                 case RECTANGLE:canvas.drawRect(0,0,l.objectWidth,l.objectHeight,p);break;
                 case ELLIPSE:canvas.drawOval(0,0,l.objectWidth,l.objectHeight,p);break;
             }
-            }catch(RuntimeException invalidLayer){
-                // Keep editing responsive when a transient mask/bitmap is invalid.
-                // Log the exact Java stack rather than crashing the whole Activity.
-                android.util.Log.e("NoiseStudio","Layer render failed: "+l.id,invalidLayer);
-            }finally{
-                canvas.restore();
-            }
+        }finally{
+            canvas.restore();
         }
-        canvas.restore();
     }
     public Bitmap composite(){
         Bitmap result=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
@@ -389,6 +447,7 @@ public final class StudioDocument {
             throw new java.io.IOException("Transformação inválida");
         l.opacity=(float)Math.max(0,Math.min(1,j.optDouble("opacity",1)));
         l.visible=j.optBoolean("visible",true);l.locked=j.optBoolean("locked");
+        l.clippingMask=j.optBoolean("clippingMask",false);
         try{l.blend=Blend.valueOf(j.optString("blend","NORMAL"));}
         catch(IllegalArgumentException e){throw new java.io.IOException("Mesclagem não suportada",e);}
         l.text=j.optString("text","");

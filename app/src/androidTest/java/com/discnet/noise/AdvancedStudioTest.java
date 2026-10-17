@@ -219,8 +219,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==6,
-            "Advanced Studio writes native project format version 6");
+        check(restoredFx.toJson().getInt("format")==7,
+            "Advanced Studio writes native project format version 7");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -329,6 +329,78 @@ final class AdvancedStudioTest {
         check(reopenedSmart.active().bitmap.getPixel(4,4)==Color.RED,
             "Editing inside a smart object updates rendered parent instance");
         new File(activity.getFilesDir(),"advanced_studio/"+smartDoc.id+".noise").delete();
+        // Photopea clipping uses the actual alpha of the first un-clipped
+        // layer below. It is not equivalent to a raster layer mask.
+        StudioDocument clips=StudioDocument.blank("Clip chains",80,80,true);
+        Bitmap basePixels=Bitmap.createBitmap(36,36,Bitmap.Config.ARGB_8888);
+        basePixels.eraseColor(Color.TRANSPARENT);
+        for(int y=5;y<32;y++)for(int x=3;x<15;x++)
+            basePixels.setPixel(x,y,Color.GREEN);
+        StudioDocument.Layer baseClip=clips.add("Silhueta",basePixels);
+        baseClip.x=9;baseClip.y=10;
+        Bitmap topPixels=Bitmap.createBitmap(80,80,Bitmap.Config.ARGB_8888);
+        topPixels.eraseColor(Color.BLUE);
+        StudioDocument.Layer clippedBlue=clips.add("Azul",topPixels);
+        clippedBlue.clippingMask=true;
+        Bitmap clippedImage=clips.composite();
+        check(clippedImage.getPixel(14,20)==Color.BLUE,
+            "Blue image is rendered inside base layer opaque pixels");
+        check(clippedImage.getPixel(27,20)==Color.TRANSPARENT,
+            "Clipped image is invisible outside the underlying alpha");
+        check(clippedImage.getPixel(14,12)==Color.TRANSPARENT,
+            "Clipping is based on content opacity rather than layer bounds");
+        clippedImage.recycle();
+        Bitmap orangePixels=Bitmap.createBitmap(80,80,Bitmap.Config.ARGB_8888);
+        orangePixels.eraseColor(Color.YELLOW);
+        StudioDocument.Layer clipSecond=clips.add("Amarelo",orangePixels);
+        clipSecond.clippingMask=true;
+        Bitmap chain=clips.composite();
+        check(chain.getPixel(14,20)==Color.YELLOW&&
+            chain.getPixel(27,20)==Color.TRANSPARENT,
+            "Stacked clip layers share the lowest non-clipped base alpha");
+        chain.recycle();
+        clips.checkpoint();clipSecond.clippingMask=false;
+        check(clips.composite().getPixel(40,40)==Color.YELLOW,
+            "Removing clipping restores content non-destructively");
+        check(clips.undo()&&clips.active().clippingMask,
+            "Undo restores the clipping mask toggle");
+        storage.save(clips);
+        StudioDocument clipsReopened=storage.load(clips.id);
+        check(clipsReopened.layers.get(1).clippingMask&&
+            clipsReopened.layers.get(2).clippingMask,
+            "Clip flags survive version 7 native project persistence");
+        check(clipsReopened.composite().getPixel(27,20)==Color.TRANSPARENT,
+            "Clipping looks identical after re-opening the project");
+        new File(activity.getFilesDir(),"advanced_studio/"+clips.id+".noise").delete();
+
+        // Chisel hard / soft are distinct signed-distance profiles; all must
+        // keep fractional coverage on diagonal and narrow type outlines.
+        StudioDocument bevel=StudioDocument.blank("Bevel quality",160,92,true);
+        StudioDocument.Layer word=bevel.addText("NOISE",Color.WHITE,39);
+        word.x=13;word.y=14;
+        StudioLayerStyles.Style bevelStyle=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        bevelStyle.size=5;bevelStyle.depth=220;bevelStyle.opacity=1;
+        word.styles.add(bevelStyle);
+        Bitmap smoothRender=bevel.composite();
+        bevelStyle.technique="CHISEL_HARD";
+        Bitmap hardRender=bevel.composite();
+        bevelStyle.technique="CHISEL_SOFT";
+        Bitmap softRender=bevel.composite();
+        int hardDifference=0,softDifference=0,partialCoverage=0;
+        for(int y=0;y<92;y++)for(int x=0;x<160;x++){
+            int smooth=smoothRender.getPixel(x,y),hard=hardRender.getPixel(x,y);
+            int softBevelPixel=softRender.getPixel(x,y);
+            if(smooth!=hard)hardDifference++;
+            if(softBevelPixel!=hard)softDifference++;
+            int a=Color.alpha(hard);
+            if(a>4&&a<251)partialCoverage++;
+        }
+        check(hardDifference>50&&softDifference>50,
+            "Smooth, hard and soft chisel techniques produce visibly distinct pixels");
+        check(partialCoverage>25,
+            "Chisel hard preserves subpixel antialiasing on text outlines");
+        smoothRender.recycle();hardRender.recycle();softRender.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
@@ -388,8 +460,14 @@ final class AdvancedStudioTest {
                 View layerTab=label(opened[0],"CAMADAS");
                 check(layerTab!=null,"Layer panel tab is mounted");
                 layerTab.performClick();
-                View styles=label(opened[0],"fx Estilos");
-                check(styles!=null,"Photopea-inspired layer-style controls remain available");
+                View styles=label(opened[0],"fx");
+                check(styles!=null,"Single compact fx action remains available");
+                check(label(opened[0],"fx Estilos")==null&&
+                    label(opened[0],"＋ Filtro")==null&&
+                    label(opened[0],"＋ Estilo")==null,
+                    "Duplicated style and filter buttons are absent");
+                check(label(opened[0],"↓ Máscara de corte")!=null,
+                    "Clipping-mask toggle sits beside layer action");
                 Method addStyle=AdvancedStudioScreen.class.getDeclaredMethod(
                     "addStyle",StudioDocument.Layer.class,StudioLayerStyles.Kind.class);
                 addStyle.setAccessible(true);
