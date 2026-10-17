@@ -817,6 +817,53 @@ public final class AdvancedStudioScreen extends FrameLayout {
         else if(cmd.equals("Texto")){showTextPanel=true;updatePanels();}
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
     }
+    /** Layer thumbnails show actual source pixels, never an invented mock preview. */
+    private final class LayerThumb extends View {
+        private final StudioDocument.Layer layer;
+        private final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        LayerThumb(Context context,StudioDocument.Layer l){super(context);layer=l;
+            setContentDescription(l.type==StudioDocument.Type.SMART?
+                "Objeto inteligente incorporado":l.type==StudioDocument.Type.RASTER?
+                "Camada raster":l.type==StudioDocument.Type.TEXT?"Camada de texto":"Forma vetorial");
+        }
+        @Override protected void onDraw(Canvas c){
+            float w=getWidth(),h=getHeight(),pad=dp(4);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xff32303a);c.drawRoundRect(1,1,w-1,h-1,dp(5),dp(5),p);
+            p.setColor(0xff54505b);
+            int side=dp(7);
+            for(int y=2;y<h-2;y+=side)for(int x=2;x<w-2;x+=side)
+                if(((x/side)+(y/side))%2==0)
+                    c.drawRect(x,y,Math.min(x+side,w-2),Math.min(y+side,h-2),p);
+            float availW=w-pad*2,availH=h-pad*2;
+            int nw=Math.max(1,layer.naturalWidth()),nh=Math.max(1,layer.naturalHeight());
+            float scale=Math.min(availW/nw,availH/nh);
+            float dw=nw*scale,dh=nh*scale;
+            float left=(w-dw)/2,top=(h-dh)/2;
+            if((layer.type==StudioDocument.Type.RASTER||
+                layer.type==StudioDocument.Type.SMART)&&layer.bitmap!=null){
+                p.setColor(Color.WHITE);
+                c.drawBitmap(layer.bitmap,null,new RectF(left,top,left+dw,top+dh),p);
+            }else if(layer.type==StudioDocument.Type.TEXT){
+                c.save();c.translate(left,top);c.scale(scale,scale);
+                p.setColor(layer.color);StudioTypography.draw(c,layer,p);c.restore();
+            }else{
+                p.setColor(layer.color);
+                if(layer.type==StudioDocument.Type.ELLIPSE)
+                    c.drawOval(left,top,left+dw,top+dh,p);
+                else c.drawRect(left,top,left+dw,top+dh,p);
+            }
+            // Corner status: S = smart, R = raster, T = text, V = vector shape.
+            String mark=layer.type==StudioDocument.Type.SMART?"S":
+                layer.type==StudioDocument.Type.RASTER?"R":
+                layer.type==StudioDocument.Type.TEXT?"T":"V";
+            p.setColor(layer.type==StudioDocument.Type.SMART?0xffa679e5:0xff22202b);
+            c.drawRoundRect(w-dp(17),h-dp(17),w-dp(2),h-dp(2),dp(3),dp(3),p);
+            p.setColor(Color.WHITE);p.setTextSize(dp(10));
+            p.setTypeface(Typeface.DEFAULT_BOLD);
+            c.drawText(mark,w-dp(13),h-dp(5),p);
+        }
+    }
     private void updateUi(){
         if(closed)return;
         docTab.setText(document.name+"  •  "+(document.dirty?"● ":"")+".noise");
@@ -831,7 +878,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 document.checkpoint();layer.visible=!layer.visible;changed(true);
             });
             row.addView(visibility,new LinearLayout.LayoutParams(dp(34),dp(40)));
+            LayerThumb thumbnail=new LayerThumb(activity,layer);
+            row.addView(thumbnail,new LinearLayout.LayoutParams(dp(49),dp(43)));
+            thumbnail.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
             TextView title=text(layer.name,12,ink);title.setSingleLine(true);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
             title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
             title.setOnLongClickListener(v->{
@@ -856,6 +907,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         opacity.setEnabled(current!=null&&!current.locked);
         opacity.setProgress(current==null?100:Math.round(current.opacity*100));
         opacityLabel.setText(current==null?"Opacidade":("Opacidade "+opacity.getProgress()+"%"));
+        updatePanels();updateToolbar();
         canvas.invalidate();
     }
     private void changed(boolean persistent){
