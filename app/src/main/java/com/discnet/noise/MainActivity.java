@@ -766,7 +766,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
-        if(request==AdvancedStudioScreen.FONT_PICKER_REQUEST){
+        if(request==com.discnet.noise.advancedstudio.AdvancedStudioScreen.FONT_PICKER_REQUEST){
             if(advancedStudio!=null)advancedStudio.importFontUri(data.getData());
             return;
         }
