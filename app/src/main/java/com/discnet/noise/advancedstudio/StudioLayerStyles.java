@@ -24,6 +24,7 @@ public final class StudioLayerStyles {
     public static final class Style {
         public final Kind kind;
         public boolean enabled=true,reverse=false,sourceCenter=false,antiAlias=true;
+        public String highlightBlend="SCREEN",shadowBlend="MULTIPLY";
         public String blend="NORMAL",position="OUTSIDE",contour="LINEAR",bevelStyle="INNER_BEVEL",
             technique="SMOOTH",direction="UP";
         public int color=0xff000000,color2=0xffffffff,highlight=0xffffffff,shade=0xff000000;
@@ -41,6 +42,7 @@ public final class StudioLayerStyles {
         public Style copy(){
             Style s=new Style(kind);s.enabled=enabled;s.reverse=reverse;s.sourceCenter=sourceCenter;
             s.antiAlias=antiAlias;s.blend=blend;s.position=position;s.contour=contour;
+            s.highlightBlend=highlightBlend;s.shadowBlend=shadowBlend;
             s.bevelStyle=bevelStyle;s.technique=technique;s.direction=direction;
             s.color=color;s.color2=color2;s.highlight=highlight;s.shade=shade;
             s.opacity=opacity;s.size=size;s.distance=distance;s.angle=angle;s.spread=spread;
@@ -52,7 +54,8 @@ public final class StudioLayerStyles {
             JSONObject j=new JSONObject().put("kind",kind.name()).put("enabled",enabled)
                 .put("reverse",reverse).put("sourceCenter",sourceCenter)
                 .put("antiAlias",antiAlias).put("blend",blend).put("position",position)
-                .put("contour",contour).put("bevelStyle",bevelStyle)
+                .put("contour",contour).put("highlightBlend",highlightBlend)
+                .put("shadowBlend",shadowBlend).put("bevelStyle",bevelStyle)
                 .put("technique",technique).put("direction",direction)
                 .put("color",color).put("color2",color2).put("highlight",highlight)
                 .put("shade",shade).put("opacity",opacity).put("size",size)
@@ -69,7 +72,10 @@ public final class StudioLayerStyles {
             s.enabled=j.optBoolean("enabled",true);s.reverse=j.optBoolean("reverse",false);
             s.sourceCenter=j.optBoolean("sourceCenter",false);s.antiAlias=j.optBoolean("antiAlias",true);
             s.blend=j.optString("blend","NORMAL");s.position=j.optString("position","OUTSIDE");
-            s.contour=j.optString("contour","LINEAR");s.bevelStyle=j.optString("bevelStyle","INNER_BEVEL");
+            s.contour=j.optString("contour","LINEAR");
+            s.highlightBlend=j.optString("highlightBlend","SCREEN");
+            s.shadowBlend=j.optString("shadowBlend","MULTIPLY");
+            s.bevelStyle=j.optString("bevelStyle","INNER_BEVEL");
             s.technique=j.optString("technique","SMOOTH");s.direction=j.optString("direction","UP");
             s.color=j.optInt("color",s.color);s.color2=j.optInt("color2",s.color2);
             s.highlight=j.optInt("highlight",s.highlight);s.shade=j.optInt("shade",s.shade);
@@ -255,10 +261,26 @@ public final class StudioLayerStyles {
         Bitmap output=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
         output.setPixels(argb,0,W,0,0,W,H);return output;
     }
+    private static Bitmap composedBevel(StudioDocument.Layer layer,Bitmap source,
+                                       Style s,int padding){
+        String key;
+        try{
+            key="bevel-composed:"+layer.id+":"+source.getGenerationId()+":"+
+                System.identityHashCode(source)+":"+layer.type+":"+
+                layer.text+":"+layer.fontSize+":"+layer.fontFamily+":"+
+                layer.fontBold+":"+layer.fontItalic+":"+
+                layer.letterSpacing+":"+layer.textAlign+":"+padding+":"+
+                s.toJson().toString();
+        }catch(JSONException impossible){return StudioBevelRenderer.compose(layer,source,s,padding);}
+        Bitmap cached=STYLE_CACHE.get(key);
+        if(cached!=null&&!cached.isRecycled())return cached;
+        Bitmap baked=StudioBevelRenderer.compose(layer,source,s,padding);
+        STYLE_CACHE.put(key,baked);
+        return baked;
+    }
     public static void draw(Canvas canvas,StudioDocument.Layer layer,Bitmap source,Paint paint){
         if(source==null)return;
-        if(!hasStyles(layer)){canvas.drawBitmap(source,0,0,paint);return;}
-        if((long)source.getWidth()*source.getHeight()>MAX_PIXELS){
+        if(!hasStyles(layer)||((long)source.getWidth()*source.getHeight()>MAX_PIXELS)){
             canvas.drawBitmap(source,0,0,paint);return;
         }
         int padding=0;
@@ -267,22 +289,36 @@ public final class StudioLayerStyles {
         padding=Math.min(264,padding);
         if((long)(source.getWidth()+padding*2)*(source.getHeight()+padding*2)>MAX_PIXELS*2L)
             padding=0;
-        for(Style s:layer.styles)if(s.enabled&&
-                (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
-                s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding);
-            canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
 
+        // Drop shadows and outer borders appear behind the bevel/source.
+        for(Style s:layer.styles)if(s.enabled&&
+            (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
+             s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
+            Bitmap fx=cached(layer,source,s,padding);
+            canvas.drawBitmap(fx,-padding,-padding,
+                compositingPaint(s,layer.opacity*s.opacity));
         }
-        canvas.drawBitmap(source,0,0,paint);
+
+        Style bevel=null;
+        for(Style s:layer.styles)if(s.enabled&&s.kind==Kind.BEVEL_EMBOSS){
+            bevel=s;break;
+        }
+        if(bevel==null){
+            canvas.drawBitmap(source,0,0,paint);
+        }else{
+            // Draw the original glyph and its bevel as ONE composited bitmap
+            // built from the SAME high-resolution raster. Never superimpose
+            // a second, independently rasterized text outline.
+            Bitmap composed=composedBevel(layer,source,bevel,padding);
+            canvas.drawBitmap(composed,-padding,-padding,paint);
+        }
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.COLOR_OVERLAY||s.kind==Kind.GRADIENT_OVERLAY||
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
-             s.kind==Kind.BEVEL_EMBOSS||
              s.kind==Kind.STROKE&&"INSIDE".equals(s.position))){
             Bitmap fx=cached(layer,source,s,padding);
-            canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
-
+            canvas.drawBitmap(fx,-padding,-padding,
+                compositingPaint(s,layer.opacity*s.opacity));
         }
     }
 }
