@@ -24,6 +24,16 @@ public final class StudioBevelRenderer {
                           StudioLayerStyles.Style style,int padding){
         final int width=source.getWidth()+2*padding;
         final int height=source.getHeight()+2*padding;
+        // No illumination must be a strict identity transform, including RGB
+        // and the premultiplied edge pixels. Do not rerasterize glyphs just to
+        // render a fully transparent lighting pass.
+        if(style.opacity<=0||
+           (style.highlightOpacity<=0&&style.shadowOpacity<=0)){
+            Bitmap untouched=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+            new Canvas(untouched).drawBitmap(source,padding,padding,
+                new Paint(Paint.FILTER_BITMAP_FLAG));
+            return untouched;
+        }
         long outputPixels=(long)width*height;
         float factor=1f;
         if(outputPixels>MAX_WORK_PIXELS){
