@@ -38,7 +38,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private Tool selectedTool=Tool.MOVE;
     private boolean closed,showLayers=true,showTextPanel=false,showTransformPanel=false,
         keepAspect=true,editingEffects=false,editingShadow=false;
-    private int selectedFilterIndex=-1;
+    private int selectedFilterIndex=-1,selectedStyleIndex=-1;
+    private boolean editingStyle;
     private LinearLayout layerEffectsBar,effectActions,effectControls,transformPanel;
     private ScrollView effectsScroll,transformScroll;
     private TextView blendButton;
@@ -90,7 +91,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
-        commandMenu("Estilos",new String[]{"Sombra projetada","Remover sombra"},
+        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Remover sombra"},
             this::styleCommand);
         commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
         commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas","Texto"},
@@ -587,12 +588,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
         effectActions.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null)return;
-        effectActions.addView(action(editingEffects?"← Camadas":"+ Efeito",
+        effectActions.addView(action(editingEffects?"← Camadas":"＋ Estilo",
             ()->{if(editingEffects){editingEffects=false;layerScroll.setVisibility(VISIBLE);
                 effectsScroll.setVisibility(GONE);updatePanels();}
-                else addFilterDialog(layer);}));
-        effectActions.addView(action(layer.shadowEnabled?"☑ Sombra":"＋ Sombra",
-            ()->styleCommand("Sombra projetada")));
+                else addStyleMenu(layer);}));
+        effectActions.addView(action("fx Estilos",()->addStyleMenu(layer)));
+        effectActions.addView(action("＋ Filtro",()->addFilterDialog(layer)));
         for(int i=0;i<layer.effects.size();i++){
             final int position=i;
             StudioLayerEffects.Effect effect=layer.effects.get(i);
@@ -610,7 +611,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         int last=effectsScroll.getScrollY();effectControls.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null)return;
-        if(editingShadow){
+        if(editingStyle&&selectedStyleIndex>=0&&selectedStyleIndex<layer.styles.size()){
+            editStyleControls(layer,layer.styles.get(selectedStyleIndex));
+        }else if(editingShadow){
             textTitleTo(effectControls,"SOMBRA PROJETADA");
             if(!layer.shadowEnabled)effectControls.addView(action("Ativar sombra",
                 ()->{if(layer.locked)return;
@@ -641,7 +644,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 ()->{document.checkpoint();e.enabled=!e.enabled;changed(true);}));
             effectControls.addView(action("Excluir filtro",
                 ()->{document.checkpoint();layer.effects.remove(e);
-                    editingEffects=false;selectedFilterIndex=-1;changed(true);}));
+                    editingEffects=false;editingStyle=false;selectedFilterIndex=-1;changed(true);}));
         }else{
             textTitleTo(effectControls,"EFEITOS DA CAMADA");
             effectControls.addView(action("Adicionar filtro",()->addFilterDialog(layer)));
@@ -1043,7 +1046,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             layer.effects.add(current.copy());index=layer.effects.size()-1;
             changed(true);
         }
-        editingEffects=true;editingShadow=false;selectedFilterIndex=index;
+        editingEffects=true;editingShadow=false;editingStyle=false;selectedFilterIndex=index;
         showTextPanel=false;showTransformPanel=false;
         updatePanels();
     }
@@ -1060,7 +1063,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             StudioLayerEffects.MAX_EFFECT_PIXELS){
             message("Sombra limitada a 2 MP nesta versão");return;
         }
-        editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
+        editingEffects=true;editingShadow=true;editingStyle=false;selectedFilterIndex=-1;
         showTextPanel=false;showTransformPanel=false;updatePanels();
     }
     private void viewCommand(String cmd){
@@ -1149,13 +1152,50 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 document.checkpoint();layer.locked=!layer.locked;changed(true);
             });
             row.addView(lock,new LinearLayout.LayoutParams(dp(31),dp(40)));
-            if(layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled){
+            if(layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled||!layer.styles.isEmpty()){
                 TextView extras=text((layer.mask!=null?"M":"")+
-                    (!layer.effects.isEmpty()?" fx":"")+
+                    (!layer.effects.isEmpty()||!layer.styles.isEmpty()?" fx":"")+
                     (layer.shadowEnabled?" ░":""),10,accent);
                 row.addView(extras,new LinearLayout.LayoutParams(dp(36),dp(40)));
             }
             layersList.addView(row,new LinearLayout.LayoutParams(-1,dp(43)));
+            if(!layer.styles.isEmpty()||layer.shadowEnabled){
+                LinearLayout stylesHeader=new LinearLayout(activity);
+                stylesHeader.setGravity(Gravity.CENTER_VERTICAL);
+                stylesHeader.setPadding(dp(20),0,dp(8),0);
+                stylesHeader.setBackgroundColor(0xff201b26);
+                stylesHeader.addView(action(layer.showStyles?"⌄":"›",()->{
+                    layer.showStyles=!layer.showStyles;updateUi();
+                }),new LinearLayout.LayoutParams(dp(29),dp(31)));
+                TextView fxTitle=text("fx  Efeitos",11,accent);
+                stylesHeader.addView(fxTitle,new LinearLayout.LayoutParams(0,dp(31),1));
+                fxTitle.setOnClickListener(v->{layer.showStyles=!layer.showStyles;updateUi();});
+                layersList.addView(stylesHeader,new LinearLayout.LayoutParams(-1,dp(31)));
+                if(layer.showStyles){
+                    for(int k=0;k<layer.styles.size();k++){
+                        final int index=k;
+                        StudioLayerStyles.Style style=layer.styles.get(k);
+                        LinearLayout styleRow=new LinearLayout(activity);
+                        styleRow.setGravity(Gravity.CENTER_VERTICAL);
+                        styleRow.setPadding(dp(46),0,dp(9),0);
+                        styleRow.setBackgroundColor(0xff19151f);
+                        TextView eye=action(style.enabled?"◉":"○",()->{
+                            if(layer.locked)return;
+                            document.checkpoint();style.enabled=!style.enabled;changed(true);
+                        });
+                        styleRow.addView(eye,new LinearLayout.LayoutParams(dp(34),dp(33)));
+                        TextView styleLabel=text(style.kind.title,11,style.enabled?ink:muted);
+                        styleRow.addView(styleLabel,new LinearLayout.LayoutParams(0,dp(33),1));
+                        styleLabel.setGravity(Gravity.CENTER_VERTICAL);
+                        styleLabel.setOnClickListener(v->openStyle(layer,index));
+                        layersList.addView(styleRow,new LinearLayout.LayoutParams(-1,dp(33)));
+                    }
+                    if(layer.shadowEnabled){
+                        TextView legacy=action("      ◉ Sombra legada",()->styleCommand("Sombra projetada"));
+                        layersList.addView(legacy,new LinearLayout.LayoutParams(-1,dp(33)));
+                    }
+                }
+            }
         }
         StudioDocument.Layer current=document.active();
         opacity.setEnabled(current!=null&&!current.locked);
