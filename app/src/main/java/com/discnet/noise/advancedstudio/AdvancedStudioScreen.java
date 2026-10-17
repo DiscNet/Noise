@@ -25,14 +25,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler main=new Handler(Looper.getMainLooper());
     private StudioDocument document;
-    private final LinearLayout page,menubar,tools,layersList,propertyPanel;
+    private final LinearLayout page,menubar,tools,layersList,propertyPanel,layerPane,textPanel;
+    private final ScrollView layerScroll,textScroll;
+    private final HashMap<Tool,FrameLayout> toolGroups=new HashMap<>();
+    private final HashMap<Tool,StudioToolIcon> toolGlyphs=new HashMap<>();
     private final FrameLayout editor;
     private final StudioCanvas canvas;
     private final TextView docTab,info,opacityLabel;
     private final SeekBar opacity;
-    enum Tool { MOVE,HAND,BRUSH,ERASER,MASK_HIDE,MASK_REVEAL,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE }
+    enum Tool { MOVE,TRANSFORM,HAND,BRUSH,ERASER,MASK_HIDE,MASK_REVEAL,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE,TEXT }
     private Tool selectedTool=Tool.MOVE;
-    private boolean closed,showLayers=true;
+    private boolean closed,showLayers=true,showTextPanel=false,keepAspect=true;
     private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
     private RectF pendingCrop;
     private TextView toolMode;
@@ -58,9 +61,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         page.addView(menuScroll,new LinearLayout.LayoutParams(-1,dp(52)));
         commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Voltar"},
             this::fileCommand);
-        commandMenu("Editar",new String[]{"Desfazer","Refazer"},
-            value->{if(value.equals("Desfazer"))document.undo();else document.redo();changed(false);});
-        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Painel"},
+        commandMenu("Editar",new String[]{"Desfazer","Refazer","Transformação livre","Girar 90° horário","Girar 90° anti-horário","Girar 180°","Espelhar horizontal","Espelhar vertical"},
+            this::editCommand);
+        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Texto editável","Retângulo","Elipse","Transformar","Mesclagem","Converter em objeto inteligente","Rasterizar objeto inteligente","Painel"},
             this::layerCommand);
         commandMenu("Selecionar",new String[]{"Selecionar tudo","Desmarcar","Recortar seleção"},
             this::selectionCommand);
@@ -72,7 +75,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::filterCommand);
         commandMenu("Estilos",new String[]{"Sombra projetada","Remover sombra"},
             this::styleCommand);
-        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas"},
+        commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
+        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas","Texto"},
             this::viewCommand);
 
         LinearLayout contextBar=new LinearLayout(a);
@@ -98,19 +102,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolScroll.setFillViewport(false);
         toolScroll.setVerticalScrollBarEnabled(false);
         toolScroll.addView(tools);
-        working.addView(toolScroll,new LinearLayout.LayoutParams(dp(60),-1));
-        toolButton("Mover",Tool.MOVE);
-        toolButton("Mão",Tool.HAND);
-        toolButton("Pincel",Tool.BRUSH);
-        toolButton("Borracha",Tool.ERASER);
-        toolButton("Másc.−",Tool.MASK_HIDE);
-        toolButton("Másc.+",Tool.MASK_REVEAL);
-        toolButton("Seleção",Tool.SELECTION);
-        toolButton("Recorte",Tool.CROP);
-        toolButton("Balde",Tool.BUCKET);
-        toolButton("Gradiente",Tool.GRADIENT);
-        toolButton("Retâng.",Tool.RECTANGLE);
-        toolButton("Elipse",Tool.ELLIPSE);
+        working.addView(toolScroll,new LinearLayout.LayoutParams(dp(51),-1));
+        toolGroup("move",Tool.MOVE,Tool.TRANSFORM,Tool.HAND);
+        toolGroup("selection",Tool.SELECTION,Tool.CROP);
+        toolGroup("brush",Tool.BRUSH,Tool.ERASER,Tool.MASK_HIDE,Tool.MASK_REVEAL);
+        toolGroup("fill",Tool.BUCKET,Tool.GRADIENT);
+        toolGroup("shape",Tool.RECTANGLE,Tool.ELLIPSE);
+        toolGroup("type",Tool.TEXT);
+        toolGroup("transform",Tool.TRANSFORM,Tool.MOVE);
         editor=new FrameLayout(a);editor.setBackgroundColor(0xff0a090d);
         working.addView(editor,new LinearLayout.LayoutParams(0,-1,1));
         canvas=new StudioCanvas(a);
@@ -118,29 +117,41 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dock=new LinearLayout(a);dock.setOrientation(LinearLayout.VERTICAL);
         dock.setBackgroundColor(panel);
         if(wide)body.addView(dock,new LinearLayout.LayoutParams(dp(220),-1));
-        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(202)));
+        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(238)));
         propertyPanel=dock;
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
-        dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(43)));
-        TextView layersTitle=text("CAMADAS",12,ink);
+        dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
+        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;updatePanels();});
+        layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
         dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
+        TextView textTab=action("TEXTO",()->{showTextPanel=true;updatePanels();});
+        textTab.setTextSize(11);
+        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(61),-1));
         dockHead.addView(action("＋",()->layerCommand("Nova camada")));
         dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
         dockHead.addView(action("↑",()->layerCommand("Para cima")));
         dockHead.addView(action("↓",()->layerCommand("Para baixo")));
         dockHead.addView(action("×",()->layerCommand("Excluir")));
-        ScrollView layerScroll=new ScrollView(a);layerScroll.setFillViewport(false);
-        dock.addView(layerScroll,new LinearLayout.LayoutParams(-1,0,1));
+        layerPane=new LinearLayout(a);layerPane.setOrientation(LinearLayout.VERTICAL);
+        dock.addView(layerPane,new LinearLayout.LayoutParams(-1,0,1));
+        layerScroll=new ScrollView(a);layerScroll.setFillViewport(false);
+        layerPane.addView(layerScroll,new LinearLayout.LayoutParams(-1,0,1));
         layersList=new LinearLayout(a);layersList.setOrientation(LinearLayout.VERTICAL);
         layerScroll.addView(layersList);
         LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
         alphaRow.setPadding(dp(9),0,dp(9),0);
-        dock.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(36)));
+        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(36)));
         opacityLabel=text("Opacidade",11,muted);
         alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(89),-1));
         opacity=new SeekBar(a);opacity.setMax(100);
         alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        textScroll=new ScrollView(a);textScroll.setFillViewport(false);
+        dock.addView(textScroll,new LinearLayout.LayoutParams(-1,0,1));
+        textPanel=new LinearLayout(a);textPanel.setOrientation(LinearLayout.VERTICAL);
+        textPanel.setPadding(dp(10),dp(6),dp(10),dp(12));
+        textScroll.addView(textPanel);
+        textScroll.setVisibility(GONE);
         opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             boolean started;
             @Override public void onStartTrackingTouch(SeekBar b){started=false;}
@@ -177,7 +188,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
             }
         });
-        properties.addView(action("Texto",this::textDialog));
+        properties.addView(action("Texto",()->{showTextPanel=true;updatePanels();}));
+        updateToolbar();
         updateUi();
         if(imported!=null)scheduleSave();
     }
@@ -189,11 +201,69 @@ public final class AdvancedStudioScreen extends FrameLayout {
         t.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
         return t;
     }
-    private void toolButton(String title,Tool mode){
-        TextView button=tool(title);
-        tools.addView(button,new LinearLayout.LayoutParams(-1,dp(49)));
-        button.setOnClickListener(v->{selectedTool=mode;toolMode.setText(title);canvas.invalidate();});
-        button.setOnLongClickListener(v->{toolMode.setText(title);return true;});
+    private String toolName(Tool t){
+        switch(t){
+            case MOVE:return "Mover";case TRANSFORM:return "Transformar";
+            case HAND:return "Mão";case BRUSH:return "Pincel";
+            case ERASER:return "Borracha";case MASK_HIDE:return "Máscara: ocultar";
+            case MASK_REVEAL:return "Máscara: revelar";case SELECTION:return "Seleção retangular";
+            case CROP:return "Recorte";case BUCKET:return "Balde";
+            case GRADIENT:return "Gradiente";case RECTANGLE:return "Retângulo";
+            case ELLIPSE:return "Elipse";case TEXT:return "Texto";
+            default:return "Ferramenta";
+        }
+    }
+    private void activateTool(Tool t){
+        selectedTool=t;toolMode.setText(toolName(t));
+        if(t==Tool.TEXT){showTextPanel=true;updatePanels();}
+        updateToolbar();canvas.invalidate();
+    }
+    private void toolGroup(String icon,Tool first,Tool... variants){
+        FrameLayout button=new FrameLayout(activity);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(45),dp(44));
+        lp.setMargins(dp(3),dp(1),dp(3),dp(1));
+        tools.addView(button,lp);
+        StudioToolIcon glyph=new StudioToolIcon(activity,icon);
+        FrameLayout.LayoutParams ip=new FrameLayout.LayoutParams(dp(27),dp(27),Gravity.CENTER);
+        button.addView(glyph,ip);
+        if(variants.length>0){
+            TextView marker=text("⌄",10,muted);marker.setGravity(Gravity.CENTER);
+            FrameLayout.LayoutParams mp=new FrameLayout.LayoutParams(dp(12),dp(11),
+                Gravity.BOTTOM|Gravity.RIGHT);
+            button.addView(marker,mp);
+        }
+        button.setClickable(true);button.setFocusable(true);
+        button.setContentDescription(toolName(first)+"; toque prolongado para alternativas");
+        if(android.os.Build.VERSION.SDK_INT>=26)
+            button.setTooltipText(toolName(first));
+        button.setOnClickListener(v->activateTool(first));
+        button.setOnLongClickListener(v->{
+            if(variants.length==0){activateTool(first);return true;}
+            PopupMenu menu=new PopupMenu(activity,button);
+            Tool[] all=new Tool[variants.length+1];all[0]=first;
+            System.arraycopy(variants,0,all,1,variants.length);
+            for(int i=0;i<all.length;i++)menu.getMenu().add(0,i,i,toolName(all[i]));
+            menu.setOnMenuItemClickListener(item->{activateTool(all[item.getItemId()]);return true;});
+            menu.show();return true;
+        });
+        toolGroups.put(first,button);toolGlyphs.put(first,glyph);
+        for(Tool t:variants){toolGroups.put(t,button);toolGlyphs.put(t,glyph);}
+    }
+    private void updateToolbar(){
+        HashSet<FrameLayout> visited=new HashSet<>();
+        for(Map.Entry<Tool,FrameLayout> entry:toolGroups.entrySet()){
+            FrameLayout button=entry.getValue();
+            if(!visited.add(button))continue;
+            boolean active=button==toolGroups.get(selectedTool);
+            GradientDrawable bg=new GradientDrawable();
+            bg.setColor(active?0xff362843:0xff16141c);
+            bg.setCornerRadius(dp(8));
+            if(active)bg.setStroke(dp(1),0xff9863c7);
+            button.setBackground(bg);
+            for(Map.Entry<Tool,StudioToolIcon> glyph:toolGlyphs.entrySet())
+                if(toolGroups.get(glyph.getKey())==button)
+                    glyph.getValue().setSelectedTool(active);
+        }
     }
     private void colorDialog(){
         EditText input=numberField("#RRGGBB",false);
