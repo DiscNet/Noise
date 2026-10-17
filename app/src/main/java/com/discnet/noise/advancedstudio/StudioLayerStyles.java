@@ -181,8 +181,29 @@ public final class StudioLayerStyles {
         }
         return result;
     }
-    /** Returns the computed style pixels, including outside-of-layer effects. */
+    /** Adaptive 2x supersampling produces coverage-based anti-aliasing on small
+     * text, glyphs and shape edges; large images use soft subpixel coverage.
+     * Chisel HARD controls the profile, not whether edge antialias is enabled.
+     */
     private static Bitmap drawStyle(Bitmap source,Style s,int padding){
+        if(s.kind==Kind.BEVEL_EMBOSS&&
+            (long)source.getWidth()*source.getHeight()<=350_000L){
+            Bitmap hi=Bitmap.createScaledBitmap(source,source.getWidth()*2,
+                source.getHeight()*2,true);
+            StudioLayerStyles.Style advanced=s.copy();
+            advanced.size*=2;advanced.soften*=2;advanced.distance*=2;
+            Bitmap full=drawStyleCore(hi,advanced,padding*2);
+            Bitmap reduced=Bitmap.createScaledBitmap(full,
+                source.getWidth()+padding*2,source.getHeight()+padding*2,true);
+            full.recycle();hi.recycle();return reduced;
+        }
+        return drawStyleCore(source,s,padding);
+    }
+    private static float smoothstep(float threshold,float feather,float value){
+        float t=Math.max(0,Math.min(1,(value-threshold)/Math.max(.001f,feather)+.5f));
+        return t*t*(3-2*t);
+    }
+    private static Bitmap drawStyleCore(Bitmap source,Style s,int padding){
         int w=source.getWidth(),h=source.getHeight();
         int W=w+padding*2,H=h+padding*2,n=W*H;
         int[] src=new int[w*h];source.getPixels(src,0,w,0,0,w,h);
@@ -250,21 +271,30 @@ public final class StudioLayerStyles {
                     float right=field[y*W+Math.min(W-1,x+1)]/3f;
                     float up=field[Math.max(0,y-1)*W+x]/3f;
                     float down=field[Math.min(H-1,y+1)*W+x]/3f;
-                    float light= (right-left)*dx+(down-up)*dy;
+                    float light=(right-left)*dx+(down-up)*dy;
+                    // Blend the normal near the edge instead of choosing
+                    // abruptly between quantized binary distance samples.
+                    float px=alpha[y*W+Math.max(0,x-1)]/255f;
+                    float nx=alpha[y*W+Math.min(W-1,x+1)]/255f;
+                    float py=alpha[Math.max(0,y-1)*W+x]/255f;
+                    float ny=alpha[Math.min(H-1,y+1)*W+x]/255f;
+                    light=light*.72f+((nx-px)*dx+(ny-py)*dy)*.28f;
                     if("DOWN".equals(s.direction))light=-light;
                     if(useOutside)light=-light;
                     if("PILLOW".equals(s.bevelStyle))light=-light;
                     float width=Math.max(1,radius+s.soften);
                     float ramp=cap((width-d)/width);
-                    if("CHISEL_HARD".equals(s.technique))ramp=ramp>.45f?1:0;
+                    if("CHISEL_HARD".equals(s.technique))
+                        ramp=smoothstep(.45f,1.35f/width,ramp);
                     else if("CHISEL_SOFT".equals(s.technique))ramp=(float)Math.sqrt(ramp);
                     float strength=ramp*Math.min(3,s.depth/100f);
                     float elevation=(float)Math.sin(Math.toRadians(s.altitude));
                     float contour=curve(s,cap((width-d)/width));
                     t=(useOutside?1-coverage:coverage)*strength*contour*
                         Math.max(.15f,elevation);
-                    pigment=light>=0?s.highlight:s.shade;
-                    t*=light>=0?s.highlightOpacity:s.shadowOpacity;
+                    float diffuse=smoothstep(0,.85f,light);
+                    pigment=lerp(s.shade,s.highlight,diffuse);
+                    t*=s.shadowOpacity+(s.highlightOpacity-s.shadowOpacity)*diffuse;
                     break;
                 }
             }
