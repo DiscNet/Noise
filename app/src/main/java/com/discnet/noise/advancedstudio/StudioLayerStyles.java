@@ -25,7 +25,7 @@ public final class StudioLayerStyles {
         public final Kind kind;
         public boolean enabled=true,reverse=false,sourceCenter=false,antiAlias=true;
         public String blend="NORMAL",position="OUTSIDE",contour="LINEAR",bevelStyle="INNER_BEVEL",
-            technique="SMOOTH",direction="UP";
+            technique="SMOOTH",direction="UP",highlightBlend="SCREEN",shadowBlend="MULTIPLY";
         public int color=0xff000000,color2=0xffffffff,highlight=0xffffffff,shade=0xff000000;
         public float opacity=.75f,size=8,distance=7,angle=120,spread=0,depth=100,
             altitude=35,soften=0,gradientScale=100,highlightOpacity=.75f,shadowOpacity=.75f;
@@ -42,6 +42,7 @@ public final class StudioLayerStyles {
             Style s=new Style(kind);s.enabled=enabled;s.reverse=reverse;s.sourceCenter=sourceCenter;
             s.antiAlias=antiAlias;s.blend=blend;s.position=position;s.contour=contour;
             s.bevelStyle=bevelStyle;s.technique=technique;s.direction=direction;
+            s.highlightBlend=highlightBlend;s.shadowBlend=shadowBlend;
             s.color=color;s.color2=color2;s.highlight=highlight;s.shade=shade;
             s.opacity=opacity;s.size=size;s.distance=distance;s.angle=angle;s.spread=spread;
             s.depth=depth;s.altitude=altitude;s.soften=soften;s.gradientScale=gradientScale;
@@ -54,6 +55,7 @@ public final class StudioLayerStyles {
                 .put("antiAlias",antiAlias).put("blend",blend).put("position",position)
                 .put("contour",contour).put("bevelStyle",bevelStyle)
                 .put("technique",technique).put("direction",direction)
+                .put("highlightBlend",highlightBlend).put("shadowBlend",shadowBlend)
                 .put("color",color).put("color2",color2).put("highlight",highlight)
                 .put("shade",shade).put("opacity",opacity).put("size",size)
                 .put("distance",distance).put("angle",angle).put("spread",spread)
@@ -71,6 +73,8 @@ public final class StudioLayerStyles {
             s.blend=j.optString("blend","NORMAL");s.position=j.optString("position","OUTSIDE");
             s.contour=j.optString("contour","LINEAR");s.bevelStyle=j.optString("bevelStyle","INNER_BEVEL");
             s.technique=j.optString("technique","SMOOTH");s.direction=j.optString("direction","UP");
+            s.highlightBlend=j.optString("highlightBlend","SCREEN");
+            s.shadowBlend=j.optString("shadowBlend","MULTIPLY");
             s.color=j.optInt("color",s.color);s.color2=j.optInt("color2",s.color2);
             s.highlight=j.optInt("highlight",s.highlight);s.shade=j.optInt("shade",s.shade);
             s.opacity=(float)j.optDouble("opacity",s.opacity);s.size=(float)j.optDouble("size",s.size);
@@ -186,9 +190,57 @@ public final class StudioLayerStyles {
      * retain the existing raster pipeline for backward compatibility.
      */
     private static Bitmap drawStyle(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
-        if(s.kind==Kind.BEVEL_EMBOSS)
-            return StudioBevelRenderer.render(layer,source,s,padding);
         return drawStyleCore(source,s,padding);
+    }
+    private static final LruCache<String,StudioBevelRenderer.Layers> BEVEL_CACHE=
+        new LruCache<String,StudioBevelRenderer.Layers>(12*1024*1024){
+            @Override protected int sizeOf(String key,StudioBevelRenderer.Layers value){
+                return value.bytes();
+            }
+        };
+    private static StudioBevelRenderer.Layers cachedBevel(
+            StudioDocument.Layer layer,Bitmap source,Style style,int padding){
+        String key;
+        try{
+            key="bevel:"+layer.type+":"+System.identityHashCode(source)+":"+
+                source.getGenerationId()+":"+padding+":"+style.toJson().toString();
+        }catch(JSONException ignored){
+            return StudioBevelRenderer.render(layer,source,style,padding);
+        }
+        StudioBevelRenderer.Layers result=BEVEL_CACHE.get(key);
+        if(result!=null&&!result.light.isRecycled()&&!result.shade.isRecycled())return result;
+        result=StudioBevelRenderer.render(layer,source,style,padding);
+        BEVEL_CACHE.put(key,result);return result;
+    }
+    private static Paint bevelPaint(String blend,float opacity){
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        p.setAlpha(Math.round(255*cap(opacity)));
+        if(Build.VERSION.SDK_INT>=29){
+            BlendMode mode=BlendMode.SRC_OVER;
+            switch(blend){
+                case "MULTIPLY":mode=BlendMode.MULTIPLY;break;
+                case "SCREEN":mode=BlendMode.SCREEN;break;
+                case "OVERLAY":mode=BlendMode.OVERLAY;break;
+                case "DARKEN":mode=BlendMode.DARKEN;break;
+                case "LIGHTEN":mode=BlendMode.LIGHTEN;break;
+                case "ADD":mode=BlendMode.PLUS;break;
+            }
+            p.setBlendMode(mode);
+        }else if("MULTIPLY".equals(blend)){
+            p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.MULTIPLY));
+        }else if("SCREEN".equals(blend)){
+            p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SCREEN));
+        }
+        return p;
+    }
+    private static void drawBevel(Canvas canvas,StudioDocument.Layer layer,
+                                  Bitmap source,Style style,int padding){
+        StudioBevelRenderer.Layers masks=cachedBevel(layer,source,style,padding);
+        float opacity=layer.opacity*style.opacity;
+        canvas.drawBitmap(masks.shade,-padding,-padding,
+            bevelPaint(style.shadowBlend,opacity*style.shadowOpacity));
+        canvas.drawBitmap(masks.light,-padding,-padding,
+            bevelPaint(style.highlightBlend,opacity*style.highlightOpacity));
     }
     private static Bitmap drawStyleCore(Bitmap source,Style s,int padding){
         int w=source.getWidth(),h=source.getHeight();
@@ -280,9 +332,13 @@ public final class StudioLayerStyles {
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
              s.kind==Kind.BEVEL_EMBOSS||
              s.kind==Kind.STROKE&&"INSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding);
-            canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
-
+            if(s.kind==Kind.BEVEL_EMBOSS){
+                drawBevel(canvas,layer,source,s,padding);
+            }else{
+                Bitmap fx=cached(layer,source,s,padding);
+                canvas.drawBitmap(fx,-padding,-padding,
+                    compositingPaint(s,layer.opacity*s.opacity));
+            }
         }
     }
 }
