@@ -10,7 +10,7 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=4, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public static final int FORMAT_VERSION=5, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
     public static final class Layer {
@@ -32,6 +32,8 @@ public final class StudioDocument {
         public int maskDensity=100;
         public float shadowRadius=5,shadowX=5,shadowY=5,shadowOpacity=.65f;
         public int shadowColor=Color.BLACK;
+        public boolean showStyles=true;
+        public final ArrayList<StudioLayerStyles.Style> styles=new ArrayList<>();
         public final ArrayList<StudioLayerEffects.Effect> effects=new ArrayList<>();
         Layer(String id,String name,Bitmap bitmap){
             this.id=id;this.name=name;this.bitmap=bitmap;
@@ -61,6 +63,8 @@ public final class StudioDocument {
             newer.shadowEnabled=l.shadowEnabled;newer.shadowRadius=l.shadowRadius;
             newer.shadowX=l.shadowX;newer.shadowY=l.shadowY;
             newer.shadowColor=l.shadowColor;newer.shadowOpacity=l.shadowOpacity;
+            newer.showStyles=l.showStyles;
+            for(StudioLayerStyles.Style e:l.styles)newer.styles.add(e.copy());
             for(StudioLayerEffects.Effect e:l.effects)newer.effects.add(e.copy());
             return newer;
         }
@@ -77,6 +81,8 @@ public final class StudioDocument {
             l.shadowEnabled=shadowEnabled;l.shadowRadius=shadowRadius;
             l.shadowX=shadowX;l.shadowY=shadowY;
             l.shadowOpacity=shadowOpacity;l.shadowColor=shadowColor;
+            l.showStyles=showStyles;
+            for(StudioLayerStyles.Style e:styles)l.styles.add(e.copy());
             for(StudioLayerEffects.Effect e:effects)l.effects.add(e.copy());
             return l;
         }
@@ -101,6 +107,10 @@ public final class StudioDocument {
             JSONArray stack=new JSONArray();
             for(StudioLayerEffects.Effect e:effects)stack.put(e.toJson());
             j.put("effects",stack);
+            j.put("showStyles",showStyles);
+            JSONArray layerStyles=new JSONArray();
+            for(StudioLayerStyles.Style style:styles)layerStyles.put(style.toJson());
+            j.put("styles",layerStyles);
             return j;
         }
     }
@@ -255,7 +265,7 @@ public final class StudioDocument {
                 p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
                     PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
             }
-            if(StudioLayerEffects.requiresProcessing(l)||l.shadowEnabled){
+            if(StudioLayerEffects.requiresProcessing(l)||l.shadowEnabled||StudioLayerStyles.hasStyles(l)){
                 StudioLayerEffects.draw(canvas,l,p);
             }else switch(l.type){
                 case SMART:case RASTER:if(l.bitmap!=null&&!l.bitmap.isRecycled())
@@ -292,7 +302,7 @@ public final class StudioDocument {
     }
     static StudioDocument fromJson(JSONObject j)throws Exception{
         int format=j.getInt("format");
-        if(format!=1&&format!=2&&format!=3&&format!=FORMAT_VERSION)
+        if(format!=1&&format!=2&&format!=3&&format!=4&&format!=FORMAT_VERSION)
             throw new java.io.IOException("Versão .noise incompatível");
         StudioDocument d=new StudioDocument(j.getString("id"),j.getString("name"),
             j.getInt("width"),j.getInt("height"),j.optInt("dpi",72));
@@ -362,6 +372,14 @@ public final class StudioDocument {
             Math.abs(l.shadowX)>512||Math.abs(l.shadowY)>512||
             !Float.isFinite(l.shadowOpacity)||l.shadowOpacity<0||l.shadowOpacity>1)
             throw new java.io.IOException("Sombra inválida");
+        l.showStyles=j.optBoolean("showStyles",true);
+        JSONArray layerStyles=j.optJSONArray("styles");
+        if(layerStyles!=null){
+            if(layerStyles.length()>StudioLayerStyles.MAX_STYLES)
+                throw new java.io.IOException("Estilos demais na camada");
+            for(int i=0;i<layerStyles.length();i++)
+                l.styles.add(StudioLayerStyles.Style.fromJson(layerStyles.getJSONObject(i)));
+        }
         JSONArray stack=j.optJSONArray("effects");
         if(stack!=null){
             if(stack.length()>8)throw new java.io.IOException("Filtros demais");
