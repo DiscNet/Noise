@@ -127,14 +127,14 @@ public final class StudioLayerStyles {
         new LruCache<String,Bitmap>(24*1024*1024){
             @Override protected int sizeOf(String key,Bitmap value){return value.getByteCount();}
         };
-    private static Bitmap cached(Bitmap source,Style s,int padding){
+    private static Bitmap cached(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
         String k;
         try{k=System.identityHashCode(source)+":"+source.getGenerationId()+":"+padding+
             ":"+s.toJson().toString();}
-        catch(JSONException ignored){return drawStyle(source,s,padding);}
+        catch(JSONException ignored){return drawStyle(layer,source,s,padding);}
         Bitmap result=STYLE_CACHE.get(k);
         if(result!=null&&!result.isRecycled())return result;
-        result=drawStyle(source,s,padding);
+        result=drawStyle(layer,source,s,padding);
         STYLE_CACHE.put(k,result);return result;
     }
     private static Paint compositingPaint(Style s,float opacity){
@@ -181,38 +181,14 @@ public final class StudioLayerStyles {
         }
         return result;
     }
-    /** Continuous signed edge distance with subpixel alpha correction. Chisel
-     * geometry never thresholds partially covered glyph pixels into hard edges. */
-    private static float signedDistance(int[] interior,int[] exterior,int[] alpha,
-                                        int width,int height,int x,int y){
-        x=Math.max(0,Math.min(width-1,x));y=Math.max(0,Math.min(height-1,y));
-        int i=y*width+x;
-        float coverage=alpha[i]/255f;
-        float distance=coverage>=.5f?
-            (interior[i]/3f-.5f):-(exterior[i]/3f-.5f);
-        return distance+(coverage-.5f)*.65f;
-    }
-    /** Adaptive 2x supersampling produces coverage-based anti-aliasing on small
-     * text, glyphs and shape edges; large images use soft subpixel coverage.
-     * Chisel HARD controls the profile, not whether edge antialias is enabled.
+    /**
+     * Bevel uses a dedicated high-quality alpha renderer. Other effects
+     * retain the existing raster pipeline for backward compatibility.
      */
-    private static Bitmap drawStyle(Bitmap source,Style s,int padding){
-        if(s.kind==Kind.BEVEL_EMBOSS&&
-            (long)source.getWidth()*source.getHeight()<=350_000L){
-            Bitmap hi=Bitmap.createScaledBitmap(source,source.getWidth()*2,
-                source.getHeight()*2,true);
-            StudioLayerStyles.Style advanced=s.copy();
-            advanced.size*=2;advanced.soften*=2;advanced.distance*=2;
-            Bitmap full=drawStyleCore(hi,advanced,padding*2);
-            Bitmap reduced=Bitmap.createScaledBitmap(full,
-                source.getWidth()+padding*2,source.getHeight()+padding*2,true);
-            full.recycle();hi.recycle();return reduced;
-        }
+    private static Bitmap drawStyle(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
+        if(s.kind==Kind.BEVEL_EMBOSS)
+            return StudioBevelRenderer.render(layer,source,s,padding);
         return drawStyleCore(source,s,padding);
-    }
-    private static float smoothstep(float threshold,float feather,float value){
-        float t=Math.max(0,Math.min(1,(value-threshold)/Math.max(.001f,feather)+.5f));
-        return t*t*(3-2*t);
     }
     private static Bitmap drawStyleCore(Bitmap source,Style s,int padding){
         int w=source.getWidth(),h=source.getHeight();
@@ -269,70 +245,9 @@ public final class StudioLayerStyles {
                     pigment=lerp(s.color,s.color2,s.reverse?1-cap(gradient):cap(gradient));
                     t=coverage;break;
                 }
-                case BEVEL_EMBOSS: {
-                    boolean outerBevel="OUTER_BEVEL".equals(s.bevelStyle);
-                    boolean emboss="EMBOSS".equals(s.bevelStyle)||
-                        "PILLOW".equals(s.bevelStyle);
-                    boolean useOutside=(outerBevel||emboss)&&coverage<.5f;
-                    float d=useOutside?de:di;
-                    if(d>radius+s.soften)break;
-                    // The chamfer distance drives the bevel width, but a
-                    // fractional signed-distance gradient drives its normal.
-                    // Sobel 3x3 averages diagonal steps instead of exposing
-                    // jagged 1-pixel staircases on glyphs and thin shapes.
-                    float topLeft=signedDistance(inner,outer,alpha,W,H,x-1,y-1);
-                    float top=signedDistance(inner,outer,alpha,W,H,x,y-1);
-                    float topRight=signedDistance(inner,outer,alpha,W,H,x+1,y-1);
-                    float left=signedDistance(inner,outer,alpha,W,H,x-1,y);
-                    float right=signedDistance(inner,outer,alpha,W,H,x+1,y);
-                    float bottomLeft=signedDistance(inner,outer,alpha,W,H,x-1,y+1);
-                    float bottom=signedDistance(inner,outer,alpha,W,H,x,y+1);
-                    float bottomRight=signedDistance(inner,outer,alpha,W,H,x+1,y+1);
-                    float gradX=(topRight+2*right+bottomRight-topLeft-2*left-bottomLeft)*.125f;
-                    float gradY=(bottomLeft+2*bottom+bottomRight-topLeft-2*top-topRight)*.125f;
-                    float magnitude=(float)Math.hypot(gradX,gradY);
-                    float normal=(gradX*dx+gradY*dy)/Math.max(.15f,magnitude);
-                    if("DOWN".equals(s.direction))normal=-normal;
-                    if(useOutside)normal=-normal;
-                    if("PILLOW".equals(s.bevelStyle))normal=-normal;
-
-                    float width=Math.max(1,radius+s.soften);
-                    // Diagonal chamfer is corrected with local fractional
-                    // coverage. This also supports antialiased HARD chisel.
-                    float edgeCorrection=(coverage-.5f)*.65f;
-                    float fraction=cap((width-d+edgeCorrection)/width);
-                    boolean hard="CHISEL_HARD".equals(s.technique);
-                    boolean softChisel="CHISEL_SOFT".equals(s.technique);
-                    float rim,normalGain;
-                    if(hard){
-                        // Flat beveled facets with a distinct inner ridge;
-                        // transitions retain >= 1 subpixel of edge coverage.
-                        float aa=Math.max(.035f,.8f/width);
-                        rim=smoothstep(.12f,aa,fraction)*
-                            (1-.38f*smoothstep(.70f,aa,fraction));
-                        normalGain=1.45f;
-                    }else if(softChisel){
-                        // Planar slopes, slightly rounded facet transitions.
-                        rim=(float)Math.pow(fraction,.55f)*
-                            (1-.18f*smoothstep(.76f,.19f,fraction));
-                        normalGain=1.1f;
-                    }else{
-                        // Smooth curved surface, no hard threshold or ridge.
-                        rim=(float)Math.sin(fraction*Math.PI*.5f);
-                        normalGain=.73f;
-                    }
-                    float strength=rim*Math.min(3,s.depth/100f);
-                    float altitude=(float)Math.sin(Math.toRadians(s.altitude));
-                    float contour=curve(s,fraction);
-                    float surface=useOutside?1-coverage:coverage;
-                    t=surface*strength*contour*Math.max(.15f,altitude);
-                    float diffuse=cap(.5f+.5f*normal*normalGain);
-                    if(!hard)diffuse=smoothstep(.5f,softChisel?.72f:.98f,diffuse);
-                    else diffuse=smoothstep(.5f,.30f,diffuse);
-                    pigment=lerp(s.shade,s.highlight,diffuse);
-                    t*=s.shadowOpacity+(s.highlightOpacity-s.shadowOpacity)*diffuse;
+                case BEVEL_EMBOSS:
+                    // Handled only by StudioBevelRenderer above.
                     break;
-                }
             }
             int visible=Math.round(255*cap(t)*Color.alpha(pigment)/255f);
             if(visible>0)argb[i]=(visible<<24)|(pigment&0xffffff);
@@ -355,7 +270,7 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
                 (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
                 s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
-            Bitmap fx=cached(source,s,padding);
+            Bitmap fx=cached(layer,source,s,padding);
             canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
 
         }
@@ -365,7 +280,7 @@ public final class StudioLayerStyles {
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
              s.kind==Kind.BEVEL_EMBOSS||
              s.kind==Kind.STROKE&&"INSIDE".equals(s.position))){
-            Bitmap fx=cached(source,s,padding);
+            Bitmap fx=cached(layer,source,s,padding);
             canvas.drawBitmap(fx,-padding,-padding,compositingPaint(s,layer.opacity*s.opacity));
 
         }
