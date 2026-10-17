@@ -70,11 +70,7 @@ jobs:
             timeout 15s adb logcat -d > smoke/logcat.txt || true
             # Surface instrumentation crashes in the job log, including the
             # actual Java stack (also retained as an artifact for diagnosis).
-            if grep -q "Process crashed" smoke/results.txt; then
-              echo "::group::Android crash diagnosis"
-              grep -A 42 -B 5 -E "FATAL EXCEPTION|AndroidRuntime.*(Exception|Error)|OutOfMemoryError|Caused by:" smoke/logcat.txt | tail -n 160 || true
-              echo "::endgroup::"
-            fi
+            grep -A 42 -B 5 -E "FATAL EXCEPTION|AndroidRuntime.*(Exception|Error)|OutOfMemoryError|Caused by:" smoke/logcat.txt | tail -n 160 || true
             timeout 15s adb exec-out screencap -p > smoke/device-after-tests.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-ui.png > smoke/noise-ui.png || true
             timeout 15s adb exec-out run-as com.discnet.noise cat files/noise-opening.png > smoke/noise-opening.png || true
