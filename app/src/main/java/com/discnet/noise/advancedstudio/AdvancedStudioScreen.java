@@ -35,7 +35,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final SeekBar opacity;
     enum Tool { MOVE,TRANSFORM,HAND,BRUSH,ERASER,MASK_HIDE,MASK_REVEAL,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE,TEXT }
     private Tool selectedTool=Tool.MOVE;
-    private boolean closed,showLayers=true,showTextPanel=false,keepAspect=true;
+    private boolean closed,showLayers=true,showTextPanel=false,showTransformPanel=false,
+        keepAspect=true,editingEffects=false,editingShadow=false;
+    private int selectedFilterIndex=-1;
+    private LinearLayout layerEffectsBar,effectActions,effectControls,transformPanel;
+    private ScrollView effectsScroll,transformScroll;
+    private TextView blendButton;
+    private EditText opacityInput;
     private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
     private RectF pendingCrop;
     private TextView toolMode;
@@ -1087,10 +1093,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             return x>=0&&x<document.width&&y>=0&&y<document.height;
         }
         private RectF activeBounds(StudioDocument.Layer l){
-            if(l==null)return null;
-            float w=l.naturalWidth()*Math.abs(l.scaleX);
-            float h=l.naturalHeight()*Math.abs(l.scaleY);
-            return new RectF(l.x,l.y,l.x+w,l.y+h);
+            return l==null?null:StudioTransformMath.bounds(l);
         }
         private void outline(Canvas canvas,RectF bounds,int color){
             if(bounds==null)return;
@@ -1099,15 +1102,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             canvas.drawRect(bounds,paint);
             paint.setStyle(Paint.Style.FILL);
         }
-        /** Coordinates transformed in the same T*R*skew*scale order as the compositor. */
         private float[] layerPoint(StudioDocument.Layer l,float px,float py){
-            float x=px*l.scaleX,y=py*l.scaleY;
-            float h=(float)Math.tan(Math.toRadians(l.skewX));
-            float v=(float)Math.tan(Math.toRadians(l.skewY));
-            float u=x+h*y,w=y+v*x;
-            float radians=(float)Math.toRadians(l.rotation);
-            float cos=(float)Math.cos(radians),sin=(float)Math.sin(radians);
-            return new float[]{l.x+u*cos-w*sin,l.y+u*sin+w*cos};
+            return StudioTransformMath.point(l,px,py);
         }
         private float[][] transformHandles(StudioDocument.Layer l){
             float w=l.naturalWidth(),h=l.naturalHeight();
@@ -1274,8 +1270,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         if(transformHandle==-1){
                             selected.x=originalX+diffX;selected.y=originalY+diffY;
                         }else if(transformHandle==9){
-                            float[] center=layerPoint(selected,
-                                selected.naturalWidth()/2f,selected.naturalHeight()/2f);
+                            float[] center={StudioTransformMath.centerX(selected),
+                                StudioTransformMath.centerY(selected)};
                             float a=(float)Math.atan2(startDocY-center[1],startDocX-center[0]);
                             float b=(float)Math.atan2(y-center[1],x-center[0]);
                             selected.rotation=originalRotation+
