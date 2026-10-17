@@ -19,6 +19,7 @@ import java.util.concurrent.*;
  */
 public final class AdvancedStudioScreen extends FrameLayout {
     public interface Host {void exit(); void importImage();}
+    public static final int FONT_PICKER_REQUEST=23091;
     private final Activity activity;
     private final Host host;
     private final StudioProjectStore store;
@@ -37,7 +38,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private Tool selectedTool=Tool.MOVE;
     private boolean closed,showLayers=true,showTextPanel=false,showTransformPanel=false,
         keepAspect=true,editingEffects=false,editingShadow=false;
-    private int selectedFilterIndex=-1;
+    private int selectedFilterIndex=-1,selectedStyleIndex=-1;
+    private boolean editingStyle;
     private LinearLayout layerEffectsBar,effectActions,effectControls,transformPanel;
     private ScrollView effectsScroll,transformScroll;
     private TextView blendButton;
@@ -59,6 +61,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final int surface=0xff101016,panel=0xff19171f;
     public AdvancedStudioScreen(Activity a,Host host,Bitmap imported){
         super(a);activity=a;this.host=host;store=new StudioProjectStore(a);
+        StudioFontLibrary.init(a);
         setBackgroundColor(surface);setClickable(true);setFocusableInTouchMode(true);
         document=StudioDocument.blank("Sem título",
             imported==null?1080:Math.min(StudioDocument.MAX_SIDE,imported.getWidth()),
@@ -88,7 +91,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
-        commandMenu("Estilos",new String[]{"Sombra projetada","Remover sombra"},
+        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Remover sombra"},
             this::styleCommand);
         commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
         commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas","Texto"},
@@ -341,14 +344,45 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }
     }
     private void colorDialog(){
-        EditText input=numberField("#RRGGBB",false);
-        input.setText(String.format(java.util.Locale.ROOT,"#%06X",foreground&0xffffff));
-        new AlertDialog.Builder(activity).setTitle("Cor principal · HEX")
-            .setView(input).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                try{foreground=Color.parseColor(input.getText().toString().trim());}
-                catch(Exception e){message("Cor hexadecimal inválida");}
-            }).show();
+        StudioColorPicker.show(activity,"Cor principal",foreground,
+            color->{foreground=color;canvas.invalidate();});
+    }
+    private void pickLayerColor(StudioDocument.Layer layer){
+        if(layer==null||layer.locked)return;
+        StudioColorPicker.show(activity,"Cor da camada",layer.color,color->{
+            document.checkpoint();layer.color=color;changed(true);
+        });
+    }
+    private void chooseFont(){
+        if(document.active()==null||document.active().type!=StudioDocument.Type.TEXT){
+            message("Selecione uma camada de texto");return;
+        }
+        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.setType("*/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try{activity.startActivityForResult(pick,FONT_PICKER_REQUEST);}
+        catch(Exception e){message("Não foi possível abrir o seletor de arquivos");}
+    }
+    public void importFontUri(Uri uri){
+        if(uri==null||closed)return;
+        final String layerId=document.activeId;
+        io.execute(()->{
+            try{
+                String font=StudioFontLibrary.importFont(activity,uri);
+                main.post(()->{
+                    if(closed)return;
+                    StudioDocument.Layer target=null;
+                    for(StudioDocument.Layer l:document.layers)
+                        if(l.id.equals(layerId)){target=l;break;}
+                    if(target!=null&&target.type==StudioDocument.Type.TEXT&&!target.locked){
+                        document.checkpoint();target.fontFamily=font;
+                        changed(true);
+                        message("Fonte personalizada instalada");
+                    }else message("Fonte instalada: selecione uma camada de texto");
+                });
+            }catch(Exception error){main.post(()->message(
+                "Falha ao importar fonte: "+error.getMessage()));}
+        });
     }
     private void textDialog(){
         StudioDocument.Layer current=document.active();
@@ -554,12 +588,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
         effectActions.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null)return;
-        effectActions.addView(action(editingEffects?"← Camadas":"+ Efeito",
+        effectActions.addView(action(editingEffects?"← Camadas":"＋ Estilo",
             ()->{if(editingEffects){editingEffects=false;layerScroll.setVisibility(VISIBLE);
                 effectsScroll.setVisibility(GONE);updatePanels();}
-                else addFilterDialog(layer);}));
-        effectActions.addView(action(layer.shadowEnabled?"☑ Sombra":"＋ Sombra",
-            ()->styleCommand("Sombra projetada")));
+                else addStyleMenu(layer);}));
+        effectActions.addView(action("fx Estilos",()->addStyleMenu(layer)));
+        effectActions.addView(action("＋ Filtro",()->addFilterDialog(layer)));
         for(int i=0;i<layer.effects.size();i++){
             final int position=i;
             StudioLayerEffects.Effect effect=layer.effects.get(i);
@@ -577,7 +611,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         int last=effectsScroll.getScrollY();effectControls.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null)return;
-        if(editingShadow){
+        if(editingStyle&&selectedStyleIndex>=0&&selectedStyleIndex<layer.styles.size()){
+            editStyleControls(layer,layer.styles.get(selectedStyleIndex));
+        }else if(editingShadow){
             textTitleTo(effectControls,"SOMBRA PROJETADA");
             if(!layer.shadowEnabled)effectControls.addView(action("Ativar sombra",
                 ()->{if(layer.locked)return;
@@ -608,7 +644,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 ()->{document.checkpoint();e.enabled=!e.enabled;changed(true);}));
             effectControls.addView(action("Excluir filtro",
                 ()->{document.checkpoint();layer.effects.remove(e);
-                    editingEffects=false;selectedFilterIndex=-1;changed(true);}));
+                    editingEffects=false;editingStyle=false;selectedFilterIndex=-1;changed(true);}));
         }else{
             textTitleTo(effectControls,"EFEITOS DA CAMADA");
             effectControls.addView(action("Adicionar filtro",()->addFilterDialog(layer)));
@@ -652,10 +688,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textPanel.addView(preview,new LinearLayout.LayoutParams(-1,dp(42)));
         textTitle("CARACTERE");
         textOption("Conteúdo","Editar",this::textDialog);
-        textOption("Fonte",layer.fontFamily,()->textSetting("font"));
+        textOption("Fonte",StudioFontLibrary.label(layer.fontFamily),()->textSetting("font"));
+        textOption("Importar .ttf / .otf","Escolher arquivo",this::chooseFont);
         inspectorField(textPanel,layer,"Tamanho","px",layer.fontSize,8,600,1,
             (l,v)->l.fontSize=v,true);
-        textOption("Cor",String.format(Locale.ROOT,"#%06X",layer.color&0xffffff),()->textSetting("color"));
+        textOption("Cor","Toque para selecionar",()->pickLayerColor(layer));
         LinearLayout swatches=new LinearLayout(activity);
         int[] samples={0xffffffff,0xff111111,0xffb18aff,0xffff668c,
             0xffffb64f,0xff64dcd8,0xff598bff};
@@ -731,7 +768,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     (dialog,index)->{
                         StudioDocument.Layer next=current.copy();next.fontFamily=fonts[index];
                         applyTextDraft(current,next);dialog.dismiss();
-                    }).setNeutralButton("Outra fonte do sistema",(dialog,which)->{
+                    }).setNeutralButton("Importar .TTF / .OTF",(dialog,which)->chooseFont())
+                    .setNegativeButton("Cancelar",null).show();
+            return;
+        }
+        if("legacy-font".equals(what)){
+            new AlertDialog.Builder(activity).setNeutralButton("Outra fonte do sistema",(dialog,which)->{
                         EditText family=numberField("Nome da família de fonte",false);
                         family.setText(current.fontFamily);
                         new AlertDialog.Builder(activity).setTitle("Família de fonte")
@@ -758,7 +800,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "height":value=Math.abs(current.scaleY*current.naturalHeight());break;
             default:value=0;
         }
-        EditText input=numberField("color".equals(what)?"Cor hexadecimal":"Valor",false);
+        if("color".equals(what)){pickLayerColor(current);return;}
+        EditText input=numberField("Valor",false);
         if("color".equals(what))
             input.setText(String.format(Locale.ROOT,"#%06X",current.color&0xffffff));
         else{
@@ -1003,13 +1046,199 @@ public final class AdvancedStudioScreen extends FrameLayout {
             layer.effects.add(current.copy());index=layer.effects.size()-1;
             changed(true);
         }
-        editingEffects=true;editingShadow=false;selectedFilterIndex=index;
+        editingEffects=true;editingShadow=false;editingStyle=false;selectedFilterIndex=index;
         showTextPanel=false;showTransformPanel=false;
         updatePanels();
+    }
+    private void addStyleMenu(StudioDocument.Layer layer){
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        StudioLayerStyles.Kind[] kinds=StudioLayerStyles.Kind.values();
+        String[] choices=new String[kinds.length];
+        for(int i=0;i<kinds.length;i++)choices[i]=kinds[i].title;
+        new AlertDialog.Builder(activity).setTitle("Adicionar estilo de camada")
+            .setItems(choices,(d,index)->addStyle(layer,kinds[index]))
+            .setNegativeButton("Cancelar",null).show();
+    }
+    private void addStyle(StudioDocument.Layer layer,StudioLayerStyles.Kind kind){
+        if(layer.styles.size()>=StudioLayerStyles.MAX_STYLES){
+            message("Limite de 10 estilos por camada");return;
+        }
+        if((long)layer.naturalWidth()*layer.naturalHeight()>
+            StudioLayerStyles.MAX_PIXELS){
+            message("Estilos limitados a 2 MP por camada");return;
+        }
+        document.checkpoint();
+        layer.styles.add(new StudioLayerStyles.Style(kind));
+        layer.showStyles=true;
+        changed(true);
+        openStyle(layer,layer.styles.size()-1);
+    }
+    private void openStyle(StudioDocument.Layer layer,int index){
+        document.activeId=layer.id;
+        editingEffects=true;editingShadow=false;editingStyle=true;
+        selectedStyleIndex=index;selectedFilterIndex=-1;
+        showTextPanel=false;showTransformPanel=false;
+        updateUi();updatePanels();
+    }
+    private void styleChoice(LinearLayout into,StudioDocument.Layer layer,
+                             String label,String[] names,String[] ids,
+                             String current,java.util.function.Consumer<String> onPick){
+        LinearLayout row=new LinearLayout(activity);
+        row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(9),0,dp(7),0);
+        row.setBackgroundColor(0xff27222d);
+        TextView heading=text(label,12,ink);
+        row.addView(heading,new LinearLayout.LayoutParams(0,dp(39),1));
+        int pos=Arrays.asList(ids).indexOf(current);
+        TextView selected=action(pos<0?current:names[pos]+"  ⌄",()->{});
+        selected.setTextSize(11);selected.setTextColor(accent);
+        row.addView(selected,new LinearLayout.LayoutParams(dp(125),dp(39)));
+        selected.setOnClickListener(v->{
+            PopupMenu menu=new PopupMenu(activity,selected);
+            for(int k=0;k<ids.length;k++)
+                menu.getMenu().add(0,k,k,names[k]);
+            menu.setOnMenuItemClickListener(item->{
+                if(layer.locked)return true;
+                document.checkpoint();onPick.accept(ids[item.getItemId()]);
+                changed(true);updatePanels();return true;
+            });menu.show();
+        });
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(39));
+        lp.bottomMargin=dp(4);into.addView(row,lp);
+    }
+    private void styleValue(StudioDocument.Layer layer,String title,String unit,
+                            float value,float min,float max,float step,
+                            java.util.function.DoubleConsumer setter){
+        inspectorField(effectControls,layer,title,unit,value,min,max,step,
+            (l,v)->setter.accept(v),false);
+    }
+    private void styleColor(StudioDocument.Layer layer,String title,int color,
+                            java.util.function.IntConsumer setter){
+        LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8),0,dp(8),0);
+        row.setBackgroundColor(0xff27222d);
+        TextView name=text(title,12,ink);
+        row.addView(name,new LinearLayout.LayoutParams(0,dp(42),1));
+        TextView swatch=action("■  Selecionar",()->{});
+        swatch.setTextColor(color);
+        row.addView(swatch,new LinearLayout.LayoutParams(dp(125),dp(42)));
+        swatch.setOnClickListener(v->StudioColorPicker.show(activity,title,color,chosen->{
+            if(layer.locked)return;
+            document.checkpoint();setter.accept(chosen);changed(true);
+        }));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(43));
+        lp.bottomMargin=dp(4);effectControls.addView(row,lp);
+    }
+    private void styleToggle(StudioDocument.Layer layer,String label,
+                             boolean current,java.util.function.Consumer<Boolean> setter){
+        CheckBox cb=new CheckBox(activity);
+        cb.setText(label);cb.setTextColor(ink);cb.setChecked(current);cb.setTextSize(12);
+        cb.setOnCheckedChangeListener((button,checked)->{
+            if(layer.locked)return;
+            document.checkpoint();setter.accept(checked);changed(true);
+        });
+        effectControls.addView(cb,new LinearLayout.LayoutParams(-1,dp(43)));
+    }
+    private void editStyleControls(StudioDocument.Layer layer,StudioLayerStyles.Style style){
+        textTitleTo(effectControls,"ESTILO DE CAMADA · "+style.kind.title.toUpperCase(Locale.ROOT));
+        styleToggle(layer,"Ativar efeito",style.enabled,v->style.enabled=v);
+        textTitleTo(effectControls,"ESTRUTURA");
+        String[] blendNames={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear","Adicionar"};
+        String[] blends={"NORMAL","MULTIPLY","SCREEN","OVERLAY","DARKEN","LIGHTEN","ADD"};
+        styleChoice(effectControls,layer,"Modo de mesclagem",
+            blendNames,blends,style.blend,v->style.blend=v);
+        styleValue(layer,"Opacidade","%",style.opacity*100,0,100,1,v->style.opacity=(float)(v/100));
+        switch(style.kind){
+            case COLOR_OVERLAY:
+                styleColor(layer,"Cor",style.color,v->style.color=v);break;
+            case GRADIENT_OVERLAY:
+                styleColor(layer,"Cor inicial",style.color,v->style.color=v);
+                styleColor(layer,"Cor final",style.color2,v->style.color2=v);
+                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
+                styleValue(layer,"Escala","%",style.gradientScale,10,400,5,
+                    v->style.gradientScale=(float)v);
+                styleToggle(layer,"Inverter degradê",style.reverse,v->style.reverse=v);
+                break;
+            case STROKE:
+                styleColor(layer,"Cor do contorno",style.color,v->style.color=v);
+                styleValue(layer,"Espessura","px",style.size,1,64,1,v->style.size=(float)v);
+                styleChoice(effectControls,layer,"Posição",
+                    new String[]{"Fora","Dentro","Centro"},
+                    new String[]{"OUTSIDE","INSIDE","CENTER"},style.position,
+                    v->style.position=v);
+                break;
+            case INNER_GLOW:case OUTER_GLOW:
+                styleColor(layer,"Cor do brilho",style.color,v->style.color=v);
+                styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
+                styleValue(layer,style.kind==StudioLayerStyles.Kind.OUTER_GLOW?"Expansão":"Contração",
+                    "%",style.spread,0,100,1,v->style.spread=(float)v);
+                if(style.kind==StudioLayerStyles.Kind.INNER_GLOW)
+                    styleChoice(effectControls,layer,"Origem",
+                        new String[]{"Bordas","Centro"},
+                        new String[]{"EDGE","CENTER"},style.sourceCenter?"CENTER":"EDGE",
+                        v->style.sourceCenter=v.equals("CENTER"));
+                break;
+            case DROP_SHADOW:case INNER_SHADOW:
+                styleColor(layer,"Cor da sombra",style.color,v->style.color=v);
+                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
+                styleValue(layer,"Distância","px",style.distance,0,128,1,v->style.distance=(float)v);
+                styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
+                styleValue(layer,"Expansão","%",style.spread,0,100,1,v->style.spread=(float)v);
+                break;
+            case BEVEL_EMBOSS:
+                styleChoice(effectControls,layer,"Estilo",
+                    new String[]{"Bisel interno","Bisel externo","Relevo","Relevo almofada"},
+                    new String[]{"INNER_BEVEL","OUTER_BEVEL","EMBOSS","PILLOW"},
+                    style.bevelStyle,v->style.bevelStyle=v);
+                styleChoice(effectControls,layer,"Técnica",
+                    new String[]{"Suave","Cinzel duro","Cinzel suave"},
+                    new String[]{"SMOOTH","CHISEL_HARD","CHISEL_SOFT"},
+                    style.technique,v->style.technique=v);
+                styleChoice(effectControls,layer,"Direção",new String[]{"Acima","Abaixo"},
+                    new String[]{"UP","DOWN"},style.direction,v->style.direction=v);
+                styleValue(layer,"Profundidade","%",style.depth,0,1000,10,v->style.depth=(float)v);
+                styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
+                styleValue(layer,"Suavização","px",style.soften,0,64,1,v->style.soften=(float)v);
+                styleValue(layer,"Ângulo da luz","°",style.angle,-180,180,1,v->style.angle=(float)v);
+                styleValue(layer,"Altitude da luz","°",style.altitude,0,90,1,v->style.altitude=(float)v);
+                styleColor(layer,"Luz",style.highlight,v->style.highlight=v);
+                styleValue(layer,"Opac. da luz","%",style.highlightOpacity*100,
+                    0,100,1,v->style.highlightOpacity=(float)(v/100));
+                styleColor(layer,"Sombra",style.shade,v->style.shade=v);
+                styleValue(layer,"Opac. sombra","%",style.shadowOpacity*100,
+                    0,100,1,v->style.shadowOpacity=(float)(v/100));
+                break;
+        }
+        if(style.kind==StudioLayerStyles.Kind.BEVEL_EMBOSS||
+            style.kind==StudioLayerStyles.Kind.INNER_GLOW||
+            style.kind==StudioLayerStyles.Kind.OUTER_GLOW){
+            textTitleTo(effectControls,"QUALIDADE · CURVAS");
+            styleChoice(effectControls,layer,"Contorno",
+                new String[]{"Linear","Arredondado","Agudo","Cone","Anel","Meia curva","Personalizado"},
+                new String[]{"LINEAR","ROUND","SHARP","CONE","RING","HALF_ROUND","CUSTOM"},
+                style.contour,v->style.contour=v);
+            final boolean[] started={false};
+            StudioContourEditor curve=new StudioContourEditor(activity,style,
+                new StudioContourEditor.Callback(){
+                    public void begin(){if(!started[0]){document.checkpoint();started[0]=true;}}
+                    public void preview(){canvas.invalidate();}
+                    public void finish(){if(started[0]){started[0]=false;changed(true);}}
+                });
+            effectControls.addView(curve,new LinearLayout.LayoutParams(-1,dp(128)));
+            styleToggle(layer,"Suavizar curva",style.antiAlias,v->style.antiAlias=v);
+        }
+        effectControls.addView(action("Excluir este estilo",()->{
+            if(layer.locked)return;
+            document.checkpoint();layer.styles.remove(style);editingEffects=false;
+            editingStyle=false;selectedStyleIndex=-1;changed(true);
+        }));
     }
     private void styleCommand(String cmd){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
+        if("Adicionar estilo".equals(cmd)){addStyleMenu(layer);return;}
+        for(StudioLayerStyles.Kind kind:StudioLayerStyles.Kind.values()){
+            if(kind.title.equals(cmd)){addStyle(layer,kind);return;}
+        }
         if("Remover sombra".equals(cmd)){
             if(layer.shadowEnabled){
                 document.checkpoint();layer.shadowEnabled=false;changed(true);
@@ -1020,7 +1249,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             StudioLayerEffects.MAX_EFFECT_PIXELS){
             message("Sombra limitada a 2 MP nesta versão");return;
         }
-        editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
+        editingEffects=true;editingShadow=true;editingStyle=false;selectedFilterIndex=-1;
         showTextPanel=false;showTransformPanel=false;updatePanels();
     }
     private void viewCommand(String cmd){
@@ -1109,13 +1338,50 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 document.checkpoint();layer.locked=!layer.locked;changed(true);
             });
             row.addView(lock,new LinearLayout.LayoutParams(dp(31),dp(40)));
-            if(layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled){
+            if(layer.mask!=null||!layer.effects.isEmpty()||layer.shadowEnabled||!layer.styles.isEmpty()){
                 TextView extras=text((layer.mask!=null?"M":"")+
-                    (!layer.effects.isEmpty()?" fx":"")+
+                    (!layer.effects.isEmpty()||!layer.styles.isEmpty()?" fx":"")+
                     (layer.shadowEnabled?" ░":""),10,accent);
                 row.addView(extras,new LinearLayout.LayoutParams(dp(36),dp(40)));
             }
             layersList.addView(row,new LinearLayout.LayoutParams(-1,dp(43)));
+            if(!layer.styles.isEmpty()||layer.shadowEnabled){
+                LinearLayout stylesHeader=new LinearLayout(activity);
+                stylesHeader.setGravity(Gravity.CENTER_VERTICAL);
+                stylesHeader.setPadding(dp(20),0,dp(8),0);
+                stylesHeader.setBackgroundColor(0xff201b26);
+                stylesHeader.addView(action(layer.showStyles?"⌄":"›",()->{
+                    layer.showStyles=!layer.showStyles;updateUi();
+                }),new LinearLayout.LayoutParams(dp(29),dp(31)));
+                TextView fxTitle=text("fx  Efeitos",11,accent);
+                stylesHeader.addView(fxTitle,new LinearLayout.LayoutParams(0,dp(31),1));
+                fxTitle.setOnClickListener(v->{layer.showStyles=!layer.showStyles;updateUi();});
+                layersList.addView(stylesHeader,new LinearLayout.LayoutParams(-1,dp(31)));
+                if(layer.showStyles){
+                    for(int k=0;k<layer.styles.size();k++){
+                        final int index=k;
+                        StudioLayerStyles.Style style=layer.styles.get(k);
+                        LinearLayout styleRow=new LinearLayout(activity);
+                        styleRow.setGravity(Gravity.CENTER_VERTICAL);
+                        styleRow.setPadding(dp(46),0,dp(9),0);
+                        styleRow.setBackgroundColor(0xff19151f);
+                        TextView eye=action(style.enabled?"◉":"○",()->{
+                            if(layer.locked)return;
+                            document.checkpoint();style.enabled=!style.enabled;changed(true);
+                        });
+                        styleRow.addView(eye,new LinearLayout.LayoutParams(dp(34),dp(33)));
+                        TextView styleLabel=text(style.kind.title,11,style.enabled?ink:muted);
+                        styleRow.addView(styleLabel,new LinearLayout.LayoutParams(0,dp(33),1));
+                        styleLabel.setGravity(Gravity.CENTER_VERTICAL);
+                        styleLabel.setOnClickListener(v->openStyle(layer,index));
+                        layersList.addView(styleRow,new LinearLayout.LayoutParams(-1,dp(33)));
+                    }
+                    if(layer.shadowEnabled){
+                        TextView legacy=action("      ◉ Sombra legada",()->styleCommand("Sombra projetada"));
+                        layersList.addView(legacy,new LinearLayout.LayoutParams(-1,dp(33)));
+                    }
+                }
+            }
         }
         StudioDocument.Layer current=document.active();
         opacity.setEnabled(current!=null&&!current.locked);

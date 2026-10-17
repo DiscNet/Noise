@@ -82,7 +82,15 @@ public final class StudioLayerEffects {
     public static Bitmap processed(StudioDocument.Layer l){
         Bitmap source=sourceBitmap(l);
         if(source==null)return null;
-        if(!requiresProcessing(l))return source;
+        if(!requiresProcessing(l)){
+            if(source==l.bitmap||!StudioLayerStyles.hasStyles(l))return source;
+            String unfiltered="plain:"+key(l);
+            Bitmap cachedSource=CACHE.get(unfiltered);
+            if(cachedSource!=null&&!cachedSource.isRecycled()){
+                source.recycle();return cachedSource;
+            }
+            CACHE.put(unfiltered,source);return source;
+        }
         long pixels=(long)source.getWidth()*source.getHeight();
         if(pixels>MAX_EFFECT_PIXELS)
             throw new IllegalArgumentException("Efeitos limitados a 2 MP nesta etapa");
@@ -203,9 +211,9 @@ public final class StudioLayerEffects {
                 l.shadowY+offsets[1],shadowPaint);
             shadow.recycle();
         }
-        c.drawBitmap(filtered,0,0,p);
+        StudioLayerStyles.draw(c,l,filtered,p);
         if(l.type!=StudioDocument.Type.RASTER&&l.type!=StudioDocument.Type.SMART
-            &&!requiresProcessing(l))
+            &&!requiresProcessing(l)&&!StudioLayerStyles.hasStyles(l))
             filtered.recycle();
     }
     /** Keeps an attached raster mask aligned when editable text dimensions change. */
