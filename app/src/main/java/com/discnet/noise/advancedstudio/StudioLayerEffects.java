@@ -205,6 +205,8 @@ public final class StudioLayerEffects {
             shadow.recycle();
         }
         c.drawBitmap(filtered,0,0,p);
+        if(l.type!=StudioDocument.Type.RASTER&&!requiresProcessing(l))
+            filtered.recycle();
     }
     public static void createMask(StudioDocument doc,boolean white){
         StudioDocument.Layer layer=doc.active();
