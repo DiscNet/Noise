@@ -214,6 +214,35 @@ final class AdvancedStudioTest {
             "Smart embedded layer retains independent bitmap data");
         new File(activity.getFilesDir(),"advanced_studio/"+
             enhanced.id+".noise").delete();
+        // Rotation must pivot at visual center for raster, text and vector layers.
+        StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
+        StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
+        pivotText.x=34;pivotText.y=41;
+        float cx=StudioTransformMath.centerX(pivotText);
+        float cy=StudioTransformMath.centerY(pivotText);
+        float[] positionBefore=StudioTransformMath.point(pivotText,
+            pivotText.naturalWidth()/2f,pivotText.naturalHeight()/2f);
+        pivotText.rotation=90;
+        float[] positionAfter=StudioTransformMath.point(pivotText,
+            pivotText.naturalWidth()/2f,pivotText.naturalHeight()/2f);
+        check(Math.abs(cx-positionAfter[0])<.01f &&
+            Math.abs(cy-positionAfter[1])<.01f &&
+            Math.abs(positionBefore[0]-positionAfter[0])<.01f &&
+            Math.abs(positionBefore[1]-positionAfter[1])<.01f,
+            "Text rotation keeps geometric center pinned, not top-left point");
+        StudioDocument.Layer box=centers.addShape(StudioDocument.Type.RECTANGLE,
+            Color.RED,48,32);
+        box.x=27;box.y=59;box.scaleX=1.7f;box.scaleY=1.3f;
+        float[] boxCenter0=StudioTransformMath.point(box,24,16);
+        box.rotation=135;box.skewX=15;
+        float[] boxCenter1=StudioTransformMath.point(box,24,16);
+        check(Math.abs(boxCenter0[0]-boxCenter1[0])<.01f &&
+            Math.abs(boxCenter0[1]-boxCenter1[1])<.01f,
+            "Vector transform and skew keep the same rotation pivot");
+        Bitmap roundTrip=centers.composite();
+        check(roundTrip.getWidth()==256&&roundTrip.getHeight()==256,
+            "Center-pivot compositor renders document at requested size");
+        roundTrip.recycle();
         new File(activity.getFilesDir(),"advanced_studio/"+masked.id+".noise").delete();
         final AdvancedStudioScreen[] opened={null};
         test.runOnMainSync(()->{
