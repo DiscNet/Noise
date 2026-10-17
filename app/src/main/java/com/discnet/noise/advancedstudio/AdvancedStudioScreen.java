@@ -19,6 +19,7 @@ import java.util.concurrent.*;
  */
 public final class AdvancedStudioScreen extends FrameLayout {
     public interface Host {void exit(); void importImage();}
+    public static final int FONT_PICKER_REQUEST=23091;
     private final Activity activity;
     private final Host host;
     private final StudioProjectStore store;
@@ -59,6 +60,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final int surface=0xff101016,panel=0xff19171f;
     public AdvancedStudioScreen(Activity a,Host host,Bitmap imported){
         super(a);activity=a;this.host=host;store=new StudioProjectStore(a);
+        StudioFontLibrary.init(a);
         setBackgroundColor(surface);setClickable(true);setFocusableInTouchMode(true);
         document=StudioDocument.blank("Sem título",
             imported==null?1080:Math.min(StudioDocument.MAX_SIDE,imported.getWidth()),
@@ -341,14 +343,45 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }
     }
     private void colorDialog(){
-        EditText input=numberField("#RRGGBB",false);
-        input.setText(String.format(java.util.Locale.ROOT,"#%06X",foreground&0xffffff));
-        new AlertDialog.Builder(activity).setTitle("Cor principal · HEX")
-            .setView(input).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                try{foreground=Color.parseColor(input.getText().toString().trim());}
-                catch(Exception e){message("Cor hexadecimal inválida");}
-            }).show();
+        StudioColorPicker.show(activity,"Cor principal",foreground,
+            color->{foreground=color;canvas.invalidate();});
+    }
+    private void pickLayerColor(StudioDocument.Layer layer){
+        if(layer==null||layer.locked)return;
+        StudioColorPicker.show(activity,"Cor da camada",layer.color,color->{
+            document.checkpoint();layer.color=color;changed(true);
+        });
+    }
+    private void chooseFont(){
+        if(document.active()==null||document.active().type!=StudioDocument.Type.TEXT){
+            message("Selecione uma camada de texto");return;
+        }
+        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.setType("*/*");pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try{activity.startActivityForResult(pick,FONT_PICKER_REQUEST);}
+        catch(Exception e){message("Não foi possível abrir o seletor de arquivos");}
+    }
+    public void importFontUri(Uri uri){
+        if(uri==null||closed)return;
+        final String layerId=document.activeId;
+        io.execute(()->{
+            try{
+                String font=StudioFontLibrary.importFont(activity,uri);
+                main.post(()->{
+                    if(closed)return;
+                    StudioDocument.Layer target=null;
+                    for(StudioDocument.Layer l:document.layers)
+                        if(l.id.equals(layerId)){target=l;break;}
+                    if(target!=null&&target.type==StudioDocument.Type.TEXT&&!target.locked){
+                        document.checkpoint();target.fontFamily=font;
+                        changed(true);
+                        message("Fonte personalizada instalada");
+                    }else message("Fonte instalada: selecione uma camada de texto");
+                });
+            }catch(Exception error){main.post(()->message(
+                "Falha ao importar fonte: "+error.getMessage()));}
+        });
     }
     private void textDialog(){
         StudioDocument.Layer current=document.active();
@@ -652,10 +685,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textPanel.addView(preview,new LinearLayout.LayoutParams(-1,dp(42)));
         textTitle("CARACTERE");
         textOption("Conteúdo","Editar",this::textDialog);
-        textOption("Fonte",layer.fontFamily,()->textSetting("font"));
+        textOption("Fonte",StudioFontLibrary.label(layer.fontFamily),()->textSetting("font"));
+        textOption("Importar .ttf / .otf","Escolher arquivo",this::chooseFont);
         inspectorField(textPanel,layer,"Tamanho","px",layer.fontSize,8,600,1,
             (l,v)->l.fontSize=v,true);
-        textOption("Cor",String.format(Locale.ROOT,"#%06X",layer.color&0xffffff),()->textSetting("color"));
+        textOption("Cor","Toque para selecionar",()->pickLayerColor(layer));
         LinearLayout swatches=new LinearLayout(activity);
         int[] samples={0xffffffff,0xff111111,0xffb18aff,0xffff668c,
             0xffffb64f,0xff64dcd8,0xff598bff};
@@ -731,7 +765,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     (dialog,index)->{
                         StudioDocument.Layer next=current.copy();next.fontFamily=fonts[index];
                         applyTextDraft(current,next);dialog.dismiss();
-                    }).setNeutralButton("Outra fonte do sistema",(dialog,which)->{
+                    }).setNeutralButton("Importar .TTF / .OTF",(dialog,which)->chooseFont())
+                    .setNegativeButton("Cancelar",null).show();
+            return;
+        }
+        if("legacy-font".equals(what)){
+            new AlertDialog.Builder(activity).setNeutralButton("Outra fonte do sistema",(dialog,which)->{
                         EditText family=numberField("Nome da família de fonte",false);
                         family.setText(current.fontFamily);
                         new AlertDialog.Builder(activity).setTitle("Família de fonte")
@@ -758,7 +797,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "height":value=Math.abs(current.scaleY*current.naturalHeight());break;
             default:value=0;
         }
-        EditText input=numberField("color".equals(what)?"Cor hexadecimal":"Valor",false);
+        if("color".equals(what)){pickLayerColor(current);return;}
+        EditText input=numberField("Valor",false);
         if("color".equals(what))
             input.setText(String.format(Locale.ROOT,"#%06X",current.color&0xffffff));
         else{
