@@ -314,8 +314,11 @@ public final class StudioDocument {
             if(base!=null){
                 RectF clipBounds=StudioTransformMath.bounds(base);
                 if(!clipBounds.intersect(0,0,width,height))continue;
-                int checkpoint=canvas.saveLayer(clipBounds,null);
-                drawOneLayer(canvas,l);
+                // Apply the clipped layer's global blend mode when the
+                // isolated group is restored, not against empty transparent
+                // pixels inside the offscreen group.
+                int checkpoint=canvas.saveLayer(clipBounds,layerBlendPaint(l));
+                drawOneLayer(canvas,l,true);
                 // A clipping chain uses the alpha of the first unclipped
                 // layer beneath it, never the RGB of that layer or the next
                 // clipped layer. Both layers stay visible independently.
@@ -333,7 +336,7 @@ public final class StudioDocument {
                 canvas.restore();
                 canvas.restoreToCount(checkpoint);
             }else{
-                drawOneLayer(canvas,l);
+                drawOneLayer(canvas,l,false);
             }
             }catch(RuntimeException invalidLayer){
                 android.util.Log.e("NoiseStudio","Layer render failed: "+l.id,invalidLayer);
@@ -348,21 +351,36 @@ public final class StudioDocument {
         while(below>=0&&layers.get(below).clippingMask)below--;
         return below>=0?layers.get(below):null;
     }
-    private void drawOneLayer(Canvas canvas,Layer l){
+    private Paint layerBlendPaint(Layer l){
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        if(Build.VERSION.SDK_INT>=29){
+            BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
+                l.blend==Blend.SCREEN?BlendMode.SCREEN:
+                l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
+                l.blend==Blend.DARKEN?BlendMode.DARKEN:
+                l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
+            p.setBlendMode(blend);
+        }else if(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN){
+            p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
+                PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
+        }
+        return p;
+    }
+    private void drawOneLayer(Canvas canvas,Layer l,boolean isolatedClip){
         canvas.save();
         try{
             StudioTransformMath.apply(canvas,l);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
             p.setAlpha(Math.round(Math.max(0,Math.min(1,l.opacity))*255));
-            if(Build.VERSION.SDK_INT>=29){
+            if(!isolatedClip&&Build.VERSION.SDK_INT>=29){
                 BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
                     l.blend==Blend.SCREEN?BlendMode.SCREEN:
                     l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
                     l.blend==Blend.DARKEN?BlendMode.DARKEN:
                     l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
                 p.setBlendMode(blend);
-            }else if(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN){
+            }else if(!isolatedClip&&(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN)){
                 p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
                     PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
             }
