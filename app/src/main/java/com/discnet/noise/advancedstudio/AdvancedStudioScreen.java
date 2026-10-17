@@ -1,0 +1,466 @@
+package com.discnet.noise.advancedstudio;
+
+import android.app.*;
+import android.content.*;
+import android.graphics.*;
+import android.graphics.drawable.*;
+import android.net.Uri;
+import android.os.*;
+import android.text.InputType;
+import android.view.*;
+import android.widget.*;
+import java.io.InputStream;
+import java.util.*;
+import java.util.concurrent.*;
+
+/**
+ * Isolated Android workspace. Only functional commands are exposed:
+ * document operations, raster layer management, move/pan, zoom, PNG export.
+ */
+public final class AdvancedStudioScreen extends FrameLayout {
+    public interface Host {void exit(); void importImage();}
+    private final Activity activity;
+    private final Host host;
+    private final StudioProjectStore store;
+    private final ExecutorService io=Executors.newSingleThreadExecutor();
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private StudioDocument document;
+    private final LinearLayout page,menubar,tools,layersList,propertyPanel;
+    private final FrameLayout editor;
+    private final StudioCanvas canvas;
+    private final TextView docTab,info,opacityLabel;
+    private final SeekBar opacity;
+    private boolean hand,closed,showLayers=true;
+    private int revision,savedRevision;
+    private int ink=0xfff5f2f8,muted=0xffa9a4b0,accent=0xffbe9aeb;
+    private final int surface=0xff101016,panel=0xff19171f;
+    public AdvancedStudioScreen(Activity a,Host host,Bitmap imported){
+        super(a);activity=a;this.host=host;store=new StudioProjectStore(a);
+        setBackgroundColor(surface);setClickable(true);setFocusableInTouchMode(true);
+        document=StudioDocument.blank("Sem título",
+            imported==null?1080:Math.min(StudioDocument.MAX_SIDE,imported.getWidth()),
+            imported==null?1080:Math.min(StudioDocument.MAX_SIDE,imported.getHeight()),true);
+        if(imported!=null&&StudioDocument.validSize(imported.getWidth(),imported.getHeight())){
+            document.add("Fotografia importada",imported);
+        }
+        page=new LinearLayout(a);page.setOrientation(LinearLayout.VERTICAL);
+        addView(page,new LayoutParams(-1,-1));
+        menubar=new LinearLayout(a);menubar.setGravity(Gravity.CENTER_VERTICAL);
+        HorizontalScrollView menuScroll=new HorizontalScrollView(a);
+        menuScroll.setFillViewport(false);menuScroll.setHorizontalScrollBarEnabled(false);
+        menuScroll.setBackgroundColor(0xff16141c);
+        menuScroll.addView(menubar);
+        page.addView(menuScroll,new LinearLayout.LayoutParams(-1,dp(52)));
+        commandMenu("Arquivo",new String[]{"Novo","Abrir projeto","Importar camada","Salvar .noise","Exportar PNG","Voltar"},
+            this::fileCommand);
+        commandMenu("Editar",new String[]{"Desfazer","Refazer"},
+            value->{if(value.equals("Desfazer"))document.undo();else document.redo();changed(false);});
+        commandMenu("Camadas",new String[]{"Nova camada","Duplicar","Excluir","Para cima","Para baixo","Painel"},
+            this::layerCommand);
+        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas"},
+            this::viewCommand);
+
+        LinearLayout contextBar=new LinearLayout(a);
+        contextBar.setPadding(dp(12),0,dp(12),0);
+        contextBar.setGravity(Gravity.CENTER_VERTICAL);
+        contextBar.setBackgroundColor(0xff201c28);
+        docTab=text("",13,ink);docTab.setSingleLine(true);
+        contextBar.addView(docTab,new LinearLayout.LayoutParams(0,-1,1));
+        TextView toolMode=text("Mover",12,accent);contextBar.addView(toolMode);
+        page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
+
+        LinearLayout body=new LinearLayout(a);
+        boolean wide=a.getResources().getDisplayMetrics().widthPixels>=dp(620);
+        body.setOrientation(wide?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL);
+        page.addView(body,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout working=new LinearLayout(a);working.setOrientation(LinearLayout.HORIZONTAL);
+        if(wide)body.addView(working,new LinearLayout.LayoutParams(0,-1,1));
+        else body.addView(working,new LinearLayout.LayoutParams(-1,0,1));
+        tools=new LinearLayout(a);tools.setOrientation(LinearLayout.VERTICAL);
+        tools.setPadding(dp(3),dp(8),dp(3),dp(8));
+        tools.setBackgroundColor(0xff16141c);
+        working.addView(tools,new LinearLayout.LayoutParams(dp(51),-1));
+        TextView moveTool=tool("Mover");
+        TextView handTool=tool("Mão");
+        tools.addView(moveTool,new LinearLayout.LayoutParams(-1,dp(53)));
+        tools.addView(handTool,new LinearLayout.LayoutParams(-1,dp(53)));
+        moveTool.setOnClickListener(v->{hand=false;toolMode.setText("Mover");});
+        handTool.setOnClickListener(v->{hand=true;toolMode.setText("Mão");});
+        editor=new FrameLayout(a);editor.setBackgroundColor(0xff0a090d);
+        working.addView(editor,new LinearLayout.LayoutParams(0,-1,1));
+        canvas=new StudioCanvas(a);
+        editor.addView(canvas,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout dock=new LinearLayout(a);dock.setOrientation(LinearLayout.VERTICAL);
+        dock.setBackgroundColor(panel);
+        if(wide)body.addView(dock,new LinearLayout.LayoutParams(dp(220),-1));
+        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(202)));
+        propertyPanel=dock;
+        LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
+        dockHead.setPadding(dp(8),0,dp(8),0);
+        dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(43)));
+        TextView layersTitle=text("CAMADAS",12,ink);
+        dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
+        dockHead.addView(action("＋",()->layerCommand("Nova camada")));
+        dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
+        dockHead.addView(action("↑",()->layerCommand("Para cima")));
+        dockHead.addView(action("↓",()->layerCommand("Para baixo")));
+        dockHead.addView(action("×",()->layerCommand("Excluir")));
+        ScrollView layerScroll=new ScrollView(a);layerScroll.setFillViewport(false);
+        dock.addView(layerScroll,new LinearLayout.LayoutParams(-1,0,1));
+        layersList=new LinearLayout(a);layersList.setOrientation(LinearLayout.VERTICAL);
+        layerScroll.addView(layersList);
+        LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
+        alphaRow.setPadding(dp(9),0,dp(9),0);
+        dock.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(36)));
+        opacityLabel=text("Opacidade",11,muted);
+        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(89),-1));
+        opacity=new SeekBar(a);opacity.setMax(100);
+        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            boolean started;
+            @Override public void onStartTrackingTouch(SeekBar b){started=false;}
+            @Override public void onStopTrackingTouch(SeekBar b){if(started)changed(true);}
+            @Override public void onProgressChanged(SeekBar b,int progress,boolean fromUser){
+                StudioDocument.Layer l=document.active();
+                if(!fromUser||l==null||l.locked)return;
+                if(!started){document.checkpoint();started=true;}
+                l.opacity=progress/100f;
+                canvas.invalidate();opacityLabel.setText("Opacidade "+progress+"%");
+            }
+        });
+
+        LinearLayout footer=new LinearLayout(a);footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setPadding(dp(9),0,dp(9),0);footer.setBackgroundColor(0xff17151c);
+        info=text("",11,muted);
+        footer.addView(info,new LinearLayout.LayoutParams(0,-1,1));
+        footer.addView(action("−",()->canvas.zoomBy(.8f)));
+        footer.addView(action("+",()->canvas.zoomBy(1.25f)));
+        page.addView(footer,new LinearLayout.LayoutParams(-1,dp(37)));
+        updateUi();
+        if(imported!=null)scheduleSave();
+    }
+    private int dp(float x){return Math.round(x*getResources().getDisplayMetrics().density);}
+    private TextView text(String text,int size,int color){
+        TextView t=new TextView(activity);
+        t.setText(text);t.setTextSize(size);t.setTextColor(color);
+        t.setGravity(Gravity.CENTER_VERTICAL);t.setPadding(dp(5),0,dp(5),0);
+        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));
+        return t;
+    }
+    private TextView tool(String s){
+        TextView v=text(s,11,ink);v.setGravity(Gravity.CENTER);
+        v.setContentDescription("Ferramenta "+s);return v;
+    }
+    private TextView action(String label,Runnable r){
+        TextView b=text(label,17,ink);b.setGravity(Gravity.CENTER);
+        b.setMinWidth(dp(35));b.setClickable(true);
+        b.setOnClickListener(v->r.run());
+        return b;
+    }
+    private interface Action {void select(String name);}
+    private void commandMenu(String title,String[] commands,Action action){
+        TextView item=text(title,13,ink);
+        item.setGravity(Gravity.CENTER);
+        item.setPadding(dp(11),0,dp(11),0);
+        menubar.addView(item,new LinearLayout.LayoutParams(-2,dp(49)));
+        item.setOnClickListener(v->{
+            PopupMenu menu=new PopupMenu(activity,item);
+            for(String command:commands)menu.getMenu().add(command);
+            menu.setOnMenuItemClickListener(p->{action.select(p.getTitle().toString());return true;});
+            menu.show();
+        });
+    }
+    private void fileCommand(String cmd){
+        switch(cmd){
+            case "Novo":newDialog();break;
+            case "Abrir projeto":openProjects();break;
+            case "Importar camada":host.importImage();break;
+            case "Salvar .noise":scheduleSaveNow();break;
+            case "Exportar PNG":export();break;
+            case "Voltar":onBack();break;
+        }
+    }
+    private void layerCommand(String cmd){
+        StudioDocument.Layer active=document.active();
+        switch(cmd){
+            case "Nova camada":document.add("Camada "+(document.layers.size()+1),null);break;
+            case "Duplicar":if(active!=null)document.duplicate();break;
+            case "Excluir":document.remove();break;
+            case "Para cima":document.moveOrder(1);break;
+            case "Para baixo":document.moveOrder(-1);break;
+            case "Painel":case "Camadas":showLayers=!showLayers;
+                propertyPanel.setVisibility(showLayers?VISIBLE:GONE);return;
+        }
+        changed(true);
+    }
+    private void viewCommand(String cmd){
+        if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
+        else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
+        else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
+        else if(cmd.equals("Camadas"))layerCommand("Painel");
+        info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
+    }
+    private void updateUi(){
+        if(closed)return;
+        docTab.setText(document.name+"  •  "+(document.dirty?"● ":"")+".noise");
+        info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
+        layersList.removeAllViews();
+        for(int i=document.layers.size()-1;i>=0;i--){
+            StudioDocument.Layer layer=document.layers.get(i);
+            LinearLayout row=new LinearLayout(activity);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackgroundColor(layer.id.equals(document.activeId)?0xff34293d:panel);
+            TextView visibility=action(layer.visible?"◉":"○",()->{
+                document.checkpoint();layer.visible=!layer.visible;changed(true);
+            });
+            row.addView(visibility,new LinearLayout.LayoutParams(dp(34),dp(40)));
+            TextView title=text(layer.name,12,ink);title.setSingleLine(true);
+            row.addView(title,new LinearLayout.LayoutParams(0,dp(40),1));
+            title.setOnClickListener(v->{document.activeId=layer.id;updateUi();});
+            title.setOnLongClickListener(v->{rename(layer);return true;});
+            TextView lock=action(layer.locked?"L":"—",()->{
+                document.checkpoint();layer.locked=!layer.locked;changed(true);
+            });
+            row.addView(lock,new LinearLayout.LayoutParams(dp(31),dp(40)));
+            layersList.addView(row,new LinearLayout.LayoutParams(-1,dp(43)));
+        }
+        StudioDocument.Layer current=document.active();
+        opacity.setEnabled(current!=null&&!current.locked);
+        opacity.setProgress(current==null?100:Math.round(current.opacity*100));
+        opacityLabel.setText(current==null?"Opacidade":("Opacidade "+opacity.getProgress()+"%"));
+        canvas.invalidate();
+    }
+    private void changed(boolean persistent){
+        revision++;
+        updateUi();
+        if(persistent)scheduleSave();
+    }
+    private void rename(StudioDocument.Layer layer){
+        EditText input=new EditText(activity);input.setSingleLine(true);
+        input.setText(layer.name);
+        new AlertDialog.Builder(activity).setTitle("Renomear camada")
+            .setView(input).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Renomear",(dialog,which)->{
+                String name=input.getText().toString().trim();
+                if(!name.isEmpty()){document.checkpoint();layer.name=name;changed(true);}
+            }).show();
+    }
+    private void newDialog(){
+        LinearLayout inputs=new LinearLayout(activity);
+        inputs.setPadding(dp(22),dp(5),dp(22),dp(5));
+        inputs.setOrientation(LinearLayout.VERTICAL);
+        EditText name=numberField("Nome",false);
+        EditText w=numberField("Largura",true),h=numberField("Altura",true);
+        name.setText("Novo documento");w.setText("1080");h.setText("1080");
+        inputs.addView(name);inputs.addView(w);inputs.addView(h);
+        CheckBox transparent=new CheckBox(activity);
+        transparent.setText("Fundo transparente");transparent.setChecked(true);
+        inputs.addView(transparent);
+        new AlertDialog.Builder(activity).setTitle("Novo documento")
+            .setView(inputs).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Criar",(dialog,which)->{
+                try {
+                    int width=Integer.parseInt(w.getText().toString());
+                    int height=Integer.parseInt(h.getText().toString());
+                    if(!StudioDocument.validSize(width,height))
+                        throw new IllegalArgumentException("Dimensões inválidas");
+                    if(document.dirty)scheduleSaveNow();
+                    document=StudioDocument.blank(name.getText().toString(),
+                        width,height,transparent.isChecked());
+                    revision++;updateUi();scheduleSave();
+                }catch(Exception e){message("Use dimensões válidas (até 16 megapixels).");}
+            }).show();
+    }
+    private EditText numberField(String hint,boolean numeric){
+        EditText field=new EditText(activity);
+        field.setHint(hint);
+        field.setSingleLine(true);
+        if(numeric)field.setInputType(InputType.TYPE_CLASS_NUMBER);
+        return field;
+    }
+    private void openProjects(){
+        ArrayList<String> ids=store.list();
+        if(ids.isEmpty()){message("Nenhum projeto Advanced Studio salvo");return;}
+        String[] options=ids.toArray(new String[0]);
+        new AlertDialog.Builder(activity).setTitle("Projetos Advanced Studio")
+            .setItems(options,(dialog,index)->{
+                if(document.dirty)scheduleSaveNow();
+                String id=options[index];
+                io.execute(()->{
+                    try{
+                        StudioDocument loaded=store.load(id);
+                        main.post(()->{if(closed)return;
+                            document=loaded;revision++;updateUi();
+                            message("Projeto .noise restaurado");
+                        });
+                    }catch(Exception e){main.post(()->message("Falha ao abrir: "+e.getMessage()));}
+                });
+            }).show();
+    }
+    public void addRasterUri(Uri uri) {
+        if(closed||uri==null)return;
+        // Decoding is off the UI thread, and bounds are checked before allocation.
+        io.execute(()->{
+            try(InputStream in=activity.getContentResolver().openInputStream(uri)){
+                if(in==null)throw new java.io.IOException("Imagem indisponível");
+                android.graphics.BitmapFactory.Options opt=new android.graphics.BitmapFactory.Options();
+                opt.inJustDecodeBounds=true;
+                android.graphics.BitmapFactory.decodeStream(in,null,opt);
+                if(opt.outWidth<1||opt.outHeight<1||
+                   (long)opt.outWidth*opt.outHeight>StudioDocument.MAX_PIXELS)
+                    throw new java.io.IOException("Imagem excede limite de memória nesta fase");
+                Bitmap bmp;
+                try(InputStream source=activity.getContentResolver().openInputStream(uri)){
+                    bmp=android.graphics.BitmapFactory.decodeStream(source);
+                }
+                if(bmp==null)throw new java.io.IOException("Formato não suportado");
+                main.post(()->{
+                    if(closed){bmp.recycle();return;}
+                    document.add("Imagem "+(document.layers.size()+1),bmp);
+                    changed(true);
+                });
+            }catch(Exception e){main.post(()->message("Falha ao importar: "+e.getMessage()));}
+        });
+    }
+    private final Runnable autosave=()->scheduleSaveNow();
+    private void scheduleSave(){
+        main.removeCallbacks(autosave);
+        main.postDelayed(autosave,1700);
+    }
+    private void scheduleSaveNow(){
+        if(closed)return;
+        main.removeCallbacks(autosave);
+        final StudioDocument snapshot=document.snapshot();
+        final StudioDocument original=document;
+        final int stamp=revision;
+        io.execute(()->{
+            try{
+                store.save(snapshot);
+                main.post(()->{
+                    if(!closed&&document==original&&revision==stamp){
+                        savedRevision=stamp;document.markSaved();updateUi();
+                    }
+                });
+            }catch(Exception e){main.post(()->message("Não foi possível salvar .noise: "+e.getMessage()));}
+        });
+    }
+    private void export(){
+        final StudioDocument snapshot=document.snapshot();
+        io.execute(()->{
+            try{
+                store.exportPng(snapshot);
+                main.post(()->message("PNG salvo em Pictures/Noise!"));
+            }catch(Exception e){main.post(()->message("Exportação falhou: "+e.getMessage()));}
+        });
+    }
+    private void message(String value){
+        if(!closed)Toast.makeText(activity,value,Toast.LENGTH_SHORT).show();
+    }
+    public void onBack(){
+        if(document.dirty)scheduleSaveNow();
+        host.exit();
+    }
+    public void dispose(){
+        main.removeCallbacks(autosave);
+        // Saves already queued execute to completion; never recycle shared
+        // layer bitmaps while a background save/export may be using them.
+        closed=true;
+        io.shutdown();
+    }
+    private final class StudioCanvas extends View {
+        private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final ScaleGestureDetector zoomDetector;
+        private boolean gestureMoving,gestureUsed;
+        private float lastX,lastY,lastMidX,lastMidY;
+        StudioCanvas(Context c){
+            super(c);setLayerType(View.LAYER_TYPE_SOFTWARE,null);
+            zoomDetector=new ScaleGestureDetector(c,
+                new ScaleGestureDetector.SimpleOnScaleGestureListener(){
+                    @Override public boolean onScale(ScaleGestureDetector d){
+                        zoomBy(d.getScaleFactor());return true;
+                    }
+                });
+        }
+        void zoomBy(float factor){
+            document.zoom=Math.max(.12f,Math.min(12f,document.zoom*factor));
+            info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
+            invalidate();
+        }
+        float fit(){return Math.max(.01f,Math.min((getWidth()-dp(24))/(float)document.width,
+            (getHeight()-dp(24))/(float)document.height));}
+        float scale(){return fit()*document.zoom;}
+        float left(){return (getWidth()-document.width*scale())*.5f+document.panX;}
+        float top(){return (getHeight()-document.height*scale())*.5f+document.panY;}
+        @Override protected void onDraw(Canvas c){
+            super.onDraw(c);
+            if(document==null)return;
+            float scale=scale();
+            c.drawColor(0xff0c0b0f);
+            c.save();c.translate(left(),top());c.scale(scale,scale);
+            paint.setColor(Color.WHITE);paint.setStyle(Paint.Style.FILL);
+            c.drawRect(0,0,document.width,document.height,paint);
+            // Checkerboard visible underneath transparent pixels.
+            final int cell=48;
+            paint.setColor(0xffddd9e0);
+            for(int y=0;y<document.height;y+=cell)
+                for(int x=0;x<document.width;x+=cell)
+                    if(((x/cell)+(y/cell))%2==0)
+                        c.drawRect(x,y,Math.min(x+cell,document.width),
+                            Math.min(y+cell,document.height),paint);
+            document.render(c);
+            StudioDocument.Layer l=document.active();
+            if(l!=null&&l.bitmap!=null){
+                paint.setColor(0xffbd91e9);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(1,1.4f/scale));
+                c.drawRect(l.x,l.y,l.x+l.bitmap.getWidth(),l.y+l.bitmap.getHeight(),paint);
+                paint.setStyle(Paint.Style.FILL);
+            }
+            c.restore();
+        }
+        @Override public boolean onTouchEvent(MotionEvent e){
+            zoomDetector.onTouchEvent(e);
+            int action=e.getActionMasked();
+            if(action==MotionEvent.ACTION_DOWN){
+                lastX=e.getX();lastY=e.getY();
+                gestureMoving=false;gestureUsed=false;return true;
+            }
+            if(action==MotionEvent.ACTION_POINTER_DOWN&&e.getPointerCount()>1){
+                lastMidX=(e.getX(0)+e.getX(1))*.5f;
+                lastMidY=(e.getY(0)+e.getY(1))*.5f;
+                gestureUsed=true;return true;
+            }
+            if(action==MotionEvent.ACTION_MOVE){
+                if(e.getPointerCount()>1){
+                    float mx=(e.getX(0)+e.getX(1))*.5f;
+                    float my=(e.getY(0)+e.getY(1))*.5f;
+                    document.panX+=mx-lastMidX;document.panY+=my-lastMidY;
+                    lastMidX=mx;lastMidY=my;invalidate();gestureUsed=true;return true;
+                }
+                if(gestureUsed)return true;
+                float dx=e.getX()-lastX,dy=e.getY()-lastY;
+                if(hand){
+                    document.panX+=dx;document.panY+=dy;
+                    invalidate();
+                }else{
+                    StudioDocument.Layer active=document.active();
+                    if(active!=null&&!active.locked){
+                        if(!gestureMoving&&Math.abs(dx)+Math.abs(dy)>1.5f){
+                            document.checkpoint();gestureMoving=true;
+                        }
+                        if(gestureMoving){
+                            active.x+=Math.round(dx/scale());
+                            active.y+=Math.round(dy/scale());invalidate();
+                        }
+                    }
+                }
+                lastX=e.getX();lastY=e.getY();return true;
+            }
+            if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
+                if(gestureMoving)changed(true);
+                gestureMoving=false;gestureUsed=false;return true;
+            }
+            return true;
+        }
+    }
+}
