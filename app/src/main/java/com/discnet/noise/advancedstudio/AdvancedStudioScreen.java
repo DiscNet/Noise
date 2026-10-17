@@ -35,7 +35,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private final SeekBar opacity;
     enum Tool { MOVE,TRANSFORM,HAND,BRUSH,ERASER,MASK_HIDE,MASK_REVEAL,SELECTION,CROP,BUCKET,GRADIENT,RECTANGLE,ELLIPSE,TEXT }
     private Tool selectedTool=Tool.MOVE;
-    private boolean closed,showLayers=true,showTextPanel=false,keepAspect=true;
+    private boolean closed,showLayers=true,showTextPanel=false,showTransformPanel=false,
+        keepAspect=true,editingEffects=false,editingShadow=false;
+    private int selectedFilterIndex=-1;
+    private LinearLayout layerEffectsBar,effectActions,effectControls,transformPanel;
+    private ScrollView effectsScroll,transformScroll;
+    private TextView blendButton;
+    private EditText opacityInput;
     private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
     private RectF pendingCrop;
     private TextView toolMode;
@@ -88,7 +94,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolMode=text("Mover",12,accent);contextBar.addView(toolMode);
         contextBar.addView(action("⚙",()->{
             if(selectedTool==Tool.TRANSFORM)transformDialog();
-            else if(selectedTool==Tool.TEXT){showTextPanel=true;updatePanels();}
+            else if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
             else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)colorDialog();
         }));
         page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
@@ -122,17 +128,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dock=new LinearLayout(a);dock.setOrientation(LinearLayout.VERTICAL);
         dock.setBackgroundColor(panel);
         if(wide)body.addView(dock,new LinearLayout.LayoutParams(dp(220),-1));
-        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(238)));
+        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(295)));
         propertyPanel=dock;
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
         dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
-        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;updatePanels();});
+        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
         layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
         dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
-        TextView textTab=action("TEXTO",()->{showTextPanel=true;updatePanels();});
+        TextView textTab=action("TEXTO",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
         textTab.setTextSize(11);
-        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(61),-1));
+        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(52),-1));
+        dockHead.addView(action("TRANSF.",this::transformDialog),new LinearLayout.LayoutParams(dp(64),-1));
         dockHead.addView(action("＋",()->layerCommand("Nova camada")));
         dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
         dockHead.addView(action("↑",()->layerCommand("Para cima")));
@@ -140,23 +147,75 @@ public final class AdvancedStudioScreen extends FrameLayout {
         dockHead.addView(action("×",()->layerCommand("Excluir")));
         layerPane=new LinearLayout(a);layerPane.setOrientation(LinearLayout.VERTICAL);
         dock.addView(layerPane,new LinearLayout.LayoutParams(-1,0,1));
+        blendButton=action("Normal  ⌄",this::blendDialog);
+        LinearLayout blendRow=new LinearLayout(a);
+        blendRow.setGravity(Gravity.CENTER_VERTICAL);
+        blendRow.setPadding(dp(10),0,dp(10),0);
+        blendRow.setBackgroundColor(0xff211c29);
+        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(35)));
+        blendRow.addView(text("MESCLAGEM",10,muted),
+            new LinearLayout.LayoutParams(dp(78),dp(33)));
+        blendButton.setTextColor(accent);blendButton.setTextSize(12);
+        blendRow.addView(blendButton,new LinearLayout.LayoutParams(0,dp(34),1));
+        LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
+        alphaRow.setPadding(dp(10),0,dp(10),0);
+        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(35)));
+        opacityLabel=text("OPACIDADE",10,muted);
+        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(79),-1));
+        opacity=new SeekBar(a);opacity.setMax(100);
+        opacity.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+        opacity.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
+        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        opacityInput=new EditText(a);opacityInput.setSingleLine(true);
+        opacityInput.setTextSize(12);opacityInput.setTextColor(accent);
+        opacityInput.setGravity(Gravity.CENTER);
+        opacityInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        opacityInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        opacityInput.setSelectAllOnFocus(true);
+        alphaRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(48),dp(32)));
+        opacityInput.setOnEditorActionListener((v,action,event)->{
+            try{
+                StudioDocument.Layer selected=document.active();
+                int n=Integer.parseInt(opacityInput.getText().toString().trim());
+                if(selected!=null&&!selected.locked&&n>=0&&n<=100){
+                    document.checkpoint();selected.opacity=n/100f;
+                    changed(true);
+                }
+            }catch(Exception error){message("Opacidade deve estar entre 0 e 100");}
+            opacityInput.clearFocus();return true;
+        });
         layerScroll=new ScrollView(a);layerScroll.setFillViewport(false);
         layerPane.addView(layerScroll,new LinearLayout.LayoutParams(-1,0,1));
         layersList=new LinearLayout(a);layersList.setOrientation(LinearLayout.VERTICAL);
         layerScroll.addView(layersList);
-        LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
-        alphaRow.setPadding(dp(9),0,dp(9),0);
-        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(36)));
-        opacityLabel=text("Opacidade",11,muted);
-        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(89),-1));
-        opacity=new SeekBar(a);opacity.setMax(100);
-        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        effectsScroll=new ScrollView(a);
+        effectsScroll.setVisibility(GONE);
+        layerPane.addView(effectsScroll,new LinearLayout.LayoutParams(-1,0,1));
+        effectControls=new LinearLayout(a);effectControls.setOrientation(LinearLayout.VERTICAL);
+        effectControls.setPadding(dp(7),dp(5),dp(7),dp(5));
+        effectsScroll.addView(effectControls);
+        layerEffectsBar=new LinearLayout(a);
+        layerEffectsBar.setOrientation(LinearLayout.VERTICAL);
+        layerEffectsBar.setBackgroundColor(0xff221c2a);
+        layerPane.addView(layerEffectsBar,new LinearLayout.LayoutParams(-1,dp(67)));
+        TextView fxCaption=text("ESTILOS  •  EFEITOS DA CAMADA",10,accent);
+        fxCaption.setPadding(dp(11),dp(4),dp(4),0);
+        layerEffectsBar.addView(fxCaption,new LinearLayout.LayoutParams(-1,dp(22)));
+        HorizontalScrollView actionsScroll=new HorizontalScrollView(a);
+        actionsScroll.setHorizontalScrollBarEnabled(false);
+        layerEffectsBar.addView(actionsScroll,new LinearLayout.LayoutParams(-1,dp(45)));
+        effectActions=new LinearLayout(a);effectActions.setGravity(Gravity.CENTER_VERTICAL);
+        effectActions.setPadding(dp(7),0,dp(7),0);actionsScroll.addView(effectActions);
         textScroll=new ScrollView(a);textScroll.setFillViewport(false);
         dock.addView(textScroll,new LinearLayout.LayoutParams(-1,0,1));
         textPanel=new LinearLayout(a);textPanel.setOrientation(LinearLayout.VERTICAL);
         textPanel.setPadding(dp(10),dp(6),dp(10),dp(12));
-        textScroll.addView(textPanel);
-        textScroll.setVisibility(GONE);
+        textScroll.addView(textPanel);textScroll.setVisibility(GONE);
+        transformScroll=new ScrollView(a);transformScroll.setFillViewport(false);
+        dock.addView(transformScroll,new LinearLayout.LayoutParams(-1,0,1));
+        transformPanel=new LinearLayout(a);transformPanel.setOrientation(LinearLayout.VERTICAL);
+        transformPanel.setPadding(dp(9),dp(5),dp(9),dp(12));
+        transformScroll.addView(transformPanel);transformScroll.setVisibility(GONE);
         opacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             boolean started;
             @Override public void onStartTrackingTouch(SeekBar b){started=false;}
@@ -166,7 +225,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(!fromUser||l==null||l.locked)return;
                 if(!started){document.checkpoint();started=true;}
                 l.opacity=progress/100f;
-                canvas.invalidate();opacityLabel.setText("Opacidade "+progress+"%");
+                canvas.invalidate();
+                if(!opacityInput.hasFocus())opacityInput.setText(String.valueOf(progress));
             }
         });
 
@@ -193,7 +253,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
             }
         });
-        properties.addView(action("Texto",()->{showTextPanel=true;updatePanels();}));
+        properties.addView(action("Texto",()->{showTextPanel=true;showTransformPanel=false;updatePanels();}));
         updateToolbar();
         updateUi();
         if(imported!=null)scheduleSave();
@@ -220,7 +280,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     private void activateTool(Tool t){
         selectedTool=t;toolMode.setText(toolName(t));
-        if(t==Tool.TEXT){showTextPanel=true;updatePanels();}
+        if(t==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
+        if(t==Tool.TRANSFORM){showTextPanel=false;showTransformPanel=true;updatePanels();}
         updateToolbar();canvas.invalidate();
     }
     private void toolGroup(String icon,Tool first,Tool... variants){
@@ -375,11 +436,193 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(42));
         lp.bottomMargin=dp(3);textPanel.addView(row,lp);
     }
+    private interface NumericSetter {void apply(StudioDocument.Layer l,float v);}
+    private void inspectorField(LinearLayout target,StudioDocument.Layer layer,
+                                String caption,String unit,float v,float low,float high,
+                                float step,NumericSetter setter,boolean textDimensions){
+        final boolean[] started={false};
+        StudioInspectorField field=new StudioInspectorField(activity,caption,unit,
+            v,low,high,step,new StudioInspectorField.Callback(){
+                public void begin(){
+                    if(layer!=document.active()||layer.locked)return;
+                    if(!started[0]){document.checkpoint();started[0]=true;}
+                }
+                public void preview(float value){
+                    if(!started[0]||layer!=document.active()||layer.locked)return;
+                    if(textDimensions){
+                        StudioDocument.Layer candidate=layer.copy();
+                        setter.apply(candidate,value);
+                        if((candidate.mask!=null||candidate.shadowEnabled||
+                            !candidate.effects.isEmpty())&&
+                            (long)candidate.naturalWidth()*candidate.naturalHeight()>
+                            StudioLayerEffects.MAX_EFFECT_PIXELS)return;
+                    }
+                    setter.apply(layer,value);
+                    if(textDimensions&&layer.mask!=null)
+                        StudioLayerEffects.resizeMask(layer);
+                    StudioLayerEffects.invalidate(layer);
+                    canvas.invalidate();
+                }
+                public void finish(){
+                    if(!started[0])return;
+                    started[0]=false;
+                    if(textDimensions){
+                        try{StudioLayerEffects.resizeMask(layer);}
+                        catch(Exception error){message(error.getMessage());}
+                    }
+                    changed(true);
+                }
+            });
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(66));
+        lp.bottomMargin=dp(5);target.addView(field,lp);
+    }
+    private void transformControls(){
+        int lastScroll=transformScroll.getScrollY();
+        transformPanel.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){
+            transformPanel.addView(text("Selecione uma camada desbloqueada para transformar.",12,muted));
+            return;
+        }
+        textTitleTo(transformPanel,"TRANSFORMAÇÃO LIVRE");
+        inspectorField(transformPanel,layer,"X","px",layer.x,-8192,8192,1,
+            (l,v)->l.x=v,false);
+        inspectorField(transformPanel,layer,"Y","px",layer.y,-8192,8192,1,
+            (l,v)->l.y=v,false);
+        float w=Math.abs(layer.scaleX)*layer.naturalWidth();
+        float h=Math.abs(layer.scaleY)*layer.naturalHeight();
+        inspectorField(transformPanel,layer,"Largura","px",w,1,
+            Math.min(131072,layer.naturalWidth()*16f),1,(l,v)->{
+                float old=Math.abs(l.scaleX);
+                float next=v/Math.max(1,l.naturalWidth());
+                if(keepAspect&&old>0)
+                    l.scaleY=Math.copySign(Math.min(16,Math.max(.01f,
+                        Math.abs(l.scaleY)*next/old)),l.scaleY);
+                l.scaleX=Math.copySign(next,l.scaleX);
+            },false);
+        inspectorField(transformPanel,layer,"Altura","px",h,1,
+            Math.min(131072,layer.naturalHeight()*16f),1,(l,v)->{
+                float old=Math.abs(l.scaleY);
+                float next=v/Math.max(1,l.naturalHeight());
+                if(keepAspect&&old>0)
+                    l.scaleX=Math.copySign(Math.min(16,Math.max(.01f,
+                        Math.abs(l.scaleX)*next/old)),l.scaleX);
+                l.scaleY=Math.copySign(next,l.scaleY);
+            },false);
+        CheckBox link=new CheckBox(activity);
+        link.setText("Vincular proporções W/H");
+        link.setTextColor(ink);link.setTextSize(12);link.setChecked(keepAspect);
+        link.setOnCheckedChangeListener((b,checked)->keepAspect=checked);
+        transformPanel.addView(link,new LinearLayout.LayoutParams(-1,dp(39)));
+        inspectorField(transformPanel,layer,"Ângulo","°",layer.rotation,-360,360,.5f,
+            (l,v)->l.rotation=v,false);
+        inspectorField(transformPanel,layer,"Inclinação X","°",layer.skewX,-65,65,.5f,
+            (l,v)->l.skewX=v,false);
+        inspectorField(transformPanel,layer,"Inclinação Y","°",layer.skewY,-65,65,.5f,
+            (l,v)->l.skewY=v,false);
+        LinearLayout presets=new LinearLayout(activity);
+        presets.setGravity(Gravity.CENTER_VERTICAL);
+        transformPanel.addView(presets,new LinearLayout.LayoutParams(-1,dp(41)));
+        presets.addView(action("90° ↻",()->editCommand("Girar 90° horário")));
+        presets.addView(action("90° ↺",()->editCommand("Girar 90° anti-horário")));
+        presets.addView(action("⇋",()->editCommand("Espelhar horizontal")));
+        presets.addView(action("⇵",()->editCommand("Espelhar vertical")));
+        transformScroll.post(()->transformScroll.scrollTo(0,lastScroll));
+    }
+    private void textTitleTo(LinearLayout destination,String caption){
+        TextView title=text(caption,10,accent);
+        title.setPadding(dp(8),dp(8),0,dp(5));
+        destination.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
+    }
+    private String blendName(StudioDocument.Blend blend){
+        switch(blend){
+            case MULTIPLY:return "Multiplicar";case SCREEN:return "Tela";
+            case OVERLAY:return "Sobrepor";case DARKEN:return "Escurecer";
+            case LIGHTEN:return "Clarear";default:return "Normal";
+        }
+    }
+    private void effectsActions(){
+        effectActions.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null)return;
+        effectActions.addView(action(editingEffects?"← Camadas":"+ Efeito",
+            ()->{if(editingEffects){editingEffects=false;layerScroll.setVisibility(VISIBLE);
+                effectsScroll.setVisibility(GONE);updatePanels();}
+                else addFilterDialog(layer);}));
+        effectActions.addView(action(layer.shadowEnabled?"☑ Sombra":"＋ Sombra",
+            ()->styleCommand("Sombra projetada")));
+        for(int i=0;i<layer.effects.size();i++){
+            final int position=i;
+            StudioLayerEffects.Effect effect=layer.effects.get(i);
+            TextView chip=action((effect.enabled?"● ":"○ ")+effect.kind.name(),
+                ()->{editingEffects=true;editingShadow=false;
+                    selectedFilterIndex=position;updatePanels();});
+            effectActions.addView(chip);
+        }
+        if(layer.mask!=null){
+            effectActions.addView(action("◩ Máscara",
+                ()->maskCommand("Densidade")));
+        }
+    }
+    private void effectsControls(){
+        int last=effectsScroll.getScrollY();effectControls.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null)return;
+        if(editingShadow){
+            textTitleTo(effectControls,"SOMBRA PROJETADA");
+            if(!layer.shadowEnabled)effectControls.addView(action("Ativar sombra",
+                ()->{if(layer.locked)return;
+                    document.checkpoint();layer.shadowEnabled=true;changed(true);}));
+            inspectorField(effectControls,layer,"Desfoque","px",layer.shadowRadius,
+                1,16,.25f,(l,v)->{l.shadowRadius=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Distância X","px",layer.shadowX,
+                -128,128,1,(l,v)->{l.shadowX=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Distância Y","px",layer.shadowY,
+                -128,128,1,(l,v)->{l.shadowY=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Opacidade","%",layer.shadowOpacity*100,
+                0,100,1,(l,v)->{l.shadowOpacity=v/100f;l.shadowEnabled=true;},false);
+            effectControls.addView(action("Remover sombra",()->styleCommand("Remover sombra")));
+        }else if(selectedFilterIndex==-2&&layer.mask!=null){
+            textTitleTo(effectControls,"MÁSCARA · DENSIDADE");
+            inspectorField(effectControls,layer,"Densidade","%",layer.maskDensity,
+                0,100,1,(l,v)->l.maskDensity=Math.round(v),false);
+            effectControls.addView(action(layer.maskEnabled?"Desativar máscara":"Ativar máscara",
+                ()->{document.checkpoint();layer.maskEnabled=!layer.maskEnabled;changed(true);}));
+        }else if(selectedFilterIndex>=0&&selectedFilterIndex<layer.effects.size()){
+            StudioLayerEffects.Effect e=layer.effects.get(selectedFilterIndex);
+            textTitleTo(effectControls,"FILTRO · "+e.kind.name());
+            int min=e.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?1:-100;
+            int max=e.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?8:100;
+            inspectorField(effectControls,layer,"Intensidade","",e.value,min,max,1,
+                (l,v)->e.value=Math.round(v),false);
+            effectControls.addView(action(e.enabled?"Desativar":"Ativar",
+                ()->{document.checkpoint();e.enabled=!e.enabled;changed(true);}));
+            effectControls.addView(action("Excluir filtro",
+                ()->{document.checkpoint();layer.effects.remove(e);
+                    editingEffects=false;selectedFilterIndex=-1;changed(true);}));
+        }else{
+            textTitleTo(effectControls,"EFEITOS DA CAMADA");
+            effectControls.addView(action("Adicionar filtro",()->addFilterDialog(layer)));
+        }
+        effectsScroll.post(()->effectsScroll.scrollTo(0,last));
+    }
     private void updatePanels(){
         if(closed)return;
-        layerPane.setVisibility(showTextPanel?GONE:VISIBLE);
+        layerPane.setVisibility(showTextPanel||showTransformPanel?GONE:VISIBLE);
         textScroll.setVisibility(showTextPanel?VISIBLE:GONE);
-        if(!showTextPanel)return;
+        transformScroll.setVisibility(showTransformPanel?VISIBLE:GONE);
+        if(showTransformPanel){transformControls();return;}
+        if(!showTextPanel){
+            StudioDocument.Layer current=document.active();
+            if(editingEffects&&(current==null||current.locked)){
+                editingEffects=false;
+            }
+            layerScroll.setVisibility(editingEffects?GONE:VISIBLE);
+            effectsScroll.setVisibility(editingEffects?VISIBLE:GONE);
+            effectsActions();if(editingEffects)effectsControls();
+            return;
+        }
+        int lastTextScroll=textScroll.getScrollY();
         textPanel.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.type!=StudioDocument.Type.TEXT){
@@ -399,24 +642,53 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textTitle("CARACTERE");
         textOption("Conteúdo","Editar",this::textDialog);
         textOption("Fonte",layer.fontFamily,()->textSetting("font"));
-        textOption("Tamanho",Math.round(layer.fontSize)+" px",()->textSetting("size"));
+        inspectorField(textPanel,layer,"Tamanho","px",layer.fontSize,8,600,1,
+            (l,v)->l.fontSize=v,true);
         textOption("Cor",String.format(Locale.ROOT,"#%06X",layer.color&0xffffff),()->textSetting("color"));
+        LinearLayout swatches=new LinearLayout(activity);
+        int[] samples={0xffffffff,0xff111111,0xffb18aff,0xffff668c,
+            0xffffb64f,0xff64dcd8,0xff598bff};
+        for(int sample:samples){
+            TextView swatch=text("■",23,sample);
+            swatch.setGravity(Gravity.CENTER);swatches.addView(swatch,new LinearLayout.LayoutParams(0,dp(34),1));
+            swatch.setOnClickListener(v->{
+                if(layer.locked)return;
+                document.checkpoint();layer.color=sample;changed(true);
+            });
+        }
+        textPanel.addView(swatches,new LinearLayout.LayoutParams(-1,dp(34)));
+        inspectorField(textPanel,layer,"Vermelho","R",Color.red(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Math.round(v),
+                Color.green(l.color),Color.blue(l.color)),false);
+        inspectorField(textPanel,layer,"Verde","G",Color.green(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
+                Math.round(v),Color.blue(l.color)),false);
+        inspectorField(textPanel,layer,"Azul","B",Color.blue(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
+                Color.green(l.color),Math.round(v)),false);
         textOption("Negrito",layer.fontBold?"Ativado":"Desativado",()->textSetting("bold"));
         textOption("Itálico",layer.fontItalic?"Ativado":"Desativado",()->textSetting("italic"));
-        textOption("Espaç. letras",String.format(Locale.ROOT,"%.2f em",layer.letterSpacing),
-            ()->textSetting("tracking"));
+        inspectorField(textPanel,layer,"Espaç. letras","em",layer.letterSpacing,-.2f,1.5f,.01f,
+            (l,v)->l.letterSpacing=v,true);
         textTitle("PARÁGRAFO");
         textOption("Alinhamento",layer.textAlign,()->textSetting("align"));
-        textOption("Entrelinhas",String.format(Locale.ROOT,"%.2f",layer.lineSpacing),
-            ()->textSetting("leading"));
+        inspectorField(textPanel,layer,"Entrelinhas","×",layer.lineSpacing,.5f,3f,.02f,
+            (l,v)->l.lineSpacing=v,true);
         textTitle("GEOMETRIA");
-        textOption("Posição X",Math.round(layer.x)+" px",()->textSetting("x"));
-        textOption("Posição Y",Math.round(layer.y)+" px",()->textSetting("y"));
-        textOption("Largura",Math.round(layer.scaleX*layer.naturalWidth())+" px",
-            ()->textSetting("width"));
-        textOption("Altura",Math.round(layer.scaleY*layer.naturalHeight())+" px",
-            ()->textSetting("height"));
+        inspectorField(textPanel,layer,"Posição X","px",layer.x,-8192,8192,1,
+            (l,v)->l.x=v,false);
+        inspectorField(textPanel,layer,"Posição Y","px",layer.y,-8192,8192,1,
+            (l,v)->l.y=v,false);
+        inspectorField(textPanel,layer,"Largura","px",
+            Math.abs(layer.scaleX*layer.naturalWidth()),1,
+            Math.min(131072,layer.naturalWidth()*16f),1,
+            (l,v)->l.scaleX=Math.copySign(v/Math.max(1,l.naturalWidth()),l.scaleX),false);
+        inspectorField(textPanel,layer,"Altura","px",
+            Math.abs(layer.scaleY*layer.naturalHeight()),1,
+            Math.min(131072,layer.naturalHeight()*16f),1,
+            (l,v)->l.scaleY=Math.copySign(v/Math.max(1,l.naturalHeight()),l.scaleY),false);
         textOption("Transformação completa","Abrir",this::transformDialog);
+        textScroll.post(()->textScroll.scrollTo(0,lastTextScroll));
     }
     private void textSetting(String what){
         StudioDocument.Layer current=document.active();
@@ -514,54 +786,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             }).show();
     }
     private void transformDialog(){
-        StudioDocument.Layer layer=document.active();
-        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
-        LinearLayout fields=new LinearLayout(activity);
-        fields.setOrientation(LinearLayout.VERTICAL);fields.setPadding(dp(18),dp(8),dp(18),dp(8));
-        EditText x=numericField(fields,"Posição X (px)",layer.x);
-        EditText y=numericField(fields,"Posição Y (px)",layer.y);
-        EditText w=numericField(fields,"Largura W (px)",Math.abs(layer.scaleX)*layer.naturalWidth());
-        EditText h=numericField(fields,"Altura H (px)",Math.abs(layer.scaleY)*layer.naturalHeight());
-        CheckBox chain=new CheckBox(activity);chain.setText("Proporções vinculadas (W/H)");
-        chain.setChecked(keepAspect);
-        fields.addView(chain);
-        EditText rotate=numericField(fields,"Ângulo (°)",layer.rotation);
-        EditText skewH=numericField(fields,"Inclinação horizontal (°)",layer.skewX);
-        EditText skewV=numericField(fields,"Inclinação vertical (°)",layer.skewY);
-        TextView hint=text("Mova, redimensione e gire também pelas alças no canvas.",12,muted);
-        fields.addView(hint);
-        ScrollView scroll=new ScrollView(activity);scroll.addView(fields);
-        new AlertDialog.Builder(activity).setTitle("Transformação livre")
-            .setView(scroll).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(dialog,which)->{
-                try{
-                    float nx=fieldValue(x),ny=fieldValue(y),nw=fieldValue(w),
-                        nh=fieldValue(h),angle=fieldValue(rotate),
-                        skx=fieldValue(skewH),sky=fieldValue(skewV);
-                    float oldW=Math.max(1,Math.abs(layer.scaleX)*layer.naturalWidth());
-                    float oldH=Math.max(1,Math.abs(layer.scaleY)*layer.naturalHeight());
-                    // The last edited axis would be preferable; use changed W as primary.
-                    if(chain.isChecked()&&Math.abs(nw-oldW)>.01f)
-                        nh=nw*(oldH/oldW);
-                    else if(chain.isChecked()&&Math.abs(nh-oldH)>.01f)
-                        nw=nh*(oldW/oldH);
-                    float sx=nw/Math.max(1,layer.naturalWidth());
-                    float sy=nh/Math.max(1,layer.naturalHeight());
-                    if(!Float.isFinite(nx)||!Float.isFinite(ny)||
-                       !Float.isFinite(sx)||!Float.isFinite(sy)||
-                       sx<.01f||sy<.01f||sx>16||sy>16||
-                       !Float.isFinite(angle)||Math.abs(angle)>36000||
-                       !Float.isFinite(skx)||!Float.isFinite(sky)||
-                       Math.abs(skx)>65||Math.abs(sky)>65)
-                       throw new NumberFormatException();
-                    keepAspect=chain.isChecked();
-                    document.checkpoint();layer.x=nx;layer.y=ny;layer.rotation=angle;
-                    layer.skewX=skx;layer.skewY=sky;
-                    layer.scaleX=Math.copySign(sx,layer.scaleX);
-                    layer.scaleY=Math.copySign(sy,layer.scaleY);
-                    changed(true);
-                }catch(Exception error){message("Valores de transformação inválidos");}
-            }).show();
+        showTextPanel=false;showTransformPanel=true;selectedTool=Tool.TRANSFORM;
+        toolMode.setText("Transformar");updateToolbar();updatePanels();canvas.invalidate();
     }
     private void selectionCommand(String cmd){
         if("Selecionar tudo".equals(cmd))document.select(new RectF(0,0,document.width,document.height));
@@ -647,7 +873,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case "Retângulo":document.addShape(StudioDocument.Type.RECTANGLE,foreground,200,160);break;
             case "Elipse":document.addShape(StudioDocument.Type.ELLIPSE,foreground,200,160);break;
             case "Transformar":activateTool(Tool.TRANSFORM);transformDialog();return;
-            case "Mesclagem":blendDialog();return;
+            case "Mesclagem":showTextPanel=false;showTransformPanel=false;
+                updatePanels();blendDialog();return;
             case "Converter em objeto inteligente":
                 if(active==null||active.locked||active.type!=StudioDocument.Type.RASTER){
                     message("Selecione uma camada raster desbloqueada");return;
@@ -666,13 +893,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private void blendDialog(){
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.locked)return;
-        StudioDocument.Blend[] blends=StudioDocument.Blend.values();
-        String[] labels={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear"};
-        new AlertDialog.Builder(activity).setTitle("Modo de mesclagem")
-            .setSingleChoiceItems(labels,layer.blend.ordinal(),(dialog,which)->{
-                document.checkpoint();layer.blend=blends[which];
-                changed(true);dialog.dismiss();
-            }).setNegativeButton("Cancelar",null).show();
+        PopupMenu popup=new PopupMenu(activity,blendButton);
+        for(StudioDocument.Blend mode:StudioDocument.Blend.values())
+            popup.getMenu().add(0,mode.ordinal(),mode.ordinal(),
+                (mode==layer.blend?"✓ ":"")+blendName(mode));
+        popup.setOnMenuItemClickListener(item->{
+            StudioDocument.Blend mode=StudioDocument.Blend.values()[item.getItemId()];
+            if(layer.blend!=mode){
+                document.checkpoint();layer.blend=mode;changed(true);
+            }
+            return true;
+        });
+        popup.show();
     }
     private void maskCommand(String cmd){
         StudioDocument.Layer l=document.active();
@@ -681,8 +913,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             switch(cmd){
                 case "Criar máscara branca":StudioLayerEffects.createMask(document,true);break;
                 case "Criar máscara preta":StudioLayerEffects.createMask(document,false);break;
-                case "Pintar preto":selectedTool=Tool.MASK_HIDE;toolMode.setText("Ocultar na máscara");return;
-                case "Pintar branco":selectedTool=Tool.MASK_REVEAL;toolMode.setText("Revelar na máscara");return;
+                case "Pintar preto":activateTool(Tool.MASK_HIDE);return;
+                case "Pintar branco":activateTool(Tool.MASK_REVEAL);return;
                 case "Inverter máscara":StudioLayerEffects.invertMask(document);break;
                 case "Ativar/desativar":
                     if(l.mask==null)throw new IllegalStateException("Camada sem máscara");
@@ -699,14 +931,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }catch(Exception e){message(e.getMessage());}
     }
     private void maskDensityDialog(StudioDocument.Layer l){
-        SeekBar density=new SeekBar(activity);density.setMax(100);density.setProgress(l.maskDensity);
-        LinearLayout box=new LinearLayout(activity);box.setPadding(dp(22),dp(10),dp(22),dp(10));
-        box.addView(density,new LinearLayout.LayoutParams(-1,dp(48)));
-        new AlertDialog.Builder(activity).setTitle("Densidade da máscara")
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                document.checkpoint();l.maskDensity=density.getProgress();changed(true);
-            }).show();
+        showTextPanel=false;showTransformPanel=false;
+        editingEffects=true;editingShadow=false;selectedFilterIndex=-2;
+        updatePanels();
     }
     private void filterCommand(String cmd){
         StudioDocument.Layer layer=document.active();
@@ -758,68 +985,38 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     private void parameterDialog(StudioDocument.Layer layer,
                                  StudioLayerEffects.Effect current,int index){
-        int min=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?1:-100;
-        int max=current.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?8:100;
-        SeekBar bar=new SeekBar(activity);bar.setMax(max-min);
-        bar.setProgress(current.value-min);
-        LinearLayout box=new LinearLayout(activity);
-        box.setPadding(dp(23),dp(10),dp(23),dp(10));
-        box.addView(bar,new LinearLayout.LayoutParams(-1,dp(50)));
-        // Do not mutate the committed stack before Confirm; Cancel is clean.
-        new AlertDialog.Builder(activity)
-            .setTitle(current.kind.name()+" · "+current.value)
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(dialog,which)->{
-                StudioLayerEffects.Effect replacement=current.copy();
-                replacement.value=bar.getProgress()+min;
-                try{StudioLayerEffects.validate(replacement);}
-                catch(Exception e){message(e.getMessage());return;}
-                document.checkpoint();
-                if(index<0)layer.effects.add(replacement);
-                else layer.effects.set(index,replacement);
-                changed(true);
-            }).show();
+        if(layer.locked)return;
+        if(index<0){
+            document.checkpoint();
+            layer.effects.add(current.copy());index=layer.effects.size()-1;
+            changed(true);
+        }
+        editingEffects=true;editingShadow=false;selectedFilterIndex=index;
+        showTextPanel=false;showTransformPanel=false;
+        updatePanels();
     }
     private void styleCommand(String cmd){
-        StudioDocument.Layer l=document.active();
-        if(l==null||l.locked){message("Selecione uma camada desbloqueada");return;}
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){message("Selecione uma camada desbloqueada");return;}
         if("Remover sombra".equals(cmd)){
-            if(l.shadowEnabled){document.checkpoint();l.shadowEnabled=false;changed(true);}
+            if(layer.shadowEnabled){
+                document.checkpoint();layer.shadowEnabled=false;changed(true);
+            }
             return;
         }
-        if((long)l.naturalWidth()*l.naturalHeight()>
+        if((long)layer.naturalWidth()*layer.naturalHeight()>
             StudioLayerEffects.MAX_EFFECT_PIXELS){
             message("Sombra limitada a 2 MP nesta versão");return;
         }
-        LinearLayout box=new LinearLayout(activity);
-        box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(5),dp(18),dp(5));
-        EditText radius=numberField("Raio 1–16",false);
-        radius.setText(String.valueOf(l.shadowRadius));box.addView(radius);
-        EditText shift=numberField("Deslocamento X/Y",false);
-        shift.setText(String.valueOf(l.shadowX));box.addView(shift);
-        EditText transparency=numberField("Opacidade 0–100",false);
-        transparency.setText(String.valueOf(Math.round(l.shadowOpacity*100)));
-        box.addView(transparency);
-        new AlertDialog.Builder(activity).setTitle("Sombra projetada")
-            .setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Aplicar",(d,w)->{
-                try{
-                    float r=Float.parseFloat(radius.getText().toString());
-                    float x=Float.parseFloat(shift.getText().toString());
-                    int o=Integer.parseInt(transparency.getText().toString());
-                    if(!Float.isFinite(r)||r<1||r>16||!Float.isFinite(x)||
-                       Math.abs(x)>128||o<0||o>100)throw new IllegalArgumentException();
-                    document.checkpoint();l.shadowRadius=r;l.shadowX=x;l.shadowY=x;
-                    l.shadowOpacity=o/100f;l.shadowEnabled=true;changed(true);
-                }catch(Exception e){message("Valores de sombra inválidos");}
-            }).show();
+        editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
+        showTextPanel=false;showTransformPanel=false;updatePanels();
     }
     private void viewCommand(String cmd){
         if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
         else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
         else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
-        else if(cmd.equals("Camadas")){showTextPanel=false;updatePanels();}
-        else if(cmd.equals("Texto")){showTextPanel=true;updatePanels();}
+        else if(cmd.equals("Camadas")){showTextPanel=false;showTransformPanel=false;updatePanels();}
+        else if(cmd.equals("Texto")){showTextPanel=true;showTransformPanel=false;updatePanels();}
         info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
     }
     /** Layer thumbnails show actual source pixels, never an invented mock preview. */
@@ -911,7 +1108,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
         StudioDocument.Layer current=document.active();
         opacity.setEnabled(current!=null&&!current.locked);
         opacity.setProgress(current==null?100:Math.round(current.opacity*100));
-        opacityLabel.setText(current==null?"Opacidade":("Opacidade "+opacity.getProgress()+"%"));
+        if(!opacityInput.hasFocus())opacityInput.setText(String.valueOf(opacity.getProgress()));
+        blendButton.setText(current==null?"Normal  ⌄":blendName(current.blend)+"  ⌄");
         updatePanels();updateToolbar();
         canvas.invalidate();
     }
@@ -1087,10 +1285,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             return x>=0&&x<document.width&&y>=0&&y<document.height;
         }
         private RectF activeBounds(StudioDocument.Layer l){
-            if(l==null)return null;
-            float w=l.naturalWidth()*Math.abs(l.scaleX);
-            float h=l.naturalHeight()*Math.abs(l.scaleY);
-            return new RectF(l.x,l.y,l.x+w,l.y+h);
+            return l==null?null:StudioTransformMath.bounds(l);
         }
         private void outline(Canvas canvas,RectF bounds,int color){
             if(bounds==null)return;
@@ -1099,15 +1294,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
             canvas.drawRect(bounds,paint);
             paint.setStyle(Paint.Style.FILL);
         }
-        /** Coordinates transformed in the same T*R*skew*scale order as the compositor. */
         private float[] layerPoint(StudioDocument.Layer l,float px,float py){
-            float x=px*l.scaleX,y=py*l.scaleY;
-            float h=(float)Math.tan(Math.toRadians(l.skewX));
-            float v=(float)Math.tan(Math.toRadians(l.skewY));
-            float u=x+h*y,w=y+v*x;
-            float radians=(float)Math.toRadians(l.rotation);
-            float cos=(float)Math.cos(radians),sin=(float)Math.sin(radians);
-            return new float[]{l.x+u*cos-w*sin,l.y+u*sin+w*cos};
+            return StudioTransformMath.point(l,px,py);
         }
         private float[][] transformHandles(StudioDocument.Layer l){
             float w=l.naturalWidth(),h=l.naturalHeight();
@@ -1274,8 +1462,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         if(transformHandle==-1){
                             selected.x=originalX+diffX;selected.y=originalY+diffY;
                         }else if(transformHandle==9){
-                            float[] center=layerPoint(selected,
-                                selected.naturalWidth()/2f,selected.naturalHeight()/2f);
+                            float[] center={StudioTransformMath.centerX(selected),
+                                StudioTransformMath.centerY(selected)};
                             float a=(float)Math.atan2(startDocY-center[1],startDocX-center[0]);
                             float b=(float)Math.atan2(y-center[1],x-center[0]);
                             selected.rotation=originalRotation+
