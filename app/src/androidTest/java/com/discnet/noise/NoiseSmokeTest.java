@@ -145,7 +145,8 @@ public class NoiseSmokeTest extends Instrumentation {
             final int[] called={0,0,0,0,0};
             runOnMainSync(()->{
                 studio[0]=new HomeScreen(activity,()->called[0]++,
-                    ()->called[1]++,()->called[2]++,()->called[3]++,()->called[4]++);
+                    ()->called[1]++,()->called[2]++,()->called[3]++,()->called[4]++,
+                    ()->called[0]++);
                 int dp320=Math.round(320*activity.getResources().getDisplayMetrics().density);
                 int dp570=Math.round(570*activity.getResources().getDisplayMetrics().density);
                 studio[0].measure(View.MeasureSpec.makeMeasureSpec(dp320,View.MeasureSpec.EXACTLY),
@@ -180,6 +181,8 @@ public class NoiseSmokeTest extends Instrumentation {
             runOnMainSync(()->studio[0].setRecent(""));
             require(recentGroup.getVisibility()==View.GONE,
                 "Removing the last project also removes unused placeholder UI");
+            stage("Advanced Studio: real layers, native project round trip and compositor");
+            AdvancedStudioTest.run(this,activity);
             if(targeted){
                 stage("Camera: focus touch, framed aspect ratio, capture crop and zoom");
                 RectF square=new RectF(),portrait=new RectF(),wide=new RectF();

@@ -38,6 +38,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private EditorWorkspace workspace;
     private EditorPanel panel;
     private GalleryScreen galleryScreen;
+    private com.discnet.noise.advancedstudio.AdvancedStudioScreen advancedStudio;
     private GalleryScreen imagePickerScreen;
     private MediaLibrary.Photo pendingGalleryCopy;
     private CameraScreen cameraScreen;
@@ -65,7 +66,8 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     private boolean loading,exporting,destroyed,comparing,orbitalClosing;
     private int maxTexture=4096;
     private static final int GALLERY_PERMISSION=73,SAVE_PERMISSION=74,VAULT_REQUEST=82,CAMERA_PERMISSION=83;
-    static final int CAMERA_STORAGE_PERMISSION=84, GALLERY_COPY_PERMISSION=85;
+    static final int CAMERA_STORAGE_PERMISSION=84, GALLERY_COPY_PERMISSION=85,
+        ADVANCED_IMPORT_REQUEST=86;
     private int dp(float n){return EditorTheme.dp(this,n);}
     private TextView text(String t,int size,int color){TextView v=new TextView(this);v.setTypeface(NoiseTypography.regular(this));v.setText(t);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
     private TextView button(String t,boolean primary){TextView v=text(t,14,primary?0xff19121f:EditorTheme.INK);v.setGravity(Gravity.CENTER);EditorTheme.button(v,primary);v.setMinHeight(dp(48));v.setFocusable(true);return v;}
@@ -262,6 +264,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
             &&studioTabs.getVisibility()==View.VISIBLE
             &&cameraScreen==null&&settingsScreen==null&&presetLibrary==null
             &&exportScreen==null&&!exporting&&exportResult==null&&imagePickerScreen==null
+             &&advancedStudio==null
             &&(galleryScreen==null||!galleryScreen.dismissPhotoActionsPending())
             &&(projectLibrary==null||!projectLibrary.hasModal());
         if(type==MotionEvent.ACTION_DOWN){
@@ -289,7 +292,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
                 this::showSettings,()->{
                 String id=getPreferences(0).getString("lastProject",null);
                 if(id!=null)loadProject(id,false);else showImagePicker();
-            });
+            },()->showAdvancedStudio(null));
             appBackground.addView(homeScreen,new FrameLayout.LayoutParams(-1,-1));
         }
         closeGallery();
@@ -306,6 +309,32 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         });
     }
     private void closeHome(){if(homeScreen!=null)homeScreen.setVisibility(View.GONE);}
+    private void showAdvancedStudio(Bitmap raster){
+        if(advancedStudio!=null)return;
+        closeOrbital();
+        hideStudioTabs();
+        advancedStudio=new com.discnet.noise.advancedstudio.AdvancedStudioScreen(
+            this,new com.discnet.noise.advancedstudio.AdvancedStudioScreen.Host(){
+                @Override public void exit(){closeAdvancedStudio();}
+                @Override public void importImage(){
+                    Intent open=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    open.addCategory(Intent.CATEGORY_OPENABLE);
+                    open.setType("image/*");
+                    open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try{startActivityForResult(open,ADVANCED_IMPORT_REQUEST);}
+                    catch(ActivityNotFoundException e){toast("Seletor indisponível");}
+                }
+            },raster);
+        appBackground.addView(advancedStudio,new FrameLayout.LayoutParams(-1,-1));
+        advancedStudio.bringToFront();
+    }
+    private void closeAdvancedStudio(){
+        if(advancedStudio==null)return;
+        com.discnet.noise.advancedstudio.AdvancedStudioScreen screen=advancedStudio;
+        advancedStudio=null;appBackground.removeView(screen);screen.dispose();
+        if(homeScreen!=null&&homeScreen.getVisibility()==View.VISIBLE)
+            revealStudioTabs(StudioTabBar.HOME);
+    }
     private void showSettings(){
         if(settingsScreen!=null)return;
         closeOrbital();hideStudioTabs();
@@ -361,7 +390,9 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         case "Meus projetos":showProjects();break;
         case "Neon":mutate(()->document.copyLook(ProjectStore.builtins().get(3).document));break;
     }}
-    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Câmera","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showImagePicker();break;case "Câmera":showCamera();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
+    private void showMenu(View anchor){PopupMenu p=new PopupMenu(this,anchor);String[] items={"Abrir imagem","Advanced Studio (foto original)","Câmera","Presets","Salvar projeto","Meus projetos","Copiar ajustes","Colar ajustes","Comparar original","Tela cheia","Restaurar ajustes","Restaurar transformação"};for(String x:items)p.getMenu().add(x);p.setOnMenuItemClickListener(item->{String t=item.getTitle().toString();switch(t){case "Abrir imagem":showImagePicker();break;
+        case "Advanced Studio (foto original)":showAdvancedStudio(original);break;
+        case "Câmera":showCamera();break;case "Comparar original":comparing=!comparing;publish();break;case "Tela cheia":toggleFullscreen();break;case "Restaurar ajustes":mutate(()->document.copyLook(new EditorDocument()));break;case "Restaurar transformação":mutate(()->{document.left=document.top=0;document.right=document.bottom=1;document.rotation=0;document.flipX=document.flipY=false;});sizeStatus();break;default:action(t);}return true;});p.show();}
     private void showCrop(){if(original==null||loading)return;if(cropEditor!=null)return;
         cropEditor=new CropEditor(this,original,document,sourceWidth(),sourceHeight(),new CropEditor.Listener(){public void cancel(){closeCrop();}public void apply(Rect ignored){RectF rect=cropEditor.normalizedRect();mutate(()->{document.left=rect.left;document.top=rect.top;document.right=rect.right;document.bottom=rect.bottom;});closeCrop();sizeStatus();}});appBackground.addView(cropEditor,new FrameLayout.LayoutParams(-1,-1));}
     private void closeCrop(){if(cropEditor!=null){appBackground.removeView(cropEditor);cropEditor=null;}}
@@ -735,6 +766,10 @@ public class MainActivity extends Activity implements EditorPanel.Host {
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null||data.getData()==null)return;
+        if(request==ADVANCED_IMPORT_REQUEST){
+            if(advancedStudio!=null)advancedStudio.addRasterUri(data.getData());
+            return;
+        }
         if(request==1)load(data.getData());
         else if(request==VAULT_REQUEST)connectProjectVault(data.getData());
     }
@@ -756,6 +791,7 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(request==SAVE_PERMISSION){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)chooseOutput();else toast("Permissão necessária para salvar na galeria");}}
     @Override protected void onSaveInstanceState(Bundle b){super.onSaveInstanceState(b);try{b.putString("document",document.toJson().toString());b.putString("history",history.toJson().toString());}catch(JSONException ignored){}b.putString("project",projectId);b.putInt("category",panel.category);saveProject(false);}
     @Override public void onBackPressed(){
+        if(advancedStudio!=null){advancedStudio.onBack();return;}
         if(imagePickerScreen!=null){closeImagePicker();return;}
         // The save transaction is not cancellable; keep progress visible.
         if(exporting)return;
@@ -792,5 +828,5 @@ public class MainActivity extends Activity implements EditorPanel.Host {
         if(exportScreen!=null){exportScreen.dismiss();exportScreen=null;}
         hideExportResult();hideExportProgress();closeSettings();closeCamera();
         if(presetLibrary!=null){presetLibrary.dismiss();presetLibrary=null;}
-        closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();closeImagePicker();super.onDestroy();}
+        closeProjectLibrary();loads.incrementAndGet();if(importTask!=null)importTask.cancel(true);closeCrop();preview.dispose();files.shutdown();exportWorker.shutdown();if(galleryScreen!=null)galleryScreen.dispose();closeImagePicker();if(advancedStudio!=null)closeAdvancedStudio();super.onDestroy();}
 }
