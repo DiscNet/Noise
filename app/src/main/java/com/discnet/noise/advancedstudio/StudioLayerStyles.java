@@ -181,6 +181,17 @@ public final class StudioLayerStyles {
         }
         return result;
     }
+    /** Continuous signed edge distance with subpixel alpha correction. Chisel
+     * geometry never thresholds partially covered glyph pixels into hard edges. */
+    private static float signedDistance(int[] interior,int[] exterior,int[] alpha,
+                                        int width,int height,int x,int y){
+        x=Math.max(0,Math.min(width-1,x));y=Math.max(0,Math.min(height-1,y));
+        int i=y*width+x;
+        float coverage=alpha[i]/255f;
+        float distance=coverage>=.5f?
+            (interior[i]/3f-.5f):-(exterior[i]/3f-.5f);
+        return distance+(coverage-.5f)*.65f;
+    }
     /** Adaptive 2x supersampling produces coverage-based anti-aliasing on small
      * text, glyphs and shape edges; large images use soft subpixel coverage.
      * Chisel HARD controls the profile, not whether edge antialias is enabled.
@@ -214,7 +225,6 @@ public final class StudioLayerStyles {
         float radians=(float)Math.toRadians(s.angle);
         float dx=(float)Math.cos(radians),dy=(float)-Math.sin(radians);
         float radius=Math.max(.01f,s.size),fade=Math.max(.1f,radius*(1-s.spread/110f));
-        boolean bevel=s.kind==Kind.BEVEL_EMBOSS;
         for(int y=0;y<H;y++)for(int x=0;x<W;x++){
             int i=y*W+x,a=alpha[i];float coverage=a/255f;
             float di=inner[i]/3f,de=outer[i]/3f,t=0;
@@ -266,33 +276,59 @@ public final class StudioLayerStyles {
                     boolean useOutside=(outerBevel||emboss)&&coverage<.5f;
                     float d=useOutside?de:di;
                     if(d>radius+s.soften)break;
-                    int[] field=useOutside?outer:inner;
-                    float left=field[y*W+Math.max(0,x-1)]/3f;
-                    float right=field[y*W+Math.min(W-1,x+1)]/3f;
-                    float up=field[Math.max(0,y-1)*W+x]/3f;
-                    float down=field[Math.min(H-1,y+1)*W+x]/3f;
-                    float light=(right-left)*dx+(down-up)*dy;
-                    // Blend the normal near the edge instead of choosing
-                    // abruptly between quantized binary distance samples.
-                    float px=alpha[y*W+Math.max(0,x-1)]/255f;
-                    float nx=alpha[y*W+Math.min(W-1,x+1)]/255f;
-                    float py=alpha[Math.max(0,y-1)*W+x]/255f;
-                    float ny=alpha[Math.min(H-1,y+1)*W+x]/255f;
-                    light=light*.72f+((nx-px)*dx+(ny-py)*dy)*.28f;
-                    if("DOWN".equals(s.direction))light=-light;
-                    if(useOutside)light=-light;
-                    if("PILLOW".equals(s.bevelStyle))light=-light;
+                    // The chamfer distance drives the bevel width, but a
+                    // fractional signed-distance gradient drives its normal.
+                    // Sobel 3x3 averages diagonal steps instead of exposing
+                    // jagged 1-pixel staircases on glyphs and thin shapes.
+                    float topLeft=signedDistance(inner,outer,alpha,W,H,x-1,y-1);
+                    float top=signedDistance(inner,outer,alpha,W,H,x,y-1);
+                    float topRight=signedDistance(inner,outer,alpha,W,H,x+1,y-1);
+                    float left=signedDistance(inner,outer,alpha,W,H,x-1,y);
+                    float right=signedDistance(inner,outer,alpha,W,H,x+1,y);
+                    float bottomLeft=signedDistance(inner,outer,alpha,W,H,x-1,y+1);
+                    float bottom=signedDistance(inner,outer,alpha,W,H,x,y+1);
+                    float bottomRight=signedDistance(inner,outer,alpha,W,H,x+1,y+1);
+                    float gradX=(topRight+2*right+bottomRight-topLeft-2*left-bottomLeft)*.125f;
+                    float gradY=(bottomLeft+2*bottom+bottomRight-topLeft-2*top-topRight)*.125f;
+                    float magnitude=(float)Math.hypot(gradX,gradY);
+                    float normal=(gradX*dx+gradY*dy)/Math.max(.15f,magnitude);
+                    if("DOWN".equals(s.direction))normal=-normal;
+                    if(useOutside)normal=-normal;
+                    if("PILLOW".equals(s.bevelStyle))normal=-normal;
+
                     float width=Math.max(1,radius+s.soften);
-                    float ramp=cap((width-d)/width);
-                    if("CHISEL_HARD".equals(s.technique))
-                        ramp=smoothstep(.45f,1.35f/width,ramp);
-                    else if("CHISEL_SOFT".equals(s.technique))ramp=(float)Math.sqrt(ramp);
-                    float strength=ramp*Math.min(3,s.depth/100f);
-                    float elevation=(float)Math.sin(Math.toRadians(s.altitude));
-                    float contour=curve(s,cap((width-d)/width));
-                    t=(useOutside?1-coverage:coverage)*strength*contour*
-                        Math.max(.15f,elevation);
-                    float diffuse=smoothstep(0,.85f,light);
+                    // Diagonal chamfer is corrected with local fractional
+                    // coverage. This also supports antialiased HARD chisel.
+                    float edgeCorrection=(coverage-.5f)*.65f;
+                    float fraction=cap((width-d+edgeCorrection)/width);
+                    boolean hard="CHISEL_HARD".equals(s.technique);
+                    boolean softChisel="CHISEL_SOFT".equals(s.technique);
+                    float rim,normalGain;
+                    if(hard){
+                        // Flat beveled facets with a distinct inner ridge;
+                        // transitions retain >= 1 subpixel of edge coverage.
+                        float aa=Math.max(.035f,.8f/width);
+                        rim=smoothstep(.12f,aa,fraction)*
+                            (1-.38f*smoothstep(.70f,aa,fraction));
+                        normalGain=1.45f;
+                    }else if(softChisel){
+                        // Planar slopes, slightly rounded facet transitions.
+                        rim=(float)Math.pow(fraction,.55f)*
+                            (1-.18f*smoothstep(.76f,.19f,fraction));
+                        normalGain=1.1f;
+                    }else{
+                        // Smooth curved surface, no hard threshold or ridge.
+                        rim=(float)Math.sin(fraction*Math.PI*.5f);
+                        normalGain=.73f;
+                    }
+                    float strength=rim*Math.min(3,s.depth/100f);
+                    float altitude=(float)Math.sin(Math.toRadians(s.altitude));
+                    float contour=curve(s,fraction);
+                    float surface=useOutside?1-coverage:coverage;
+                    t=surface*strength*contour*Math.max(.15f,altitude);
+                    float diffuse=cap(.5f+.5f*normal*normalGain);
+                    if(!hard)diffuse=smoothstep(.5f,softChisel?.72f:.98f,diffuse);
+                    else diffuse=smoothstep(.5f,.30f,diffuse);
                     pigment=lerp(s.shade,s.highlight,diffuse);
                     t*=s.shadowOpacity+(s.highlightOpacity-s.shadowOpacity)*diffuse;
                     break;
