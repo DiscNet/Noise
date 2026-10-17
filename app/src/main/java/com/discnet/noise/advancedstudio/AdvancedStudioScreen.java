@@ -465,6 +465,10 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(l.shadowEnabled){document.checkpoint();l.shadowEnabled=false;changed(true);}
             return;
         }
+        if((long)l.naturalWidth()*l.naturalHeight()>
+            StudioLayerEffects.MAX_EFFECT_PIXELS){
+            message("Sombra limitada a 2 MP nesta versão");return;
+        }
         LinearLayout box=new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(18),dp(5),dp(18),dp(5));
         EditText radius=numberField("Raio 1–16",false);
