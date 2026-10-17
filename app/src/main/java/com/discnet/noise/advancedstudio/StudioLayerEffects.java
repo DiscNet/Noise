@@ -203,7 +203,7 @@ public final class StudioLayerEffects {
                 l.shadowY+offsets[1],shadowPaint);
             shadow.recycle();
         }
-        c.drawBitmap(filtered,0,0,p);
+        StudioLayerStyles.draw(c,l,filtered,p);
         if(l.type!=StudioDocument.Type.RASTER&&l.type!=StudioDocument.Type.SMART
             &&!requiresProcessing(l))
             filtered.recycle();
