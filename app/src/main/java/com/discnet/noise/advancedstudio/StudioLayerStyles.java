@@ -204,10 +204,8 @@ public final class StudioLayerStyles {
                     if(sx>=0&&sx<W&&sy>=0&&sy<H){
                         int q=sy*W+sx;
                         float shifted=alpha[q]/255f;
-                        float away=outer[q]/3f;
-                        // Shifted matte with edge softness, including transparent halo.
-                        float soft=cap(1-de/Math.max(1,radius));
-                        t=Math.max(shifted,soft*shifted*.45f)*(1-coverage*.2f);
+                        float falloff=cap(1-outer[q]/3f/Math.max(1,radius));
+                        t=Math.max(shifted,falloff)*(1-coverage);
                     }
                     break;
                 }
@@ -220,7 +218,10 @@ public final class StudioLayerStyles {
                     int sx=Math.round(x+dx*s.distance),sy=Math.round(y+dy*s.distance);
                     float shifted= sx>=0&&sx<W&&sy>=0&&sy<H?
                         alpha[sy*W+sx]/255f:0;
-                    t=coverage*(1-shifted)*cap(1-di/Math.max(1,radius));
+                    float boundary= sx>=0&&sx<W&&sy>=0&&sy<H?
+                        outer[sy*W+sx]/3f:radius;
+                    t=coverage*(1-Math.max(shifted,cap(1-boundary/radius)))*
+                        cap(1-di/Math.max(1,radius));
                     break;
                 }
                 case STROKE:
@@ -238,17 +239,30 @@ public final class StudioLayerStyles {
                     t=coverage;break;
                 }
                 case BEVEL_EMBOSS: {
-                    if(di>radius||a==0)break;
-                    float left=inner[y*W+Math.max(0,x-1)]/3f;
-                    float right=inner[y*W+Math.min(W-1,x+1)]/3f;
-                    float up=inner[Math.max(0,y-1)*W+x]/3f;
-                    float down=inner[Math.min(H-1,y+1)*W+x]/3f;
+                    boolean outerBevel="OUTER_BEVEL".equals(s.bevelStyle);
+                    boolean emboss="EMBOSS".equals(s.bevelStyle)||
+                        "PILLOW".equals(s.bevelStyle);
+                    boolean useOutside=(outerBevel||emboss)&&coverage<.5f;
+                    float d=useOutside?de:di;
+                    if(d>radius+s.soften)break;
+                    int[] field=useOutside?outer:inner;
+                    float left=field[y*W+Math.max(0,x-1)]/3f;
+                    float right=field[y*W+Math.min(W-1,x+1)]/3f;
+                    float up=field[Math.max(0,y-1)*W+x]/3f;
+                    float down=field[Math.min(H-1,y+1)*W+x]/3f;
                     float light= (right-left)*dx+(down-up)*dy;
                     if("DOWN".equals(s.direction))light=-light;
-                    float strength=cap((radius-di)/radius)*Math.min(3,s.depth/100f);
+                    if(useOutside)light=-light;
+                    if("PILLOW".equals(s.bevelStyle))light=-light;
+                    float width=Math.max(1,radius+s.soften);
+                    float ramp=cap((width-d)/width);
+                    if("CHISEL_HARD".equals(s.technique))ramp=ramp>.45f?1:0;
+                    else if("CHISEL_SOFT".equals(s.technique))ramp=(float)Math.sqrt(ramp);
+                    float strength=ramp*Math.min(3,s.depth/100f);
                     float elevation=(float)Math.sin(Math.toRadians(s.altitude));
-                    float contour=curve(s,cap((radius-di)/radius));
-                    t=coverage*strength*contour*Math.max(.15f,elevation);
+                    float contour=curve(s,cap((width-d)/width));
+                    t=(useOutside?1-coverage:coverage)*strength*contour*
+                        Math.max(.15f,elevation);
                     pigment=light>=0?s.highlight:s.shade;
                     t*=light>=0?s.highlightOpacity:s.shadowOpacity;
                     break;
