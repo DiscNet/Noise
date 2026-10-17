@@ -239,6 +239,7 @@ public final class StudioDocument {
         for(Layer l:layers){
             if(!l.visible)continue;
             canvas.save();
+            try{
             StudioTransformMath.apply(canvas,l);
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
@@ -265,7 +266,13 @@ public final class StudioDocument {
                 case RECTANGLE:canvas.drawRect(0,0,l.objectWidth,l.objectHeight,p);break;
                 case ELLIPSE:canvas.drawOval(0,0,l.objectWidth,l.objectHeight,p);break;
             }
-            canvas.restore();
+            }catch(RuntimeException invalidLayer){
+                // Keep editing responsive when a transient mask/bitmap is invalid.
+                // Log the exact Java stack rather than crashing the whole Activity.
+                android.util.Log.e("NoiseStudio","Layer render failed: "+l.id,invalidLayer);
+            }finally{
+                canvas.restore();
+            }
         }
         canvas.restore();
     }
