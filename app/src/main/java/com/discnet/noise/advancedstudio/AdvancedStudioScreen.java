@@ -449,7 +449,17 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 }
                 public void preview(float value){
                     if(!started[0]||layer!=document.active()||layer.locked)return;
+                    if(textDimensions){
+                        StudioDocument.Layer candidate=layer.copy();
+                        setter.apply(candidate,value);
+                        if((candidate.mask!=null||candidate.shadowEnabled||
+                            !candidate.effects.isEmpty())&&
+                            (long)candidate.naturalWidth()*candidate.naturalHeight()>
+                            StudioLayerEffects.MAX_EFFECT_PIXELS)return;
+                    }
                     setter.apply(layer,value);
+                    if(textDimensions&&layer.mask!=null)
+                        StudioLayerEffects.resizeMask(layer);
                     StudioLayerEffects.invalidate(layer);
                     canvas.invalidate();
                 }
