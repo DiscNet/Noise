@@ -540,8 +540,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 effectsScroll.setVisibility(GONE);updatePanels();}
                 else addFilterDialog(layer);}));
         effectActions.addView(action(layer.shadowEnabled?"☑ Sombra":"＋ Sombra",
-            ()->{editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
-                updatePanels();}));
+            ()->styleCommand("Sombra projetada")));
         for(int i=0;i<layer.effects.size();i++){
             final int position=i;
             StudioLayerEffects.Effect effect=layer.effects.get(i);
@@ -573,6 +572,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
             inspectorField(effectControls,layer,"Opacidade","%",layer.shadowOpacity*100,
                 0,100,1,(l,v)->{l.shadowOpacity=v/100f;l.shadowEnabled=true;},false);
             effectControls.addView(action("Remover sombra",()->styleCommand("Remover sombra")));
+        }else if(selectedFilterIndex==-2&&layer.mask!=null){
+            textTitleTo(effectControls,"MÁSCARA · DENSIDADE");
+            inspectorField(effectControls,layer,"Densidade","%",layer.maskDensity,
+                0,100,1,(l,v)->l.maskDensity=Math.round(v),false);
+            effectControls.addView(action(layer.maskEnabled?"Desativar máscara":"Ativar máscara",
+                ()->{document.checkpoint();layer.maskEnabled=!layer.maskEnabled;changed(true);}));
         }else if(selectedFilterIndex>=0&&selectedFilterIndex<layer.effects.size()){
             StudioLayerEffects.Effect e=layer.effects.get(selectedFilterIndex);
             textTitleTo(effectControls,"FILTRO · "+e.kind.name());
@@ -627,23 +632,51 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textTitle("CARACTERE");
         textOption("Conteúdo","Editar",this::textDialog);
         textOption("Fonte",layer.fontFamily,()->textSetting("font"));
-        textOption("Tamanho",Math.round(layer.fontSize)+" px",()->textSetting("size"));
+        inspectorField(textPanel,layer,"Tamanho","px",layer.fontSize,8,600,1,
+            (l,v)->l.fontSize=v,true);
         textOption("Cor",String.format(Locale.ROOT,"#%06X",layer.color&0xffffff),()->textSetting("color"));
+        LinearLayout swatches=new LinearLayout(activity);
+        int[] samples={0xffffffff,0xff111111,0xffb18aff,0xffff668c,
+            0xffffb64f,0xff64dcd8,0xff598bff};
+        for(int sample:samples){
+            TextView swatch=text("■",23,sample);
+            swatch.setGravity(Gravity.CENTER);swatches.addView(swatch,new LinearLayout.LayoutParams(0,dp(34),1));
+            swatch.setOnClickListener(v->{
+                if(layer.locked)return;
+                document.checkpoint();layer.color=sample;changed(true);
+            });
+        }
+        textPanel.addView(swatches,new LinearLayout.LayoutParams(-1,dp(34)));
+        inspectorField(textPanel,layer,"Vermelho","R",Color.red(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Math.round(v),
+                Color.green(l.color),Color.blue(l.color)),false);
+        inspectorField(textPanel,layer,"Verde","G",Color.green(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
+                Math.round(v),Color.blue(l.color)),false);
+        inspectorField(textPanel,layer,"Azul","B",Color.blue(layer.color),0,255,1,
+            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
+                Color.green(l.color),Math.round(v)),false);
         textOption("Negrito",layer.fontBold?"Ativado":"Desativado",()->textSetting("bold"));
         textOption("Itálico",layer.fontItalic?"Ativado":"Desativado",()->textSetting("italic"));
-        textOption("Espaç. letras",String.format(Locale.ROOT,"%.2f em",layer.letterSpacing),
-            ()->textSetting("tracking"));
+        inspectorField(textPanel,layer,"Espaç. letras","em",layer.letterSpacing,-.2f,1.5f,.01f,
+            (l,v)->l.letterSpacing=v,true);
         textTitle("PARÁGRAFO");
         textOption("Alinhamento",layer.textAlign,()->textSetting("align"));
-        textOption("Entrelinhas",String.format(Locale.ROOT,"%.2f",layer.lineSpacing),
-            ()->textSetting("leading"));
+        inspectorField(textPanel,layer,"Entrelinhas","×",layer.lineSpacing,.5f,3f,.02f,
+            (l,v)->l.lineSpacing=v,true);
         textTitle("GEOMETRIA");
-        textOption("Posição X",Math.round(layer.x)+" px",()->textSetting("x"));
-        textOption("Posição Y",Math.round(layer.y)+" px",()->textSetting("y"));
-        textOption("Largura",Math.round(layer.scaleX*layer.naturalWidth())+" px",
-            ()->textSetting("width"));
-        textOption("Altura",Math.round(layer.scaleY*layer.naturalHeight())+" px",
-            ()->textSetting("height"));
+        inspectorField(textPanel,layer,"Posição X","px",layer.x,-8192,8192,1,
+            (l,v)->l.x=v,false);
+        inspectorField(textPanel,layer,"Posição Y","px",layer.y,-8192,8192,1,
+            (l,v)->l.y=v,false);
+        inspectorField(textPanel,layer,"Largura","px",
+            Math.abs(layer.scaleX*layer.naturalWidth()),1,
+            Math.min(131072,layer.naturalWidth()*16f),1,
+            (l,v)->l.scaleX=Math.copySign(v/Math.max(1,l.naturalWidth()),l.scaleX),false);
+        inspectorField(textPanel,layer,"Altura","px",
+            Math.abs(layer.scaleY*layer.naturalHeight()),1,
+            Math.min(131072,layer.naturalHeight()*16f),1,
+            (l,v)->l.scaleY=Math.copySign(v/Math.max(1,l.naturalHeight()),l.scaleY),false);
         textOption("Transformação completa","Abrir",this::transformDialog);
         textScroll.post(()->textScroll.scrollTo(0,lastTextScroll));
     }
