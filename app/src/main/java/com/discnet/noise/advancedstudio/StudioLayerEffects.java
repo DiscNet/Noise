@@ -47,6 +47,9 @@ public final class StudioLayerEffects {
             .append(l.maskEnabled).append(':').append(l.maskDensity)
             .append(':').append(l.type).append(':').append(l.color)
             .append(':').append(l.fontSize).append(':').append(l.text)
+            .append(':').append(l.fontFamily).append(':').append(l.fontBold)
+            .append(':').append(l.fontItalic).append(':').append(l.letterSpacing)
+            .append(':').append(l.lineSpacing).append(':').append(l.textAlign)
             .append(':').append(l.objectWidth).append(':').append(l.objectHeight);
         for(Effect f:l.effects)b.append(':').append(f.kind).append(':')
             .append(f.value).append(':').append(f.enabled);
@@ -60,7 +63,7 @@ public final class StudioLayerEffects {
     }
     /** Converts parametric layers only for temporary compositing, never persistence. */
     public static Bitmap sourceBitmap(StudioDocument.Layer l){
-        if(l.type==StudioDocument.Type.RASTER)return l.bitmap;
+        if(l.type==StudioDocument.Type.RASTER||l.type==StudioDocument.Type.SMART)return l.bitmap;
         int w=l.naturalWidth(),h=l.naturalHeight();
         if(w<1||h<1||(long)w*h>MAX_EFFECT_PIXELS)
             throw new IllegalArgumentException("Elemento grande demais para efeitos nesta fase");
@@ -68,11 +71,7 @@ public final class StudioLayerEffects {
         Canvas c=new Canvas(out);Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
         p.setColor(l.color);
         if(l.type==StudioDocument.Type.TEXT){
-            p.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
-            p.setTextSize(l.fontSize);
-            String[] lines=l.text.split("\n",-1);
-            for(int i=0;i<lines.length;i++)
-                c.drawText(lines[i],0,l.fontSize*(i+1)*1.16f,p);
+            StudioTypography.draw(c,l,p);
         }else if(l.type==StudioDocument.Type.RECTANGLE){
             c.drawRect(0,0,l.objectWidth,l.objectHeight,p);
         }else if(l.type==StudioDocument.Type.ELLIPSE){
@@ -205,7 +204,8 @@ public final class StudioLayerEffects {
             shadow.recycle();
         }
         c.drawBitmap(filtered,0,0,p);
-        if(l.type!=StudioDocument.Type.RASTER&&!requiresProcessing(l))
+        if(l.type!=StudioDocument.Type.RASTER&&l.type!=StudioDocument.Type.SMART
+            &&!requiresProcessing(l))
             filtered.recycle();
     }
     /** Keeps an attached raster mask aligned when editable text dimensions change. */
