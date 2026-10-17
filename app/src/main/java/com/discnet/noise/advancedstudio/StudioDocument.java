@@ -358,7 +358,7 @@ public final class StudioDocument {
     }
     static StudioDocument fromJson(JSONObject j)throws Exception{
         int format=j.getInt("format");
-        if(format!=1&&format!=2&&format!=3&&format!=4&&format!=FORMAT_VERSION)
+        if(format<1||format>FORMAT_VERSION)
             throw new java.io.IOException("Versão .noise incompatível");
         StudioDocument d=new StudioDocument(j.getString("id"),j.getString("name"),
             j.getInt("width"),j.getInt("height"),j.optInt("dpi",72));
