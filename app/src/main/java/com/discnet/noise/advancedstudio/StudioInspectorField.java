@@ -31,6 +31,7 @@ public final class StudioInspectorField extends LinearLayout {
     private float value;
     private boolean editing,dragging;
     private float touchX,initialValue;
+    private long lastPreviewAt;
     private final int accent=0xffbd95eb,ink=0xffeee9f2;
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private GradientDrawable background(int fill){
@@ -86,10 +87,10 @@ public final class StudioInspectorField extends LinearLayout {
                 if(!fromUser)return;
                 if(!began){began=true;callback.begin();}
                 value=clamp(min+(max-min)*progress/1000f);
-                refresh(true);callback.preview(value);
+                refresh(true);sendPreview(false);
             }
             @Override public void onStopTrackingTouch(SeekBar b){
-                if(began){began=false;callback.finish();}
+                if(began){sendPreview(true);began=false;callback.finish();}
             }
         });
         title.setOnTouchListener((v,event)->{
@@ -105,11 +106,11 @@ public final class StudioInspectorField extends LinearLayout {
                         float span=event.getRawX()-touchX;
                         float delta=span/dp(5)*step;
                         value=clamp(initialValue+delta);
-                        refresh(false);callback.preview(value);
+                        refresh(false);sendPreview(false);
                     }
                     return true;
                 case MotionEvent.ACTION_UP:case MotionEvent.ACTION_CANCEL:
-                    if(dragging){callback.finish();dragging=false;}
+                    if(dragging){sendPreview(true);callback.finish();dragging=false;}
                     else input.requestFocus();
                     return true;
                 default:return false;
@@ -130,9 +131,17 @@ public final class StudioInspectorField extends LinearLayout {
             refresh(false);
         }
     }
+    private void sendPreview(boolean force){
+        long now=android.os.SystemClock.uptimeMillis();
+        // Complex stacked filters can take longer than a frame to recomposite.
+        // Apply the final value unconditionally when the gesture finishes.
+        if(force||now-lastPreviewAt>=42){
+            lastPreviewAt=now;callback.preview(value);
+        }
+    }
     private void nudge(float difference){
         endTypingForDrag();callback.begin();value=clamp(value+difference);
-        refresh(false);callback.preview(value);callback.finish();
+        refresh(false);sendPreview(true);callback.finish();
     }
     private void refresh(boolean fromSlider){
         if(!input.hasFocus())
@@ -148,7 +157,7 @@ public final class StudioInspectorField extends LinearLayout {
             float exact=Float.parseFloat(input.getText().toString().trim().replace(',','.'));
             if(Float.isFinite(exact)&&Math.abs(clamp(exact)-value)>.0001f){
                 callback.begin();value=clamp(exact);
-                callback.preview(value);callback.finish();
+                sendPreview(true);callback.finish();
             }
         }catch(NumberFormatException ignored){}
         input.clearFocus();editing=false;refresh(false);

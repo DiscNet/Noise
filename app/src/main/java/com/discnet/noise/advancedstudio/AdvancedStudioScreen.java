@@ -46,6 +46,15 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private RectF pendingCrop;
     private TextView toolMode;
     private int revision,savedRevision;
+    private boolean refreshingPanels;
+    private final Runnable deferredPanelRefresh=this::refreshPanelsIfIdle;
+    private void refreshPanelsIfIdle(){
+        if(closed)return;
+        View focused=findFocus();
+        // An active precision input must not be detached while the IME is editing it.
+        if(focused instanceof EditText&&focused!=opacityInput)return;
+        updatePanels();
+    }
     private int ink=0xfff5f2f8,muted=0xffa9a4b0,accent=0xffbe9aeb;
     private final int surface=0xff101016,panel=0xff19171f;
     public AdvancedStudioScreen(Activity a,Host host,Bitmap imported){
@@ -607,7 +616,9 @@ public final class AdvancedStudioScreen extends FrameLayout {
         effectsScroll.post(()->effectsScroll.scrollTo(0,last));
     }
     private void updatePanels(){
-        if(closed)return;
+        if(closed||refreshingPanels)return;
+        refreshingPanels=true;
+        try{
         layerPane.setVisibility(showTextPanel||showTransformPanel?GONE:VISIBLE);
         textScroll.setVisibility(showTextPanel?VISIBLE:GONE);
         transformScroll.setVisibility(showTransformPanel?VISIBLE:GONE);
@@ -689,6 +700,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             (l,v)->l.scaleY=Math.copySign(v/Math.max(1,l.naturalHeight()),l.scaleY),false);
         textOption("Transformação completa","Abrir",this::transformDialog);
         textScroll.post(()->textScroll.scrollTo(0,lastTextScroll));
+        }finally{refreshingPanels=false;}
     }
     private void textSetting(String what){
         StudioDocument.Layer current=document.active();
@@ -1110,8 +1122,12 @@ public final class AdvancedStudioScreen extends FrameLayout {
         opacity.setProgress(current==null?100:Math.round(current.opacity*100));
         if(!opacityInput.hasFocus())opacityInput.setText(String.valueOf(opacity.getProgress()));
         blendButton.setText(current==null?"Normal  ⌄":blendName(current.blend)+"  ⌄");
-        updatePanels();updateToolbar();
-        canvas.invalidate();
+        // Defer inspector reconstruction to the next UI idle slice.
+        // Rebuilding EditTexts synchronously during a slider/IME callback can
+        // detach its focused view and recursively trigger edit commits.
+        main.removeCallbacks(deferredPanelRefresh);
+        main.postDelayed(deferredPanelRefresh,96);
+        updateToolbar();canvas.invalidate();
     }
     private void changed(boolean persistent){
         revision++;
@@ -1245,6 +1261,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     public void dispose(){
         main.removeCallbacks(autosave);
+        main.removeCallbacks(deferredPanelRefresh);
         // Saves already queued execute to completion; never recycle shared
         // layer bitmaps while a background save/export may be using them.
         closed=true;
