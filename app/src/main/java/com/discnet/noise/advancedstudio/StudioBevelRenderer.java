@@ -61,8 +61,19 @@ public final class StudioBevelRenderer {
             int[] src=new int[w*h];
             base.getPixels(src,0,w,0,0,w,h);
             styled=shade(src,w,h,pad,style,factor);
-            if(styled.getWidth()==width&&styled.getHeight()==height)return styled;
-            return resizePremultiplied(styled,width,height);
+            Bitmap output;
+            if(styled.getWidth()==width&&styled.getHeight()==height){
+                output=styled;
+            }else{
+                output=resizePremultiplied(styled,width,height);
+            }
+            // For inner bevel, match the exact pixel coverage of the regular
+            // source glyph. Different Android glyph hinting at 1x / 3x
+            // must never become phantom outlines outside the source alpha.
+            if("INNER_BEVEL".equals(style.bevelStyle)){
+                maskToOriginalSource(output,source,padding);
+            }
+            return output;
         }finally{
             if(base!=null&&!base.isRecycled())base.recycle();
             if(styled!=null&&styled.getWidth()!=width&&
@@ -243,8 +254,8 @@ public final class StudioBevelRenderer {
             float lit=Math.max(0,reflect);
             float dark=Math.max(0,-reflect);
             // Gloss Contour shapes lighting, not source alpha or geometry.
-            lit=StudioLayerStyles.curve(s,clamp(lit));
-            dark=StudioLayerStyles.curve(s,clamp(dark));
+            lit=lit>0?StudioLayerStyles.curve(s,clamp(lit)):0;
+            dark=dark>0?StudioLayerStyles.curve(s,clamp(dark)):0;
             float boost=.45f+.55f*sun;
             lit=clamp(lit*boost);
             dark=clamp(dark*boost);
@@ -276,6 +287,24 @@ public final class StudioBevelRenderer {
         Bitmap bitmap=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
         bitmap.setPixels(output,0,W,0,0,W,H);
         return bitmap;
+    }
+
+    private static void maskToOriginalSource(Bitmap output,Bitmap source,int padding){
+        int w=output.getWidth(),h=output.getHeight(),sw=source.getWidth(),
+            sh=source.getHeight();
+        int[] src=new int[sw*sh],out=new int[w*h];
+        source.getPixels(src,0,sw,0,0,sw,sh);
+        output.getPixels(out,0,w,0,0,w,h);
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+            int i=y*w+x;
+            int sx=x-padding,sy=y-padding;
+            if(sx<0||sy<0||sx>=sw||sy>=sh){
+                out[i]=Color.TRANSPARENT;continue;
+            }
+            int a=Color.alpha(src[sy*sw+sx]);
+            out[i]=a==0?Color.TRANSPARENT:(out[i]&0xffffff)|(a<<24);
+        }
+        output.setPixels(out,0,w,0,0,w,h);
     }
 
     /** Premultiplied-alpha area resampling prevents white fringes on glyphs. */
