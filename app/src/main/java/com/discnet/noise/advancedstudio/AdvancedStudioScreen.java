@@ -435,11 +435,178 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(42));
         lp.bottomMargin=dp(3);textPanel.addView(row,lp);
     }
+    private interface NumericSetter {void apply(StudioDocument.Layer l,float v);}
+    private void inspectorField(LinearLayout target,StudioDocument.Layer layer,
+                                String caption,String unit,float v,float low,float high,
+                                float step,NumericSetter setter,boolean textDimensions){
+        final boolean[] started={false};
+        StudioInspectorField field=new StudioInspectorField(activity,caption,unit,
+            v,low,high,step,new StudioInspectorField.Callback(){
+                public void begin(){
+                    if(layer!=document.active()||layer.locked)return;
+                    if(!started[0]){document.checkpoint();started[0]=true;}
+                }
+                public void preview(float value){
+                    if(!started[0]||layer!=document.active()||layer.locked)return;
+                    setter.apply(layer,value);
+                    StudioLayerEffects.invalidate(layer);
+                    canvas.invalidate();
+                }
+                public void finish(){
+                    if(!started[0])return;
+                    started[0]=false;
+                    if(textDimensions){
+                        try{StudioLayerEffects.resizeMask(layer);}
+                        catch(Exception error){message(error.getMessage());}
+                    }
+                    changed(true);
+                }
+            });
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(66));
+        lp.bottomMargin=dp(5);target.addView(field,lp);
+    }
+    private void transformControls(){
+        int lastScroll=transformScroll.getScrollY();
+        transformPanel.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null||layer.locked){
+            transformPanel.addView(text("Selecione uma camada desbloqueada para transformar.",12,muted));
+            return;
+        }
+        textTitleTo(transformPanel,"TRANSFORMAÇÃO LIVRE");
+        inspectorField(transformPanel,layer,"X","px",layer.x,-8192,8192,1,
+            (l,v)->l.x=v,false);
+        inspectorField(transformPanel,layer,"Y","px",layer.y,-8192,8192,1,
+            (l,v)->l.y=v,false);
+        float w=Math.abs(layer.scaleX)*layer.naturalWidth();
+        float h=Math.abs(layer.scaleY)*layer.naturalHeight();
+        inspectorField(transformPanel,layer,"Largura","px",w,1,
+            Math.min(131072,layer.naturalWidth()*16f),1,(l,v)->{
+                float old=Math.abs(l.scaleX);
+                float next=v/Math.max(1,l.naturalWidth());
+                if(keepAspect&&old>0)
+                    l.scaleY=Math.copySign(Math.min(16,Math.max(.01f,
+                        Math.abs(l.scaleY)*next/old)),l.scaleY);
+                l.scaleX=Math.copySign(next,l.scaleX);
+            },false);
+        inspectorField(transformPanel,layer,"Altura","px",h,1,
+            Math.min(131072,layer.naturalHeight()*16f),1,(l,v)->{
+                float old=Math.abs(l.scaleY);
+                float next=v/Math.max(1,l.naturalHeight());
+                if(keepAspect&&old>0)
+                    l.scaleX=Math.copySign(Math.min(16,Math.max(.01f,
+                        Math.abs(l.scaleX)*next/old)),l.scaleX);
+                l.scaleY=Math.copySign(next,l.scaleY);
+            },false);
+        CheckBox link=new CheckBox(activity);
+        link.setText("Vincular proporções W/H");
+        link.setTextColor(ink);link.setTextSize(12);link.setChecked(keepAspect);
+        link.setOnCheckedChangeListener((b,checked)->keepAspect=checked);
+        transformPanel.addView(link,new LinearLayout.LayoutParams(-1,dp(39)));
+        inspectorField(transformPanel,layer,"Ângulo","°",layer.rotation,-360,360,.5f,
+            (l,v)->l.rotation=v,false);
+        inspectorField(transformPanel,layer,"Inclinação X","°",layer.skewX,-65,65,.5f,
+            (l,v)->l.skewX=v,false);
+        inspectorField(transformPanel,layer,"Inclinação Y","°",layer.skewY,-65,65,.5f,
+            (l,v)->l.skewY=v,false);
+        LinearLayout presets=new LinearLayout(activity);
+        presets.setGravity(Gravity.CENTER_VERTICAL);
+        transformPanel.addView(presets,new LinearLayout.LayoutParams(-1,dp(41)));
+        presets.addView(action("90° ↻",()->editCommand("Girar 90° horário")));
+        presets.addView(action("90° ↺",()->editCommand("Girar 90° anti-horário")));
+        presets.addView(action("⇋",()->editCommand("Espelhar horizontal")));
+        presets.addView(action("⇵",()->editCommand("Espelhar vertical")));
+        transformScroll.post(()->transformScroll.scrollTo(0,lastScroll));
+    }
+    private void textTitleTo(LinearLayout destination,String caption){
+        TextView title=text(caption,10,accent);
+        title.setPadding(dp(8),dp(8),0,dp(5));
+        destination.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
+    }
+    private String blendName(StudioDocument.Blend blend){
+        switch(blend){
+            case MULTIPLY:return "Multiplicar";case SCREEN:return "Tela";
+            case OVERLAY:return "Sobrepor";case DARKEN:return "Escurecer";
+            case LIGHTEN:return "Clarear";default:return "Normal";
+        }
+    }
+    private void effectsActions(){
+        effectActions.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null)return;
+        effectActions.addView(action(editingEffects?"← Camadas":"+ Efeito",
+            ()->{if(editingEffects){editingEffects=false;layerScroll.setVisibility(VISIBLE);
+                effectsScroll.setVisibility(GONE);updatePanels();}
+                else addFilterDialog(layer);}));
+        effectActions.addView(action(layer.shadowEnabled?"☑ Sombra":"＋ Sombra",
+            ()->{editingEffects=true;editingShadow=true;selectedFilterIndex=-1;
+                updatePanels();}));
+        for(int i=0;i<layer.effects.size();i++){
+            final int position=i;
+            StudioLayerEffects.Effect effect=layer.effects.get(i);
+            TextView chip=action((effect.enabled?"● ":"○ ")+effect.kind.name(),
+                ()->{editingEffects=true;editingShadow=false;
+                    selectedFilterIndex=position;updatePanels();});
+            effectActions.addView(chip);
+        }
+        if(layer.mask!=null){
+            effectActions.addView(action("◩ Máscara",
+                ()->maskCommand("Densidade")));
+        }
+    }
+    private void effectsControls(){
+        int last=effectsScroll.getScrollY();effectControls.removeAllViews();
+        StudioDocument.Layer layer=document.active();
+        if(layer==null)return;
+        if(editingShadow){
+            textTitleTo(effectControls,"SOMBRA PROJETADA");
+            if(!layer.shadowEnabled)effectControls.addView(action("Ativar sombra",
+                ()->{if(layer.locked)return;
+                    document.checkpoint();layer.shadowEnabled=true;changed(true);}));
+            inspectorField(effectControls,layer,"Desfoque","px",layer.shadowRadius,
+                1,16,.25f,(l,v)->{l.shadowRadius=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Distância X","px",layer.shadowX,
+                -128,128,1,(l,v)->{l.shadowX=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Distância Y","px",layer.shadowY,
+                -128,128,1,(l,v)->{l.shadowY=v;l.shadowEnabled=true;},false);
+            inspectorField(effectControls,layer,"Opacidade","%",layer.shadowOpacity*100,
+                0,100,1,(l,v)->{l.shadowOpacity=v/100f;l.shadowEnabled=true;},false);
+            effectControls.addView(action("Remover sombra",()->styleCommand("Remover sombra")));
+        }else if(selectedFilterIndex>=0&&selectedFilterIndex<layer.effects.size()){
+            StudioLayerEffects.Effect e=layer.effects.get(selectedFilterIndex);
+            textTitleTo(effectControls,"FILTRO · "+e.kind.name());
+            int min=e.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?1:-100;
+            int max=e.kind==StudioLayerEffects.Kind.GAUSSIAN_BLUR?8:100;
+            inspectorField(effectControls,layer,"Intensidade","",e.value,min,max,1,
+                (l,v)->e.value=Math.round(v),false);
+            effectControls.addView(action(e.enabled?"Desativar":"Ativar",
+                ()->{document.checkpoint();e.enabled=!e.enabled;changed(true);}));
+            effectControls.addView(action("Excluir filtro",
+                ()->{document.checkpoint();layer.effects.remove(e);
+                    editingEffects=false;selectedFilterIndex=-1;changed(true);}));
+        }else{
+            textTitleTo(effectControls,"EFEITOS DA CAMADA");
+            effectControls.addView(action("Adicionar filtro",()->addFilterDialog(layer)));
+        }
+        effectsScroll.post(()->effectsScroll.scrollTo(0,last));
+    }
     private void updatePanels(){
         if(closed)return;
-        layerPane.setVisibility(showTextPanel?GONE:VISIBLE);
+        layerPane.setVisibility(showTextPanel||showTransformPanel?GONE:VISIBLE);
         textScroll.setVisibility(showTextPanel?VISIBLE:GONE);
-        if(!showTextPanel)return;
+        transformScroll.setVisibility(showTransformPanel?VISIBLE:GONE);
+        if(showTransformPanel){transformControls();return;}
+        if(!showTextPanel){
+            StudioDocument.Layer current=document.active();
+            if(editingEffects&&(current==null||current.locked)){
+                editingEffects=false;
+            }
+            layerScroll.setVisibility(editingEffects?GONE:VISIBLE);
+            effectsScroll.setVisibility(editingEffects?VISIBLE:GONE);
+            effectsActions();if(editingEffects)effectsControls();
+            return;
+        }
+        int lastTextScroll=textScroll.getScrollY();
         textPanel.removeAllViews();
         StudioDocument.Layer layer=document.active();
         if(layer==null||layer.type!=StudioDocument.Type.TEXT){
@@ -477,6 +644,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textOption("Altura",Math.round(layer.scaleY*layer.naturalHeight())+" px",
             ()->textSetting("height"));
         textOption("Transformação completa","Abrir",this::transformDialog);
+        textScroll.post(()->textScroll.scrollTo(0,lastTextScroll));
     }
     private void textSetting(String what){
         StudioDocument.Layer current=document.active();
