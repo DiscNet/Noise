@@ -238,11 +238,17 @@ public final class StudioLayerStyles {
                     break;
                 }
                 case STROKE:
-                    if("INSIDE".equals(s.position))t=coverage*(di<=s.size?1:0);
+                    // Keep fractional pixel coverage on the source boundary,
+                    // and feather the distance threshold by one pixel so that
+                    // a centered stroke does not acquire a jagged outer rim.
+                    float insideWidth="CENTER".equals(s.position)?
+                        s.size*.5f:s.size;
+                    if("INSIDE".equals(s.position))
+                        t=coverage*cap(insideWidth+.5f-di);
                     else if("CENTER".equals(s.position))
-                        t=di<=s.size*.5f&&coverage>0?coverage:
-                            (de<=s.size*.5f?1-coverage:0);
-                    else t=(1-coverage)*(de<=s.size?1:0);
+                        t=coverage*cap(insideWidth+.5f-di)+
+                            (1-coverage)*cap(insideWidth+.5f-de);
+                    else t=(1-coverage)*cap(s.size+.5f-de);
                     break;
                 case COLOR_OVERLAY:t=coverage;break;
                 case GRADIENT_OVERLAY: {
@@ -278,6 +284,20 @@ public final class StudioLayerStyles {
         STYLE_CACHE.put(key,baked);
         return baked;
     }
+    /** Centered stroke is TWO visible passes around the original alpha.
+     * Outside must be below the layer, inside must be on top: painting one
+     * combined bitmap under the source hides its complete inner half.
+     * PhotoCraft's stroke_widths uses (size/2, size/2) for CENTER.
+     */
+    private static void drawCenteredStroke(Canvas canvas,StudioDocument.Layer layer,
+        Bitmap source,Style style,int padding,boolean inside){
+        Style half=style.copy();
+        half.size=style.size*.5f;
+        half.position=inside?"INSIDE":"OUTSIDE";
+        Bitmap fx=cached(layer,source,half,padding);
+        canvas.drawBitmap(fx,-padding,-padding,
+            compositingPaint(style,layer.opacity*style.opacity));
+    }
     public static void draw(Canvas canvas,StudioDocument.Layer layer,Bitmap source,Paint paint){
         if(source==null)return;
         if(!hasStyles(layer)||((long)source.getWidth()*source.getHeight()>MAX_PIXELS)){
@@ -293,11 +313,14 @@ public final class StudioLayerStyles {
         // Drop shadows and outer borders appear behind the bevel/source.
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
-             s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
+             s.kind==Kind.STROKE&&"OUTSIDE".equals(s.position))){
             Bitmap fx=cached(layer,source,s,padding);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
+        for(Style s:layer.styles)if(s.enabled&&s.kind==Kind.STROKE&&
+            "CENTER".equals(s.position))
+            drawCenteredStroke(canvas,layer,source,s,padding,false);
 
         Style bevel=null;
         for(Style s:layer.styles)if(s.enabled&&s.kind==Kind.BEVEL_EMBOSS){
@@ -320,5 +343,9 @@ public final class StudioLayerStyles {
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
+        // The inner half of a centered stroke must cover the source surface.
+        for(Style s:layer.styles)if(s.enabled&&s.kind==Kind.STROKE&&
+            "CENTER".equals(s.position))
+            drawCenteredStroke(canvas,layer,source,s,padding,true);
     }
 }
