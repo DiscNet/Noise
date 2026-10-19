@@ -188,27 +188,26 @@ public final class AdvancedStudioScreen extends FrameLayout {
         blendRow.setGravity(Gravity.CENTER_VERTICAL);
         blendRow.setPadding(dp(10),0,dp(10),0);
         blendRow.setBackgroundColor(0xff211c29);
-        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(35)));
-        blendRow.addView(text("MESCLAGEM",10,muted),
-            new LinearLayout.LayoutParams(dp(78),dp(33)));
+        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(43)));
+        blendRow.addView(text("MODO",10,muted),
+            new LinearLayout.LayoutParams(dp(42),dp(33)));
         blendButton.setTextColor(accent);blendButton.setTextSize(12);
         blendRow.addView(blendButton,new LinearLayout.LayoutParams(0,dp(34),1));
         LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
         alphaRow.setPadding(dp(10),0,dp(10),0);
-        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(35)));
-        opacityLabel=text("OPACIDADE",10,muted);
-        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(79),-1));
+        opacityLabel=text("OPAC.",9,muted);
+        blendRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(43),-1));
         opacity=new SeekBar(a);opacity.setMax(100);
         opacity.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
         opacity.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
-        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        blendRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
         opacityInput=new EditText(a);opacityInput.setSingleLine(true);
         opacityInput.setTextSize(12);opacityInput.setTextColor(accent);
         opacityInput.setGravity(Gravity.CENTER);
         opacityInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         opacityInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         opacityInput.setSelectAllOnFocus(true);
-        alphaRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(48),dp(32)));
+        blendRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(41),dp(32)));
         opacityInput.setOnEditorActionListener((v,action,event)->{
             try{
                 StudioDocument.Layer selected=document.active();
@@ -795,15 +794,6 @@ public final class AdvancedStudioScreen extends FrameLayout {
             });
         }
         textPanel.addView(swatches,new LinearLayout.LayoutParams(-1,dp(34)));
-        inspectorField(textPanel,layer,"Vermelho","R",Color.red(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Math.round(v),
-                Color.green(l.color),Color.blue(l.color)),false);
-        inspectorField(textPanel,layer,"Verde","G",Color.green(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
-                Math.round(v),Color.blue(l.color)),false);
-        inspectorField(textPanel,layer,"Azul","B",Color.blue(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
-                Color.green(l.color),Math.round(v)),false);
         textOption("Negrito",layer.fontBold?"Ativado":"Desativado",()->textSetting("bold"));
         textOption("Itálico",layer.fontItalic?"Ativado":"Desativado",()->textSetting("italic"));
         inspectorField(textPanel,layer,"Espaç. letras","em",layer.letterSpacing,-.2f,1.5f,.01f,
