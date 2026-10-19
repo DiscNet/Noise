@@ -480,6 +480,29 @@ final class AdvancedStudioTest {
             "Independent highlight/shadow modes persist through .noise style JSON");
         lit.recycle();litNormal.recycle();
         baseAlpha.recycle();polishedView.recycle();hardLuka.recycle();softLuka.recycle();
+        // Reference-derived invariant: Smooth uses a tent-smoothed HEIGHT
+        // field; only the rim catches the light. The center remains flat,
+        // and a directional top light creates different top/bottom pixels.
+        StudioDocument plate=StudioDocument.blank("Smooth height",168,124,true);
+        StudioDocument.Layer rectangle=plate.addShape(
+            StudioDocument.Type.RECTANGLE,0xff8574b4,116,76);
+        rectangle.x=25;rectangle.y=22;
+        StudioLayerStyles.Style bevelPlate=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        bevelPlate.size=12;bevelPlate.depth=100;bevelPlate.opacity=1;
+        bevelPlate.angle=90;bevelPlate.altitude=30;
+        rectangle.styles.add(bevelPlate);
+        Bitmap plateRender=plate.composite();
+        int center=plateRender.getPixel(80,60);
+        int top=plateRender.getPixel(80,24);
+        int bottom=plateRender.getPixel(80,96);
+        check((center&0xffffff)==(rectangle.color&0xffffff),
+            "Smooth bevel center stays neutral, no dirty gray overlay");
+        check(top!=bottom,
+            "Directional light produces distinct highlight and shadow along the bevel");
+        check(Color.alpha(plateRender.getPixel(8,8))==0,
+            "Bevel does not create stray pixels outside the original rectangle");
+        plateRender.recycle();
         // Bevel is a *pair* of independent optical passes. No opaque
         // gray is mixed between white highlights and black shadows.
         StudioDocument optical=StudioDocument.blank("Optical bevel",260,116,true);
