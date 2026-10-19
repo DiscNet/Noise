@@ -2028,7 +2028,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             originalRotation=transforming.rotation;
                         }
                         break;
-                    case MOVE:break;
+                    case MOVE: {
+                        StudioDocument.Layer moving=document.active();
+                        if(moving!=null){originalX=moving.x;originalY=moving.y;}
+                        break;
+                    }
                     default:break;
                 }
                 return true;
@@ -2086,7 +2090,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         if(transformHandle==-1){
                             StudioSnapGuides.Result match=StudioSnapGuides.snap(
                                 document,selected,StudioTransformMath.bounds(selected),
-                                dp(7)/scale());
+                                dp(3.5f)/scale());
                             selected.x+=match.dx;selected.y+=match.dy;
                             snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                         }
@@ -2095,15 +2099,20 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 }else if(selectedTool==Tool.MOVE){
                     StudioDocument.Layer current=document.active();
                     if(current!=null&&!current.locked){
-                        if(!gestureMoving&&Math.abs(dx)+Math.abs(dy)>1.5f){
+                        // Compare against the gesture start, NOT the last
+                        // snapped position. Incremental motion plus repeated
+                        // snapping used to trap layers against guide lines.
+                        float dragX=x-startDocX,dragY=y-startDocY;
+                        if(!gestureMoving&&
+                            (float)Math.hypot(dragX,dragY)>dp(2.5f)/scale()){
                             document.checkpoint();gestureMoving=true;
                         }
                         if(gestureMoving){
-                            current.x+=dx/scale();
-                            current.y+=dy/scale();
+                            current.x=originalX+dragX;
+                            current.y=originalY+dragY;
+                            RectF candidate=StudioTransformMath.bounds(current);
                             StudioSnapGuides.Result match=StudioSnapGuides.snap(
-                                document,current,StudioTransformMath.bounds(current),
-                                dp(7)/scale());
+                                document,current,candidate,dp(3.5f)/scale());
                             current.x+=match.dx;current.y+=match.dy;
                             snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                             invalidate();
