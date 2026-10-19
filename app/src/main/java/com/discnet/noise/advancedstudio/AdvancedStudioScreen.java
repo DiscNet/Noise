@@ -96,7 +96,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Remover sombra"},
             this::styleCommand);
         commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
-        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas","Texto"},
+        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Réguas","Mostrar guias","Alinhar automaticamente","Nova guia vertical","Nova guia horizontal","Guias ao centro","Limpar guias","Camadas","Texto"},
             this::viewCommand);
 
         LinearLayout contextBar=new LinearLayout(a);
@@ -109,7 +109,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         contextBar.addView(action("⚙",()->{
             if(selectedTool==Tool.TRANSFORM)transformDialog();
             else if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
-            else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)colorDialog();
+            else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)brushSettings();
         }));
         page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
 
@@ -147,13 +147,15 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
         dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
-        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
+        TextView layersTitle=action("▤",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
+        layersTitle.setContentDescription("Painel de camadas");
         layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
         dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
-        TextView textTab=action("TEXTO",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
+        TextView textTab=action("T",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
+        textTab.setContentDescription("Painel de texto");
         textTab.setTextSize(11);
-        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(52),-1));
-        dockHead.addView(action("TRANSF.",this::transformDialog),new LinearLayout.LayoutParams(dp(64),-1));
+        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(32),-1));
+        dockHead.addView(action("⛶",this::transformDialog),new LinearLayout.LayoutParams(dp(39),-1));
         dockHead.addView(action("＋",()->layerCommand("Nova camada")));
         dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
         dockHead.addView(action("↑",()->layerCommand("Para cima")));
@@ -252,19 +254,20 @@ public final class AdvancedStudioScreen extends FrameLayout {
         properties.setPadding(dp(7),0,dp(7),0);
         properties.setBackgroundColor(0xff201b27);
         page.addView(properties,new LinearLayout.LayoutParams(-1,dp(45)));
-        properties.addView(action("Cor",this::colorDialog));
-        TextView widthLabel=text("Pincel",11,muted);
-        properties.addView(widthLabel);
-        SeekBar size=new SeekBar(a);size.setMax(119);size.setProgress(brushSize-1);
-        properties.addView(size,new LinearLayout.LayoutParams(0,dp(42),1));
-        size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){}
-            public void onProgressChanged(SeekBar b,int v,boolean from){
-                if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
-            }
+        properties.addView(action("◉ Cor",this::colorDialog),
+            new LinearLayout.LayoutParams(0,-1,1));
+        TextView brushAction=action("✎ Pincel",this::brushSettings);
+        brushAction.setContentDescription("Configurações de pincel e borracha");
+        properties.addView(brushAction,new LinearLayout.LayoutParams(0,-1,1));
+        TextView free=action("↔ Livre",()->{
+            keepAspect=!keepAspect;
+            message(keepAspect?"Proporção vinculada":"Proporção desligada: esticar livremente");
         });
-        properties.addView(action("Texto",()->{showTextPanel=true;showTransformPanel=false;updatePanels();}));
+        free.setContentDescription("Alternar proporções vinculadas para transformação");
+        properties.addView(free,new LinearLayout.LayoutParams(0,-1,1));
+        properties.addView(action("T",()->{
+            showTextPanel=true;showTransformPanel=false;updatePanels();
+        }),new LinearLayout.LayoutParams(dp(33),-1));
         updateToolbar();
         updateUi();
         if(imported!=null)scheduleSave();
@@ -341,6 +344,35 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(toolGroups.get(glyph.getKey())==button)
                     glyph.getValue().setSelectedTool(active);
         }
+    }
+    private void brushSettings(){
+        LinearLayout panel=new LinearLayout(activity);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(17),dp(12),dp(17),dp(6));
+        TextView sizeTitle=text("Tamanho: "+brushSize+" px",12,ink);
+        panel.addView(sizeTitle);
+        SeekBar sizeSlider=new SeekBar(activity);sizeSlider.setMax(299);
+        sizeSlider.setProgress(brushSize-1);panel.addView(sizeSlider);
+        TextView opacityTitle=text("Opacidade: "+brushOpacity+"%",12,ink);
+        panel.addView(opacityTitle);
+        SeekBar alpha=new SeekBar(activity);alpha.setMax(100);
+        alpha.setProgress(brushOpacity);panel.addView(alpha);
+        sizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int v,boolean user){
+                if(user){brushSize=v+1;sizeTitle.setText("Tamanho: "+brushSize+" px");}
+            }
+        });
+        alpha.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int v,boolean user){
+                if(user){brushOpacity=v;opacityTitle.setText("Opacidade: "+brushOpacity+"%");}
+            }
+        });
+        new AlertDialog.Builder(activity).setTitle("Configurações do pincel")
+            .setView(panel).setNeutralButton("Selecionar cor",(d,w)->colorDialog())
+            .setPositiveButton("Concluir",null).show();
     }
     private void colorDialog(){
         StudioColorPicker.show(activity,"Cor principal",foreground,
@@ -577,11 +609,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         destination.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
     }
     private String blendName(StudioDocument.Blend blend){
-        switch(blend){
-            case MULTIPLY:return "Multiplicar";case SCREEN:return "Tela";
-            case OVERLAY:return "Sobrepor";case DARKEN:return "Escurecer";
-            case LIGHTEN:return "Clarear";default:return "Normal";
-        }
+        return StudioBlendMath.of(blend.name()).label;
     }
     private void effectsActions(){
         effectActions.removeAllViews();
@@ -1254,8 +1282,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textTitleTo(effectControls,"ESTILO DE CAMADA · "+style.kind.title.toUpperCase(Locale.ROOT));
         styleToggle(layer,"Ativar efeito",style.enabled,v->style.enabled=v);
         textTitleTo(effectControls,"ESTRUTURA");
-        String[] blendNames={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear","Adicionar"};
-        String[] blends={"NORMAL","MULTIPLY","SCREEN","OVERLAY","DARKEN","LIGHTEN","ADD"};
+        String[] blendNames=StudioBlendMath.names();
+        String[] blends=StudioBlendMath.ids();
         if(style.kind!=StudioLayerStyles.Kind.BEVEL_EMBOSS){
             styleChoice(effectControls,layer,"Modo de mesclagem",
                 blendNames,blends,style.blend,v->style.blend=v);
@@ -1372,13 +1400,51 @@ public final class AdvancedStudioScreen extends FrameLayout {
         editingEffects=true;editingShadow=true;editingStyle=false;selectedFilterIndex=-1;
         showTextPanel=false;showTransformPanel=false;updatePanels();
     }
+    private void guideDialog(boolean vertical){
+        EditText number=numberField("Posição em pixels",true);
+        number.setText(String.valueOf(vertical?document.width/2:document.height/2));
+        new AlertDialog.Builder(activity).setTitle(vertical?"Guia vertical":"Guia horizontal")
+            .setView(number).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Adicionar",(d,i)->{
+                try{
+                    float n=Float.parseFloat(number.getText().toString());
+                    if(!Float.isFinite(n)||n<0||
+                        n>(vertical?document.width:document.height))
+                        throw new IllegalArgumentException("Guia fora do documento");
+                    ArrayList<Float> guides=vertical?
+                        document.verticalGuides:document.horizontalGuides;
+                    if(guides.size()>=100)throw new IllegalArgumentException("Limite de guias");
+                    if(!guides.contains(n))guides.add(n);
+                    document.guidesVisible=true;changed(true);
+                }catch(Exception error){message("Posição inválida: "+error.getMessage());}
+            }).show();
+    }
     private void viewCommand(String cmd){
-        if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
-        else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
-        else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
-        else if(cmd.equals("Camadas")){showTextPanel=false;showTransformPanel=false;updatePanels();}
-        else if(cmd.equals("Texto")){showTextPanel=true;showTransformPanel=false;updatePanels();}
-        info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
+        switch(cmd){
+            case "Ajustar à tela":document.zoom=1;document.panX=document.panY=0;canvas.invalidate();break;
+            case "Zoom +":canvas.zoomBy(1.25f);break;
+            case "Zoom −":canvas.zoomBy(.8f);break;
+            case "Réguas":document.rulersVisible=!document.rulersVisible;changed(true);break;
+            case "Mostrar guias":document.guidesVisible=!document.guidesVisible;changed(true);break;
+            case "Alinhar automaticamente":document.snapEnabled=!document.snapEnabled;
+                changed(true);message(document.snapEnabled?"Alinhamento inteligente ativado":
+                    "Alinhamento inteligente desligado");break;
+            case "Nova guia vertical":guideDialog(true);break;
+            case "Nova guia horizontal":guideDialog(false);break;
+            case "Guias ao centro":
+                if(!document.verticalGuides.contains(document.width*.5f))
+                    document.verticalGuides.add(document.width*.5f);
+                if(!document.horizontalGuides.contains(document.height*.5f))
+                    document.horizontalGuides.add(document.height*.5f);
+                document.guidesVisible=true;changed(true);break;
+            case "Limpar guias":document.verticalGuides.clear();
+                document.horizontalGuides.clear();changed(true);break;
+            case "Camadas":showTextPanel=false;showTransformPanel=false;updatePanels();break;
+            case "Texto":showTextPanel=true;showTransformPanel=false;updatePanels();break;
+        }
+        canvas.invalidate();
+        info.setText(document.width+"×"+document.height+" • "+
+            Math.round(document.zoom*100)+"%");
     }
     /** Layer thumbnails show actual source pixels, never an invented mock preview. */
     private final class LayerThumb extends View {
