@@ -1300,7 +1300,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 break;
             case BEVEL_EMBOSS:
                 styleChoice(effectControls,layer,"Estilo",
-                    new String[]{"Bisel interno","Bisel externo","Relevo","Relevo almofada"},
+                    new String[]{"Bisel interno","Bisel externo","Relevo (dentro + fora)","Almofada (dentro + fora)"},
                     new String[]{"INNER_BEVEL","OUTER_BEVEL","EMBOSS","PILLOW"},
                     style.bevelStyle,v->style.bevelStyle=v);
                 styleChoice(effectControls,layer,"Técnica",
