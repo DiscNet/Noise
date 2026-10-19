@@ -27,6 +27,8 @@ public final class StudioLayerStyles {
         public boolean enabled=true,reverse=false,sourceCenter=false,antiAlias=true;
         public String highlightBlend="SCREEN",shadowBlend="MULTIPLY";
         public String pattern="CHECKER";
+        public String strokeFill="COLOR";
+        public StudioGradient gradient=StudioGradient.of(0xff7545dc,0xfffcab66);
         public String blend="NORMAL",position="OUTSIDE",contour="LINEAR",bevelStyle="INNER_BEVEL",
             technique="SMOOTH",direction="UP";
         public int color=0xff000000,color2=0xffffffff,highlight=0xffffffff,shade=0xff000000;
@@ -47,6 +49,7 @@ public final class StudioLayerStyles {
             Style s=new Style(kind);s.enabled=enabled;s.reverse=reverse;s.sourceCenter=sourceCenter;
             s.antiAlias=antiAlias;s.blend=blend;s.position=position;s.contour=contour;
             s.highlightBlend=highlightBlend;s.shadowBlend=shadowBlend;s.pattern=pattern;
+            s.strokeFill=strokeFill;s.gradient=gradient.copy();
             s.bevelStyle=bevelStyle;s.technique=technique;s.direction=direction;
             s.color=color;s.color2=color2;s.highlight=highlight;s.shade=shade;
             s.opacity=opacity;s.size=size;s.distance=distance;s.angle=angle;s.spread=spread;
@@ -59,7 +62,9 @@ public final class StudioLayerStyles {
                 .put("reverse",reverse).put("sourceCenter",sourceCenter)
                 .put("antiAlias",antiAlias).put("blend",blend).put("position",position)
                 .put("contour",contour).put("highlightBlend",highlightBlend)
-                .put("shadowBlend",shadowBlend).put("pattern",pattern).put("bevelStyle",bevelStyle)
+                .put("shadowBlend",shadowBlend).put("pattern",pattern)
+                .put("strokeFill",strokeFill).put("gradient",gradient.toJson())
+                .put("bevelStyle",bevelStyle)
                 .put("technique",technique).put("direction",direction)
                 .put("color",color).put("color2",color2).put("highlight",highlight)
                 .put("shade",shade).put("opacity",opacity).put("size",size)
@@ -80,9 +85,17 @@ public final class StudioLayerStyles {
             s.highlightBlend=j.optString("highlightBlend","SCREEN");
             s.shadowBlend=j.optString("shadowBlend","MULTIPLY");
             s.pattern=j.optString("pattern","CHECKER");
+            s.strokeFill=j.optString("strokeFill","COLOR");
+            if(j.has("gradient"))s.gradient=StudioGradient.fromJson(j.getJSONObject("gradient"));
+            else {
+                s.gradient=StudioGradient.of(s.color,s.color2);
+                s.gradient.angle=s.angle;s.gradient.scale=s.gradientScale;
+                s.gradient.reverse=s.reverse;
+            }
             s.bevelStyle=j.optString("bevelStyle","INNER_BEVEL");
             s.technique=j.optString("technique","SMOOTH");s.direction=j.optString("direction","UP");
             s.color=j.optInt("color",s.color);s.color2=j.optInt("color2",s.color2);
+            if(!j.has("gradient"))s.gradient.colors=new int[]{s.color,s.color2};
             s.highlight=j.optInt("highlight",s.highlight);s.shade=j.optInt("shade",s.shade);
             s.opacity=(float)j.optDouble("opacity",s.opacity);s.size=(float)j.optDouble("size",s.size);
             s.distance=(float)j.optDouble("distance",s.distance);s.angle=(float)j.optDouble("angle",s.angle);
@@ -107,6 +120,9 @@ public final class StudioLayerStyles {
             !Float.isFinite(s.soften)||s.soften<0||s.soften>64||
             !Float.isFinite(s.gradientScale)||s.gradientScale<10||s.gradientScale>400)
             throw new IllegalArgumentException("Parâmetros de estilo inválidos");
+        s.gradient.validate();
+        if(!s.strokeFill.equals("COLOR")&&!s.strokeFill.equals("GRADIENT"))
+            throw new IllegalArgumentException("Preenchimento de contorno inválido");
         for(float n:s.customCurve)if(!Float.isFinite(n)||n<0||n>1)
             throw new IllegalArgumentException("Pontos de curva inválidos");
     }
@@ -256,6 +272,9 @@ public final class StudioLayerStyles {
                     }else if(center||"OUTSIDE".equals(s.position)){
                         t=(1-coverage)*strokeCoverage(de,outside);
                     }
+                    if("GRADIENT".equals(s.strokeFill))
+                        pigment=s.gradient.color(s.gradient.coordinate(
+                            x-padding+.5f,y-padding+.5f,w,h),x,y);
                     break;
                 }
                 case SATIN: {
@@ -286,9 +305,9 @@ public final class StudioLayerStyles {
                 }
                 case COLOR_OVERLAY:t=coverage;break;
                 case GRADIENT_OVERLAY: {
-                    float gradient=(float)((x-padding-w*.5)*dx+
-                        (y-padding-h*.5)*dy)/(Math.max(1,Math.max(w,h))*s.gradientScale/100f)+.5f;
-                    pigment=lerp(s.color,s.color2,s.reverse?1-cap(gradient):cap(gradient));
+                    float gradient=s.gradient.coordinate(
+                        x-padding+.5f,y-padding+.5f,w,h);
+                    pigment=s.gradient.color(gradient,x,y);
                     t=coverage;break;
                 }
                 case BEVEL_EMBOSS:
