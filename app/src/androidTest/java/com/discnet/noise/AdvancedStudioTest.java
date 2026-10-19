@@ -220,8 +220,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==8,
-            "Advanced Studio writes native project format version 8");
+        check(restoredFx.toJson().getInt("format")==9,
+            "Advanced Studio writes native project format version 9");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -375,6 +375,51 @@ final class AdvancedStudioTest {
         check(clipsReopened.composite().getPixel(27,20)==Color.TRANSPARENT,
             "Clipping looks identical after re-opening the project");
         new File(activity.getFilesDir(),"advanced_studio/"+clips.id+".noise").delete();
+
+        StudioGradient gradient=new StudioGradient();
+        gradient.positions=new float[]{0,.35f,.8f,1};
+        gradient.colors=new int[]{Color.RED,0xff3e99f2,0x009950c5,Color.YELLOW};
+        gradient.midpoints=new float[]{.3f,.5f,.7f};
+        gradient.type="RADIAL";gradient.angle=30;gradient.scale=125;
+        gradient.offsetX=12;gradient.reverse=true;gradient.dither=true;
+        gradient.validate();
+        StudioGradient gradientRoundtrip=StudioGradient.fromJson(gradient.toJson());
+        check(gradientRoundtrip.colors.length==4&&
+            gradientRoundtrip.colors[2]==0x009950c5&&
+            gradientRoundtrip.midpoints[0]==.3f&&gradientRoundtrip.reverse,
+            "Gradient stop RGBA, midpoint, geometry and dither persist");
+        float gradientX=gradientRoundtrip.coordinate(30,30,100,100);
+        gradientRoundtrip.type="DIAMOND";
+        check(Math.abs(gradientX-gradientRoundtrip.coordinate(30,30,100,100))>.005f,
+            "Radial and diamond gradients sample genuinely different geometries");
+        gradientRoundtrip.type="LINEAR";
+        int first=gradientRoundtrip.color(0,0,0);
+        gradientRoundtrip.reverse=false;
+        check(first!=gradientRoundtrip.color(0,0,0),
+            "Gradient reverse changes first-stop sampling");
+        StudioDocument gradientsDoc=StudioDocument.blank("Gradient v9",128,128,true);
+        Bitmap transparent=Bitmap.createBitmap(128,128,Bitmap.Config.ARGB_8888);
+        StudioDocument.Layer gradientLayer=gradientsDoc.add("Fill",transparent);
+        StudioRasterTools.gradient(gradientsDoc,0,0,128,0,gradientRoundtrip);
+        check(Color.alpha(gradientLayer.bitmap.getPixel(16,64))>0,
+            "Multi-stop gradient tool renders to raster content");
+        StudioLayerStyles.Style gradientStyle=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.GRADIENT_OVERLAY);
+        gradientStyle.gradient=gradient.copy();
+        gradientLayer.styles.add(gradientStyle);
+        StudioLayerStyles.Style strokeGradient=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.STROKE);
+        strokeGradient.strokeFill="GRADIENT";
+        strokeGradient.gradient=gradient.copy();
+        gradientLayer.styles.add(strokeGradient);
+        storage.save(gradientsDoc);
+        StudioDocument reloadedGradient=storage.load(gradientsDoc.id);
+        check(reloadedGradient.active().styles.size()==2&&
+            reloadedGradient.active().styles.get(0).gradient.colors.length==4&&
+            "GRADIENT".equals(reloadedGradient.active().styles.get(1).strokeFill),
+            "Stroke and overlay gradient settings survive native .noise v9");
+        new File(activity.getFilesDir(),"advanced_studio/"+
+            gradientsDoc.id+".noise").delete();
 
         // Chisel hard / soft are distinct signed-distance profiles; all must
         // keep fractional coverage on diagonal and narrow type outlines.
