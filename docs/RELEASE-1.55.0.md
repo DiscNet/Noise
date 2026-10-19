@@ -9,11 +9,11 @@
 - Altura do painel de camadas ajustada à altura da tela, dentro de limites para evitar engolir o canvas.
 
 ## Novo modelo de degradê
-- Um só modelo `StudioGradient` para overlay de camada, contorno de camada e pintura raster.
+- Um só modelo `StudioGradient` para sobreposição, contorno e brilhos interno/externo de camada, além de pintura raster.
 - Geometrias linear, radial, angular, refletido e diamante, seguindo conceitos documentados pelo Photopea e arquitetura funcional do projeto público PhotoCraft. Implementação Java/Android independente.
 - Até 12 pontos de cor **RGBA** com ajuste de posição, pontos médios entre cores, escala, ângulo, origem X/Y, inversão e dither.
 - Editor visual com faixas de cor, seletores por toque e prévia em tempo real; sem obrigatoriedade de códigos HEX.
-- Camadas: edição não destrutiva e independente de gradiente; opções de mesclagem por estilo continuam configuráveis.
+- Camadas: edição não destrutiva e independente de gradiente em sobreposições, contornos e brilhos; opções de mesclagem por estilo continuam configuráveis.
 - Contorno admite preenchimento de cor sólida ou degradê preservando a posição interno/centro/externo; gradiente e ajustes sobrevivem a salvar/abrir o projeto.
 - Raster: gesto de arrastar pinta gradiente com a mesma rampa e geometrias, inclusive transparência, com desfazer/refazer.
 - Formato `.noise` v9, leitura retrocompatível de projetos anteriores. Estilos existentes de duas cores migram para duas paradas ao serem lidos.
