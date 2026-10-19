@@ -156,23 +156,11 @@ public final class StudioBevelRenderer {
             Math.round(Color.blue(a)*u+Color.blue(b)*t));
     }
     private static int blend(int base,int tint,float amount,String mode){
-        amount=clamp(amount);
-        if(amount<=0)return base;
-        int r=channel(Color.red(base),Color.red(tint),amount,mode);
-        int g=channel(Color.green(base),Color.green(tint),amount,mode);
-        int b=channel(Color.blue(base),Color.blue(tint),amount,mode);
-        return Color.rgb(r,g,b);
-    }
-    private static int channel(int v,int tint,float amount,String mode){
-        float a=v/255f,b=tint/255f,mixed;
-        switch(mode){
-            case "MULTIPLY":mixed=a*b;break;
-            case "SCREEN":mixed=1-(1-a)*(1-b);break;
-            case "OVERLAY":mixed=a<.5f?2*a*b:1-2*(1-a)*(1-b);break;
-            case "ADD":mixed=Math.min(1,a+b);break;
-            case "NORMAL":default:mixed=b;break;
-        }
-        return Math.max(0,Math.min(255,Math.round(255*(a+(mixed-a)*amount))));
+        // Highlights and shadows use their own independent blend modes,
+        // including Color Dodge/Burn, Soft/Hard Light and Hue family.
+        return StudioBlendMath.composite(StudioBlendMath.of(mode),
+            0xff000000|(base&0xffffff),
+            0xff000000|(tint&0xffffff),amount,0,0);
     }
     /**
      * Layer-style geometry following the PhotoCraft reference design:
@@ -286,8 +274,12 @@ public final class StudioBevelRenderer {
             }
             if(soft&&both)height=tent(height,W,H,Math.max(1f,size*.25f));
         }
-        if(s.soften>0.5f)
+        if(s.soften>.5f)
             height=tent(height,W,H,Math.max(1f,s.soften*factor));
+        // Small-font bevel normals benefit from one gentle spatial averaging
+        // pass. The user-requested sharp modes still preserve their facets.
+        if(smooth&&width>1.5f)
+            height=boxPass(boxPass(height,W,H,1,true),W,H,1,false);
 
         float angle=(float)Math.toRadians(s.angle);
         float alt=(float)Math.toRadians(s.altitude);

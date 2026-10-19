@@ -49,6 +49,48 @@ public final class StudioTransformMath {
         return new float[]{sx/l.scaleX+l.naturalWidth()*.5f,
             sy/l.scaleY+l.naturalHeight()*.5f};
     }
+    /** Resize the dragged side/corner while holding the opposite anchor
+     * stationary. Positions are recomputed from the gesture's initial state
+     * each frame to avoid cumulative drift or inverted handles. */
+    public static void resizeFromHandle(StudioDocument.Layer layer,
+         int handle,float dx,float dy,float originalX,float originalY,
+         float originalSX,float originalSY,float rotation,boolean keepAspect){
+        float rad=(float)Math.toRadians(rotation),co=(float)Math.cos(rad),
+            si=(float)Math.sin(rad);
+        float u=co*dx+si*dy,v=-si*dx+co*dy;
+        int hSide=(handle==1||handle==4||handle==6)?-1:
+            (handle==3||handle==5||handle==8)?1:0;
+        int vSide=handle<=3?-1:handle>=6?1:0;
+        if(hSide==0&&vSide==0)return;
+        float w=layer.naturalWidth(),h=layer.naturalHeight();
+        float newX=originalSX,newY=originalSY;
+        if(hSide!=0)newX=Math.copySign(
+            Math.max(.01f,Math.min(16f,Math.abs(originalSX)+
+                hSide*u/Math.max(1,w))),originalSX);
+        if(vSide!=0)newY=Math.copySign(
+            Math.max(.01f,Math.min(16f,Math.abs(originalSY)+
+                vSide*v/Math.max(1,h))),originalSY);
+        if(keepAspect){
+            float factor=hSide!=0?Math.abs(newX/originalSX):
+                Math.abs(newY/originalSY);
+            newX=Math.copySign(Math.max(.01f,Math.min(16,
+                Math.abs(originalSX)*factor)),originalSX);
+            newY=Math.copySign(Math.max(.01f,Math.min(16,
+                Math.abs(originalSY)*factor)),originalSY);
+        }
+        float deltaW=(newX-originalSX)*w,deltaH=(newY-originalSY)*h;
+        float kx=(float)Math.tan(Math.toRadians(layer.skewX));
+        float ky=(float)Math.tan(Math.toRadians(layer.skewY));
+        float localX=(hSide!=0?hSide*deltaW/2f:0);
+        float localY=(vSide!=0?vSide*deltaH/2f:0);
+        float shiftedX=localX+kx*localY,shiftedY=localY+ky*localX;
+        float centerX=originalX+w*originalSX*.5f+
+            co*shiftedX-si*shiftedY;
+        float centerY=originalY+h*originalSY*.5f+
+            si*shiftedX+co*shiftedY;
+        layer.scaleX=newX;layer.scaleY=newY;
+        layer.x=centerX-w*newX*.5f;layer.y=centerY-h*newY*.5f;
+    }
     public static RectF bounds(StudioDocument.Layer l){
         float w=l.naturalWidth(),h=l.naturalHeight();
         float[][] corners={point(l,0,0),point(l,w,0),

@@ -7,6 +7,7 @@ import android.view.*;
 import java.io.File;
 import android.widget.*;
 import java.lang.reflect.*;
+import org.json.JSONObject;
 import com.discnet.noise.advancedstudio.*;
 
 /** Tests real model/serialized layer pixels and interaction routes, not placeholders. */
@@ -219,8 +220,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==7,
-            "Advanced Studio writes native project format version 7");
+        check(restoredFx.toJson().getInt("format")==8,
+            "Advanced Studio writes native project format version 8");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -256,7 +257,8 @@ final class AdvancedStudioTest {
             if(kind==StudioLayerStyles.Kind.INNER_GLOW)fx.sourceCenter=true;
             decorated.styles.add(fx);
         }
-        check(decorated.styles.size()==8,"All eight independent layer styles are available");
+        check(decorated.styles.size()==StudioLayerStyles.Kind.values().length,
+            "All ten independent layer styles are available");
         Bitmap stylePreview=styledEffects.composite();
         check(stylePreview.getPixel(36,38)!=Color.TRANSPARENT,
             "Layer style pipeline renders actual composited pixels");
@@ -264,7 +266,8 @@ final class AdvancedStudioTest {
         storage.save(styledEffects);
         StudioDocument styledReloaded=storage.load(styledEffects.id);
         StudioDocument.Layer loadedStyled=styledReloaded.active();
-        check(loadedStyled!=null&&loadedStyled.styles.size()==8,
+        check(loadedStyled!=null&&
+            loadedStyled.styles.size()==StudioLayerStyles.Kind.values().length,
             "All editable layer effects persist to native .noise");
         check(loadedStyled.styles.get(4).sourceCenter,
             "Inner glow source Center survives project roundtrip");
@@ -623,6 +626,84 @@ final class AdvancedStudioTest {
         check(pillowDifference>8,
             "Pillow emboss reverses the outer bevel illumination");
         bothBevel.recycle();pillowBevel.recycle();
+        // Full blend mode list and W3C alpha compositing, as used by the
+        // PhotoCraft reference for Photoshop-style blending.
+        check(StudioDocument.Blend.values().length==27,
+            "All 27 standard Photoshop RGB layer modes are selectable");
+        int blendRed=0xffff0000,blendBlue=0xff0000ff;
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.MULTIPLY,blendRed,blendBlue,1,0,0)
+                ==0xff000000,"Multiply black with disjoint primaries");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SCREEN,blendRed,blendBlue,1,0,0)
+                ==0xffff00ff,"Screen is additive complement");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.DIFFERENCE,blendRed,blendRed,1,0,0)
+                ==0xff000000,"Difference of identical colors is black");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SUBTRACT,blendBlue,blendRed,1,0,0)
+                ==blendBlue,"Subtract operates on backdrop only");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.NORMAL,blendRed,blendBlue,0,0,0)
+                ==blendRed,"Zero opacity does not change the canvas");
+        for(StudioBlendMath.Mode mode:StudioBlendMath.Mode.values()){
+            int result=StudioBlendMath.composite(mode,0x8872b3cc,0x99e74a72,
+                .55f,17,42);
+            check(Color.alpha(result)>0,"Blend mode outputs alpha: "+mode);
+        }
+        StudioDocument guideTest=StudioDocument.blank("Guides",240,160,true);
+        StudioDocument.Layer alignBase=guideTest.addShape(
+            StudioDocument.Type.RECTANGLE,Color.RED,50,40);
+        alignBase.x=30;alignBase.y=25;
+        StudioDocument.Layer alignMoving=guideTest.addShape(
+            StudioDocument.Type.RECTANGLE,Color.BLUE,30,20);
+        alignMoving.x=84;alignMoving.y=68;
+        guideTest.verticalGuides.add(120f);
+        guideTest.horizontalGuides.add(80f);
+        guideTest.rulersVisible=true;guideTest.guidesVisible=true;guideTest.snapEnabled=true;
+        StudioSnapGuides.Result snap=StudioSnapGuides.snap(guideTest,alignMoving,
+            new RectF(115,73,145,93),6);
+        check(Math.abs(snap.dx-5)<.01f&&snap.xGuide==120f,
+            "Snapping respects saved vertical guides");
+        StudioSnapGuides.Result layerSnap=StudioSnapGuides.snap(guideTest,alignMoving,
+            new RectF(81,26,111,46),2);
+        check(Math.abs(layerSnap.dx+1)<.01f,
+            "Snapping recognizes another layer's right edge");
+        storage.save(guideTest);
+        StudioDocument reopenedGuides=storage.load(guideTest.id);
+        new File(activity.getFilesDir(),"advanced_studio/"+
+            guideTest.id+".noise").delete();
+        check(reopenedGuides.verticalGuides.size()==1&&
+            reopenedGuides.horizontalGuides.size()==1&&
+            reopenedGuides.rulersVisible&&reopenedGuides.snapEnabled,
+            "Rulers, guides and snap settings survive project serialization");
+        StudioDocument.Layer stretch=guideTest.active();
+        stretch.x=20;stretch.y=30;stretch.scaleX=1;stretch.scaleY=1;
+        float fixedLeft=StudioTransformMath.point(stretch,0,0)[0];
+        StudioTransformMath.resizeFromHandle(stretch,5,20,0,20,30,1,1,0,false);
+        check(Math.abs(StudioTransformMath.point(stretch,0,0)[0]-fixedLeft)<.01f,
+            "Right-handle stretch keeps left edge anchored");
+        check(Math.abs(stretch.scaleX-1.6666666f)<.015f&&
+            Math.abs(stretch.scaleY-1)<.001f,
+            "Unlocked proportions stretch only the selected axis");
+        float fixedRight=StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0];
+        stretch.x=20;stretch.y=30;stretch.scaleX=1;
+        float expectedRight=StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0];
+        StudioTransformMath.resizeFromHandle(stretch,4,-15,0,20,30,1,1,0,false);
+        check(Math.abs(StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0]-expectedRight)<.01f,
+            "Dragging left handle preserves opposite right edge");
+        StudioDocument effectsDocument=StudioDocument.blank("New effects",128,128,true);
+        StudioDocument.Layer pattern=effectsDocument.addShape(
+            StudioDocument.Type.ELLIPSE,Color.WHITE,60,60);
+        pattern.x=10;pattern.y=10;
+        for(StudioLayerStyles.Kind kind:new StudioLayerStyles.Kind[]{
+                StudioLayerStyles.Kind.SATIN,StudioLayerStyles.Kind.PATTERN_OVERLAY}){
+            pattern.styles.add(new StudioLayerStyles.Style(kind));
+            check(pattern.styles.get(pattern.styles.size()-1).toJson()!=null,
+                "New layer style has serialized editable parameters");
+        }
+        Bitmap newEffectsPreview=effectsDocument.composite();
+        check(Color.alpha(newEffectsPreview.getPixel(40,40))>0,
+            "Satin and Pattern Overlay render real RGBA pixels");
+        newEffectsPreview.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
@@ -675,11 +756,11 @@ final class AdvancedStudioTest {
                 live.shadowEnabled=true;live.shadowRadius=2;
                 Method update=AdvancedStudioScreen.class.getDeclaredMethod("updateUi");
                 update.setAccessible(true);update.invoke(opened[0]);
-                View textTab=label(opened[0],"TEXTO");
+                View textTab=label(opened[0],"T");
                 check(textTab!=null,"Text panel tab is mounted");
                 textTab.performClick();
                 incrementFirstInspector(opened[0]);
-                View layerTab=label(opened[0],"CAMADAS");
+                View layerTab=label(opened[0],"▤");
                 check(layerTab!=null,"Layer panel tab is mounted");
                 layerTab.performClick();
                 View styles=label(opened[0],"fx");

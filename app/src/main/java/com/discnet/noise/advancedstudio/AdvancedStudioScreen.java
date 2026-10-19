@@ -93,10 +93,10 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
-        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Remover sombra"},
+        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Acetinado","Sobreposição de padrão","Remover sombra"},
             this::styleCommand);
         commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
-        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Camadas","Texto"},
+        commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Réguas","Mostrar guias","Alinhar automaticamente","Nova guia vertical","Nova guia horizontal","Guias ao centro","Limpar guias","Camadas","Texto"},
             this::viewCommand);
 
         LinearLayout contextBar=new LinearLayout(a);
@@ -109,7 +109,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         contextBar.addView(action("⚙",()->{
             if(selectedTool==Tool.TRANSFORM)transformDialog();
             else if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
-            else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)colorDialog();
+            else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)brushSettings();
         }));
         page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
 
@@ -147,13 +147,15 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
         dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
-        TextView layersTitle=action("CAMADAS",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
+        TextView layersTitle=action("▤",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
+        layersTitle.setContentDescription("Painel de camadas");
         layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
         dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
-        TextView textTab=action("TEXTO",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
+        TextView textTab=action("T",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
+        textTab.setContentDescription("Painel de texto");
         textTab.setTextSize(11);
-        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(52),-1));
-        dockHead.addView(action("TRANSF.",this::transformDialog),new LinearLayout.LayoutParams(dp(64),-1));
+        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(32),-1));
+        dockHead.addView(action("⛶",this::transformDialog),new LinearLayout.LayoutParams(dp(39),-1));
         dockHead.addView(action("＋",()->layerCommand("Nova camada")));
         dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
         dockHead.addView(action("↑",()->layerCommand("Para cima")));
@@ -252,19 +254,20 @@ public final class AdvancedStudioScreen extends FrameLayout {
         properties.setPadding(dp(7),0,dp(7),0);
         properties.setBackgroundColor(0xff201b27);
         page.addView(properties,new LinearLayout.LayoutParams(-1,dp(45)));
-        properties.addView(action("Cor",this::colorDialog));
-        TextView widthLabel=text("Pincel",11,muted);
-        properties.addView(widthLabel);
-        SeekBar size=new SeekBar(a);size.setMax(119);size.setProgress(brushSize-1);
-        properties.addView(size,new LinearLayout.LayoutParams(0,dp(42),1));
-        size.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){}
-            public void onProgressChanged(SeekBar b,int v,boolean from){
-                if(from){brushSize=v+1;widthLabel.setText("Pincel "+brushSize);}
-            }
+        properties.addView(action("◉ Cor",this::colorDialog),
+            new LinearLayout.LayoutParams(0,-1,1));
+        TextView brushAction=action("✎ Pincel",this::brushSettings);
+        brushAction.setContentDescription("Configurações de pincel e borracha");
+        properties.addView(brushAction,new LinearLayout.LayoutParams(0,-1,1));
+        TextView free=action("↔ Livre",()->{
+            keepAspect=!keepAspect;
+            message(keepAspect?"Proporção vinculada":"Proporção desligada: esticar livremente");
         });
-        properties.addView(action("Texto",()->{showTextPanel=true;showTransformPanel=false;updatePanels();}));
+        free.setContentDescription("Alternar proporções vinculadas para transformação");
+        properties.addView(free,new LinearLayout.LayoutParams(0,-1,1));
+        properties.addView(action("T",()->{
+            showTextPanel=true;showTransformPanel=false;updatePanels();
+        }),new LinearLayout.LayoutParams(dp(33),-1));
         updateToolbar();
         updateUi();
         if(imported!=null)scheduleSave();
@@ -341,6 +344,35 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(toolGroups.get(glyph.getKey())==button)
                     glyph.getValue().setSelectedTool(active);
         }
+    }
+    private void brushSettings(){
+        LinearLayout panel=new LinearLayout(activity);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(17),dp(12),dp(17),dp(6));
+        TextView sizeTitle=text("Tamanho: "+brushSize+" px",12,ink);
+        panel.addView(sizeTitle);
+        SeekBar sizeSlider=new SeekBar(activity);sizeSlider.setMax(299);
+        sizeSlider.setProgress(brushSize-1);panel.addView(sizeSlider);
+        TextView opacityTitle=text("Opacidade: "+brushOpacity+"%",12,ink);
+        panel.addView(opacityTitle);
+        SeekBar alpha=new SeekBar(activity);alpha.setMax(100);
+        alpha.setProgress(brushOpacity);panel.addView(alpha);
+        sizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int v,boolean user){
+                if(user){brushSize=v+1;sizeTitle.setText("Tamanho: "+brushSize+" px");}
+            }
+        });
+        alpha.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){}
+            public void onProgressChanged(SeekBar b,int v,boolean user){
+                if(user){brushOpacity=v;opacityTitle.setText("Opacidade: "+brushOpacity+"%");}
+            }
+        });
+        new AlertDialog.Builder(activity).setTitle("Configurações do pincel")
+            .setView(panel).setNeutralButton("Selecionar cor",(d,w)->colorDialog())
+            .setPositiveButton("Concluir",null).show();
     }
     private void colorDialog(){
         StudioColorPicker.show(activity,"Cor principal",foreground,
@@ -577,11 +609,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         destination.addView(title,new LinearLayout.LayoutParams(-1,dp(30)));
     }
     private String blendName(StudioDocument.Blend blend){
-        switch(blend){
-            case MULTIPLY:return "Multiplicar";case SCREEN:return "Tela";
-            case OVERLAY:return "Sobrepor";case DARKEN:return "Escurecer";
-            case LIGHTEN:return "Clarear";default:return "Normal";
-        }
+        return StudioBlendMath.of(blend.name()).label;
     }
     private void effectsActions(){
         effectActions.removeAllViews();
@@ -1254,14 +1282,31 @@ public final class AdvancedStudioScreen extends FrameLayout {
         textTitleTo(effectControls,"ESTILO DE CAMADA · "+style.kind.title.toUpperCase(Locale.ROOT));
         styleToggle(layer,"Ativar efeito",style.enabled,v->style.enabled=v);
         textTitleTo(effectControls,"ESTRUTURA");
-        String[] blendNames={"Normal","Multiplicar","Tela","Sobrepor","Escurecer","Clarear","Adicionar"};
-        String[] blends={"NORMAL","MULTIPLY","SCREEN","OVERLAY","DARKEN","LIGHTEN","ADD"};
+        String[] blendNames=StudioBlendMath.names();
+        String[] blends=StudioBlendMath.ids();
         if(style.kind!=StudioLayerStyles.Kind.BEVEL_EMBOSS){
             styleChoice(effectControls,layer,"Modo de mesclagem",
                 blendNames,blends,style.blend,v->style.blend=v);
             styleValue(layer,"Opacidade","%",style.opacity*100,0,100,1,v->style.opacity=(float)(v/100));
         }
         switch(style.kind){
+            case SATIN:
+                styleColor(layer,"Cor acetinada",style.color,v->style.color=v);
+                styleValue(layer,"Distância","px",style.distance,0,128,1,v->style.distance=(float)v);
+                styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
+                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
+                break;
+            case PATTERN_OVERLAY:
+                styleChoice(effectControls,layer,"Padrão",
+                    new String[]{"Xadrez","Listras","Pontos"},
+                    new String[]{"CHECKER","STRIPES","DOTS"},style.pattern,v->style.pattern=v);
+                styleColor(layer,"Cor 1",style.color,v->style.color=v);
+                styleColor(layer,"Cor 2",style.color2,v->style.color2=v);
+                styleValue(layer,"Escala","%",style.gradientScale,10,400,5,
+                    v->style.gradientScale=(float)v);
+                styleValue(layer,"Rotação","°",style.angle,-180,180,1,
+                    v->style.angle=(float)v);
+                break;
             case COLOR_OVERLAY:
                 styleColor(layer,"Cor",style.color,v->style.color=v);break;
             case GRADIENT_OVERLAY:
@@ -1372,13 +1417,51 @@ public final class AdvancedStudioScreen extends FrameLayout {
         editingEffects=true;editingShadow=true;editingStyle=false;selectedFilterIndex=-1;
         showTextPanel=false;showTransformPanel=false;updatePanels();
     }
+    private void guideDialog(boolean vertical){
+        EditText number=numberField("Posição em pixels",true);
+        number.setText(String.valueOf(vertical?document.width/2:document.height/2));
+        new AlertDialog.Builder(activity).setTitle(vertical?"Guia vertical":"Guia horizontal")
+            .setView(number).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Adicionar",(d,i)->{
+                try{
+                    float n=Float.parseFloat(number.getText().toString());
+                    if(!Float.isFinite(n)||n<0||
+                        n>(vertical?document.width:document.height))
+                        throw new IllegalArgumentException("Guia fora do documento");
+                    ArrayList<Float> guides=vertical?
+                        document.verticalGuides:document.horizontalGuides;
+                    if(guides.size()>=100)throw new IllegalArgumentException("Limite de guias");
+                    if(!guides.contains(n))guides.add(n);
+                    document.guidesVisible=true;changed(true);
+                }catch(Exception error){message("Posição inválida: "+error.getMessage());}
+            }).show();
+    }
     private void viewCommand(String cmd){
-        if(cmd.equals("Ajustar à tela")){document.zoom=1;document.panX=document.panY=0;canvas.invalidate();}
-        else if(cmd.equals("Zoom +"))canvas.zoomBy(1.25f);
-        else if(cmd.equals("Zoom −"))canvas.zoomBy(.8f);
-        else if(cmd.equals("Camadas")){showTextPanel=false;showTransformPanel=false;updatePanels();}
-        else if(cmd.equals("Texto")){showTextPanel=true;showTransformPanel=false;updatePanels();}
-        info.setText(document.width+"×"+document.height+" • "+Math.round(document.zoom*100)+"%");
+        switch(cmd){
+            case "Ajustar à tela":document.zoom=1;document.panX=document.panY=0;canvas.invalidate();break;
+            case "Zoom +":canvas.zoomBy(1.25f);break;
+            case "Zoom −":canvas.zoomBy(.8f);break;
+            case "Réguas":document.rulersVisible=!document.rulersVisible;changed(true);break;
+            case "Mostrar guias":document.guidesVisible=!document.guidesVisible;changed(true);break;
+            case "Alinhar automaticamente":document.snapEnabled=!document.snapEnabled;
+                changed(true);message(document.snapEnabled?"Alinhamento inteligente ativado":
+                    "Alinhamento inteligente desligado");break;
+            case "Nova guia vertical":guideDialog(true);break;
+            case "Nova guia horizontal":guideDialog(false);break;
+            case "Guias ao centro":
+                if(!document.verticalGuides.contains(document.width*.5f))
+                    document.verticalGuides.add(document.width*.5f);
+                if(!document.horizontalGuides.contains(document.height*.5f))
+                    document.horizontalGuides.add(document.height*.5f);
+                document.guidesVisible=true;changed(true);break;
+            case "Limpar guias":document.verticalGuides.clear();
+                document.horizontalGuides.clear();changed(true);break;
+            case "Camadas":showTextPanel=false;showTransformPanel=false;updatePanels();break;
+            case "Texto":showTextPanel=true;showTransformPanel=false;updatePanels();break;
+        }
+        canvas.invalidate();
+        info.setText(document.width+"×"+document.height+" • "+
+            Math.round(document.zoom*100)+"%");
     }
     /** Layer thumbnails show actual source pixels, never an invented mock preview. */
     private final class LayerThumb extends View {
@@ -1698,6 +1781,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private StudioRasterTools.Stroke stroke;
         private StudioLayerEffects.MaskStroke maskStroke;
         private Bitmap pixelAnts,selectionRef;
+        private Float snapGuideX,snapGuideY;
         private Bitmap buildPixelAnts(){
             Bitmap mask=document.selectionPixels;
             if(mask==null)return null;
@@ -1798,6 +1882,38 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 c.drawCircle(points[i][0],points[i][1],2.7f/scale(),paint);
             }
         }
+        private void drawGuides(Canvas c){
+            paint.setShader(null);paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(.5f,.9f/scale()));
+            if(document.guidesVisible){
+                paint.setColor(0xff64bacd);
+                for(float x:document.verticalGuides)
+                    c.drawLine(x,0,x,document.height,paint);
+                for(float y:document.horizontalGuides)
+                    c.drawLine(0,y,document.width,y,paint);
+            }
+            paint.setColor(0xffe2b4ff);paint.setStrokeWidth(Math.max(.8f,1.3f/scale()));
+            if(snapGuideX!=null)c.drawLine(snapGuideX,0,snapGuideX,document.height,paint);
+            if(snapGuideY!=null)c.drawLine(0,snapGuideY,document.width,snapGuideY,paint);
+            paint.setStyle(Paint.Style.FILL);
+            if(document.rulersVisible){
+                float tickStep=document.width>2000?250:document.width>500?100:25;
+                paint.setColor(0xaa19151e);
+                c.drawRect(0,0,document.width,Math.min(21/scale(),document.height),paint);
+                c.drawRect(0,0,Math.min(24/scale(),document.width),document.height,paint);
+                paint.setColor(0xffd2afed);
+                paint.setTextSize(10/scale());
+                for(float x=0;x<document.width;x+=tickStep){
+                    c.drawLine(x,0,x,7/scale(),paint);
+                    c.drawText(String.valueOf(Math.round(x)),x+2/scale(),18/scale(),paint);
+                }
+                for(float y=0;y<document.height;y+=tickStep){
+                    c.drawLine(0,y,7/scale(),y,paint);
+                    c.save();c.translate(18/scale(),y+2/scale());c.rotate(-90);
+                    c.drawText(String.valueOf(Math.round(y)),0,0,paint);c.restore();
+                }
+            }
+        }
         @Override protected void onDraw(Canvas c){
             super.onDraw(c);
             if(document==null)return;
@@ -1815,6 +1931,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         c.drawRect(x,y,Math.min(x+cell,document.width),
                             Math.min(y+cell,document.height),paint);
             document.render(c);
+            drawGuides(c);
             StudioDocument.Layer current=document.active();
             if(selectedTool==Tool.MOVE&&current!=null)
                 outline(c,activeBounds(current),0xffbd91e9);
@@ -1841,6 +1958,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 startDocX=docX(lastX);startDocY=docY(lastY);
                 gestureMoving=false;gestureUsed=false;transformHandle=0;
                 gestureRect=null;stroke=null;maskStroke=null;
+                snapGuideX=snapGuideY=null;
                 if(!inDocument(startDocX,startDocY))return true;
                 switch(selectedTool){
                     case MASK_HIDE:case MASK_REVEAL:
@@ -1961,28 +2079,16 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             selected.rotation=originalRotation+
                                 (float)Math.toDegrees(b-a);
                         }else{
-                            float rad=(float)Math.toRadians(originalRotation);
-                            float u=(float)(Math.cos(rad)*diffX+Math.sin(rad)*diffY);
-                            float v=(float)(-Math.sin(rad)*diffX+Math.cos(rad)*diffY);
-                            int index=transformHandle;
-                            float hSide=(index==1||index==4||index==6)?-1:
-                                (index==3||index==5||index==8)?1:0;
-                            float vSide=index<=3?-1:index>=6?1:0;
-                            float xs=Math.abs(originalScaleX),ys=Math.abs(originalScaleY);
-                            if(hSide!=0)
-                                xs=Math.max(.01f,Math.min(16,xs+hSide*u/
-                                    Math.max(1,selected.naturalWidth())));
-                            if(vSide!=0)
-                                ys=Math.max(.01f,Math.min(16,ys+vSide*v/
-                                    Math.max(1,selected.naturalHeight())));
-                            if(keepAspect){
-                                float ratio=hSide!=0?xs/Math.abs(originalScaleX):
-                                    ys/Math.abs(originalScaleY);
-                                xs=Math.max(.01f,Math.min(16,Math.abs(originalScaleX)*ratio));
-                                ys=Math.max(.01f,Math.min(16,Math.abs(originalScaleY)*ratio));
-                            }
-                            selected.scaleX=Math.copySign(xs,originalScaleX);
-                            selected.scaleY=Math.copySign(ys,originalScaleY);
+                            StudioTransformMath.resizeFromHandle(selected,transformHandle,
+                                diffX,diffY,originalX,originalY,originalScaleX,
+                                originalScaleY,originalRotation,keepAspect);
+                        }
+                        if(transformHandle==-1){
+                            StudioSnapGuides.Result match=StudioSnapGuides.snap(
+                                document,selected,StudioTransformMath.bounds(selected),
+                                dp(7)/scale());
+                            selected.x+=match.dx;selected.y+=match.dy;
+                            snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                         }
                         invalidate();
                     }
@@ -1995,6 +2101,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         if(gestureMoving){
                             current.x+=dx/scale();
                             current.y+=dy/scale();
+                            StudioSnapGuides.Result match=StudioSnapGuides.snap(
+                                document,current,StudioTransformMath.bounds(current),
+                                dp(7)/scale());
+                            current.x+=match.dx;current.y+=match.dy;
+                            snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                             invalidate();
                         }
                     }
@@ -2051,6 +2162,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     }catch(Exception ex){message(ex.getMessage());}
                 }
                 gestureRect=null;gestureMoving=false;gestureUsed=false;transformHandle=0;
+                snapGuideX=snapGuideY=null;
                 invalidate();return true;
             }
             return true;
