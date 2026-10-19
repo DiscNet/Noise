@@ -257,7 +257,8 @@ final class AdvancedStudioTest {
             if(kind==StudioLayerStyles.Kind.INNER_GLOW)fx.sourceCenter=true;
             decorated.styles.add(fx);
         }
-        check(decorated.styles.size()==8,"All eight independent layer styles are available");
+        check(decorated.styles.size()==StudioLayerStyles.Kind.values().length,
+            "All ten independent layer styles are available");
         Bitmap stylePreview=styledEffects.composite();
         check(stylePreview.getPixel(36,38)!=Color.TRANSPARENT,
             "Layer style pipeline renders actual composited pixels");
@@ -265,7 +266,8 @@ final class AdvancedStudioTest {
         storage.save(styledEffects);
         StudioDocument styledReloaded=storage.load(styledEffects.id);
         StudioDocument.Layer loadedStyled=styledReloaded.active();
-        check(loadedStyled!=null&&loadedStyled.styles.size()==8,
+        check(loadedStyled!=null&&
+            loadedStyled.styles.size()==StudioLayerStyles.Kind.values().length,
             "All editable layer effects persist to native .noise");
         check(loadedStyled.styles.get(4).sourceCenter,
             "Inner glow source Center survives project roundtrip");
