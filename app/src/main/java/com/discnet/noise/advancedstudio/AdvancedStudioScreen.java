@@ -1326,6 +1326,25 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(43));
         lp.bottomMargin=dp(4);effectControls.addView(row,lp);
     }
+    private void styleGradient(StudioDocument.Layer layer,StudioLayerStyles.Style style){
+        LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(10),0,dp(8),0);
+        row.setBackgroundColor(0xff292331);
+        TextView name=text("Degradê · "+gradientName(style.gradient.type),12,ink);
+        row.addView(name,new LinearLayout.LayoutParams(0,dp(46),1));
+        TextView edit=action("Editar ↗",()->{
+            StudioGradientEditor.show(activity,"Degradê · "+style.kind.title,
+                style.gradient,gradient->{
+                    if(layer.locked)return;
+                    document.checkpoint();style.gradient=gradient;changed(true);
+                });
+        });
+        edit.setTextColor(accent);
+        row.addView(edit,new LinearLayout.LayoutParams(dp(96),dp(46)));
+        row.setOnClickListener(v->edit.performClick());
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(46));
+        lp.bottomMargin=dp(8);effectControls.addView(row,lp);
+    }
     private void styleToggle(StudioDocument.Layer layer,String label,
                              boolean current,java.util.function.Consumer<Boolean> setter){
         CheckBox cb=new CheckBox(activity);
@@ -1368,15 +1387,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case COLOR_OVERLAY:
                 styleColor(layer,"Cor",style.color,v->style.color=v);break;
             case GRADIENT_OVERLAY:
-                styleColor(layer,"Cor inicial",style.color,v->style.color=v);
-                styleColor(layer,"Cor final",style.color2,v->style.color2=v);
-                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
-                styleValue(layer,"Escala","%",style.gradientScale,10,400,5,
-                    v->style.gradientScale=(float)v);
-                styleToggle(layer,"Inverter degradê",style.reverse,v->style.reverse=v);
+                styleGradient(layer,style);
                 break;
             case STROKE:
-                styleColor(layer,"Cor do contorno",style.color,v->style.color=v);
+                styleChoice(effectControls,layer,"Preenchimento",
+                    new String[]{"Cor sólida","Degradê"},
+                    new String[]{"COLOR","GRADIENT"},style.strokeFill,v->style.strokeFill=v);
+                if("GRADIENT".equals(style.strokeFill))styleGradient(layer,style);
+                else styleColor(layer,"Cor do contorno",style.color,v->style.color=v);
                 styleValue(layer,"Espessura","px",style.size,1,64,1,v->style.size=(float)v);
                 styleChoice(effectControls,layer,"Posição",
                     new String[]{"Fora","Dentro","Centro"},
