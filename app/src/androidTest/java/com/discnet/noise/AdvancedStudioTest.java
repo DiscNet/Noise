@@ -7,6 +7,7 @@ import android.view.*;
 import java.io.File;
 import android.widget.*;
 import java.lang.reflect.*;
+import org.json.JSONObject;
 import com.discnet.noise.advancedstudio.*;
 
 /** Tests real model/serialized layer pixels and interaction routes, not placeholders. */
@@ -688,6 +689,7 @@ final class AdvancedStudioTest {
         StudioDocument effectsDocument=StudioDocument.blank("New effects",128,128,true);
         StudioDocument.Layer pattern=effectsDocument.addShape(
             StudioDocument.Type.ELLIPSE,Color.WHITE,60,60);
+        pattern.x=10;pattern.y=10;
         for(StudioLayerStyles.Kind kind:new StudioLayerStyles.Kind[]{
                 StudioLayerStyles.Kind.SATIN,StudioLayerStyles.Kind.PATTERN_OVERLAY}){
             pattern.styles.add(new StudioLayerStyles.Style(kind));
@@ -695,7 +697,7 @@ final class AdvancedStudioTest {
                 "New layer style has serialized editable parameters");
         }
         Bitmap newEffectsPreview=effectsDocument.composite();
-        check(Color.alpha(newEffectsPreview.getPixel(10,10))>0,
+        check(Color.alpha(newEffectsPreview.getPixel(40,40))>0,
             "Satin and Pattern Overlay render real RGBA pixels");
         newEffectsPreview.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
