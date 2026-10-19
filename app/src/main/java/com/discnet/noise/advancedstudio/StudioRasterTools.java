@@ -145,20 +145,47 @@ public final class StudioRasterTools {
             Math.abs(Color.green(a)-Color.green(b))<=t &&
             Math.abs(Color.blue(a)-Color.blue(b))<=t;
     }
-    /** Persistent linear gradient on the selected layer; clips to selection. */
+    /** Persistent destructive gradient using the same stops as layer styles.
+     * SRC_OVER handles semi-transparent stops without replacing full-opacity
+     * pixels with raw/unpremultiplied ARGB values.
+     */
     public static void gradient(StudioDocument d,float x1,float y1,float x2,float y2,
                                 int start,int end){
-        StudioDocument.Layer l=editable(d);
-        Bitmap copy=l.bitmap.copy(Bitmap.Config.ARGB_8888,true);
-        if(copy==null)throw new IllegalStateException("Memória insuficiente");
-        Canvas c=new Canvas(copy);
-
-        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+        gradient(d,x1,y1,x2,y2,StudioGradient.of(start,end));
+    }
+    public static void gradient(StudioDocument d,float x1,float y1,float x2,float y2,
+                                StudioGradient spec){
+        StudioDocument.Layer layer=editable(d);
+        spec.validate();
+        Bitmap before=layer.bitmap;
+        int w=before.getWidth(),h=before.getHeight();
+        if((long)w*h>4_194_304L)
+            throw new IllegalStateException("Degradês raster limitados a 4 MP");
+        int[] raw=new int[w*h];
+        before.getPixels(raw,0,w,0,0,w,h);
         if(Math.hypot(x2-x1,y2-y1)<1){x2=x1+1;y2=y1;}
-        p.setShader(new LinearGradient(x1,y1,x2,y2,start,end,Shader.TileMode.CLAMP));
-        c.drawRect(0,0,copy.getWidth(),copy.getHeight(),p);
-        if(d.hasSelection())restrictToSelection(d,l,l.bitmap,copy);
-        d.checkpoint();l.bitmap=copy;
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+            if(d.hasSelection()){
+                float[] mapped=StudioTransformMath.point(layer,x+.5f,y+.5f);
+                if(!d.containsSelection(mapped[0],mapped[1]))continue;
+            }
+            float t=spec.coordinateFromDrag(x+.5f,y+.5f,x1,y1,x2,y2);
+            int fg=spec.color(t,x,y),bg=raw[y*w+x];
+            int sa=Color.alpha(fg),ba=Color.alpha(bg);
+            int total=sa+Math.round(ba*(255-sa)/255f);
+            if(total==0){raw[y*w+x]=Color.TRANSPARENT;continue;}
+            int r=Math.round((Color.red(fg)*sa+
+                Color.red(bg)*ba*(255-sa)/255f)/total);
+            int g=Math.round((Color.green(fg)*sa+
+                Color.green(bg)*ba*(255-sa)/255f)/total);
+            int b=Math.round((Color.blue(fg)*sa+
+                Color.blue(bg)*ba*(255-sa)/255f)/total);
+            raw[y*w+x]=Color.argb(total,r,g,b);
+        }
+        Bitmap output=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+        output.setPixels(raw,0,w,0,0,w,h);
+        d.checkpoint();layer.bitmap=output;
+        StudioLayerEffects.invalidate(layer);
     }
     /** Explicit raster adjustment, not a collection of duplicate sliders. */
     public static void adjust(StudioDocument d,int brightness,int contrast,int saturation){
