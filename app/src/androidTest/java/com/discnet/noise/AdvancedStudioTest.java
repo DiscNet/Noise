@@ -219,8 +219,8 @@ final class AdvancedStudioTest {
         check(restoredFx.layers.get(0).shadowEnabled&&
             restoredFx.layers.get(0).bitmap.getPixel(24,20)==Color.RED,
             "Drop shadow and untouched source pixels survive project persistence");
-        check(restoredFx.toJson().getInt("format")==7,
-            "Advanced Studio writes native project format version 7");
+        check(restoredFx.toJson().getInt("format")==8,
+            "Advanced Studio writes native project format version 8");
         StudioDocument enhanced=StudioDocument.blank("Typography and smart",256,256,true);
         StudioDocument.Layer styled=enhanced.addText("Noise!\\nStudio",Color.MAGENTA,34);
         styled.fontFamily="serif";styled.fontBold=true;styled.fontItalic=true;
@@ -623,6 +623,81 @@ final class AdvancedStudioTest {
         check(pillowDifference>8,
             "Pillow emboss reverses the outer bevel illumination");
         bothBevel.recycle();pillowBevel.recycle();
+        // Full blend mode list and W3C alpha compositing, as used by the
+        // PhotoCraft reference for Photoshop-style blending.
+        check(StudioDocument.Blend.values().length==27,
+            "All 27 standard Photoshop RGB layer modes are selectable");
+        int red=0xffff0000,blue=0xff0000ff;
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.MULTIPLY,red,blue,1,0,0)
+                ==0xff000000,"Multiply black with disjoint primaries");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SCREEN,red,blue,1,0,0)
+                ==0xffff00ff,"Screen is additive complement");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.DIFFERENCE,red,red,1,0,0)
+                ==0xff000000,"Difference of identical colors is black");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SUBTRACT,blue,red,1,0,0)
+                ==blue,"Subtract operates on backdrop only");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.NORMAL,red,blue,0,0,0)
+                ==red,"Zero opacity does not change the canvas");
+        for(StudioBlendMath.Mode mode:StudioBlendMath.Mode.values()){
+            int result=StudioBlendMath.composite(mode,0x8872b3cc,0x99e74a72,
+                .55f,17,42);
+            check(Color.alpha(result)>0,"Blend mode outputs alpha: "+mode);
+        }
+        StudioDocument guideTest=StudioDocument.blank("Guides",240,160,true);
+        StudioDocument.Layer alignBase=guideTest.addShape(
+            StudioDocument.Type.RECTANGLE,Color.RED,50,40);
+        alignBase.x=30;alignBase.y=25;
+        StudioDocument.Layer alignMoving=guideTest.addShape(
+            StudioDocument.Type.RECTANGLE,Color.BLUE,30,20);
+        alignMoving.x=84;alignMoving.y=68;
+        guideTest.verticalGuides.add(120f);
+        guideTest.horizontalGuides.add(80f);
+        guideTest.rulersVisible=true;guideTest.guidesVisible=true;guideTest.snapEnabled=true;
+        StudioSnapGuides.Result snap=StudioSnapGuides.snap(guideTest,alignMoving,
+            new RectF(115,73,145,93),6);
+        check(Math.abs(snap.dx-5)<.01f&&snap.xGuide==120f,
+            "Snapping respects saved vertical guides");
+        StudioSnapGuides.Result layerSnap=StudioSnapGuides.snap(guideTest,alignMoving,
+            new RectF(81,26,111,46),2);
+        check(Math.abs(layerSnap.dx+1)<.01f,
+            "Snapping recognizes another layer's right edge");
+        JSONObject guideJson=guideTest.toJson();
+        StudioDocument reopenedGuides=StudioDocument.fromJson(guideJson);
+        check(reopenedGuides.verticalGuides.size()==1&&
+            reopenedGuides.horizontalGuides.size()==1&&
+            reopenedGuides.rulersVisible&&reopenedGuides.snapEnabled,
+            "Rulers, guides and snap settings survive project serialization");
+        StudioDocument.Layer stretch=guideTest.active();
+        stretch.x=20;stretch.y=30;stretch.scaleX=1;stretch.scaleY=1;
+        float fixedLeft=StudioTransformMath.point(stretch,0,0)[0];
+        StudioTransformMath.resizeFromHandle(stretch,5,20,0,20,30,1,1,0,false);
+        check(Math.abs(StudioTransformMath.point(stretch,0,0)[0]-fixedLeft)<.01f,
+            "Right-handle stretch keeps left edge anchored");
+        check(Math.abs(stretch.scaleX-1.6666666f)<.015f&&
+            Math.abs(stretch.scaleY-1)<.001f,
+            "Unlocked proportions stretch only the selected axis");
+        float fixedRight=StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0];
+        stretch.x=20;stretch.y=30;stretch.scaleX=1;
+        float expectedRight=StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0];
+        StudioTransformMath.resizeFromHandle(stretch,4,-15,0,20,30,1,1,0,false);
+        check(Math.abs(StudioTransformMath.point(stretch,
+            stretch.naturalWidth(),0)[0]-expectedRight)<.01f,
+            "Dragging left handle preserves opposite right edge");
+        StudioDocument effectsDocument=StudioDocument.blank("New effects",128,128,true);
+        StudioDocument.Layer pattern=effectsDocument.addShape(
+            StudioDocument.Type.ELLIPSE,Color.WHITE,60,60);
+        for(StudioLayerStyles.Kind kind:new StudioLayerStyles.Kind[]{
+                StudioLayerStyles.Kind.SATIN,StudioLayerStyles.Kind.PATTERN_OVERLAY}){
+            pattern.styles.add(new StudioLayerStyles.Style(kind));
+            check(pattern.styles.get(pattern.styles.size()-1).toJson()!=null,
+                "New layer style has serialized editable parameters");
+        }
+        Bitmap newEffectsPreview=effectsDocument.composite();
+        check(Color.alpha(newEffectsPreview.getPixel(10,10))>0,
+            "Satin and Pattern Overlay render real RGBA pixels");
+        newEffectsPreview.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
