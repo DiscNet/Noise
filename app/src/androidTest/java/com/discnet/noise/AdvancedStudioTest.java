@@ -548,6 +548,85 @@ final class AdvancedStudioTest {
             "Separate optical blend modes survive .noise roundtrip");
         new File(activity.getFilesDir(),"advanced_studio/"+optical.id+".noise").delete();
         baseline.recycle();both.recycle();onlyShadow.recycle();onlyLight.recycle();
+        // Stroke POSITION is a compositing rule, not just geometry. Center
+        // must straddle the exact silhouette, with the inner half ON TOP
+        // of opaque source pixels and the outer half behind them.
+        StudioDocument strokeDoc=StudioDocument.blank("Centered stroke",164,164,true);
+        StudioDocument.Layer blue=strokeDoc.addShape(
+            StudioDocument.Type.RECTANGLE,Color.BLUE,80,80);
+        blue.x=40;blue.y=40;
+        StudioLayerStyles.Style outline=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.STROKE);
+        outline.position="CENTER";outline.size=12;outline.color=Color.RED;
+        outline.opacity=1f;blue.styles.add(outline);
+        Bitmap centered=strokeDoc.composite();
+        int outerPixel=centered.getPixel(36,80);
+        int innerPixel=centered.getPixel(44,80);
+        check(Color.red(outerPixel)>Color.blue(outerPixel)&&
+            Color.red(innerPixel)>Color.blue(innerPixel),
+            "Center stroke visibly extends 6 pixels inside and outside");
+        check(centered.getPixel(80,80)==Color.BLUE,
+            "Centered stroke leaves the interior fill untouched");
+        check(Color.alpha(centered.getPixel(20,80))==0,
+            "Centered stroke does not paint far beyond its radius");
+        centered.recycle();
+        outline.position="OUTSIDE";
+        Bitmap onlyOutside=strokeDoc.composite();
+        check(onlyOutside.getPixel(44,80)==Color.BLUE,
+            "Outside stroke never covers inside of solid source");
+        onlyOutside.recycle();
+        outline.position="INSIDE";
+        Bitmap onlyInside=strokeDoc.composite();
+        check(Color.alpha(onlyInside.getPixel(36,80))==0,
+            "Inside stroke never extends beyond source geometry");
+        onlyInside.recycle();
+        outline.position="CENTER";
+        storage.save(strokeDoc);
+        StudioDocument recoveredStroke=storage.load(strokeDoc.id);
+        check("CENTER".equals(recoveredStroke.active().styles.get(0).position),
+            "Centered stroke persists as a nondestructive layer style");
+        new File(activity.getFilesDir(),
+            "advanced_studio/"+strokeDoc.id+".noise").delete();
+
+        // PhotoCraft's reference: Emboss straddles the edge, Pillow Emboss
+        // straddles it too but reverses external lighting. A plain square
+        // makes both silhouette halves measurable without fuzzy text hints.
+        StudioDocument embossDoc=StudioDocument.blank("Dual bevel",180,180,true);
+        StudioDocument.Layer middle=embossDoc.addShape(
+            StudioDocument.Type.RECTANGLE,0xff777777,80,80);
+        middle.x=50;middle.y=50;
+        StudioLayerStyles.Style relief=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        relief.bevelStyle="EMBOSS";relief.technique="SMOOTH";
+        relief.size=18;relief.depth=240;relief.angle=90;relief.altitude=40;
+        relief.opacity=1;relief.highlightOpacity=1;relief.shadowOpacity=1;
+        middle.styles.add(relief);
+        Bitmap raised=embossDoc.composite();
+        int insideChanged=0,outsideChanged=0;
+        for(int y=42;y<138;y++)for(int x=42;x<138;x++){
+            int c=raised.getPixel(x,y);
+            boolean in=x>=50&&x<130&&y>=50&&y<130;
+            boolean nearIn=in&&(x<60||x>119||y<60||y>119);
+            if(nearIn&&(c&0xffffff)!=0x777777)insideChanged++;
+            if(!in&&Color.alpha(c)>8)outsideChanged++;
+        }
+        check(insideChanged>40&&outsideChanged>40,
+            "Emboss renders on both sides of the object edge");
+        relief.bevelStyle="PILLOW";
+        Bitmap pillow=embossDoc.composite();
+        int pillowOutside=0,lightingDifferences=0;
+        for(int y=42;y<138;y++)for(int x=42;x<138;x++){
+            boolean outside=x<50||x>=130||y<50||y>=130;
+            if(!outside)continue;
+            int a=raised.getPixel(x,y),b=pillow.getPixel(x,y);
+            if(Color.alpha(b)>8)pillowOutside++;
+            if(a!=b)lightingDifferences++;
+        }
+        check(pillowOutside>40&&lightingDifferences>40,
+            "Pillow emboss keeps the exterior half and reverses its lighting");
+        check(Color.alpha(pillow.getPixel(10,10))==0,
+            "Pillow emboss creates no distant ghost extrusions");
+        raised.recycle();pillow.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);
