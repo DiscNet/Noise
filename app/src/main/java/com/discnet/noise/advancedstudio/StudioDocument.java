@@ -12,7 +12,12 @@ import java.util.*;
 public final class StudioDocument {
     public static final int FORMAT_VERSION=7, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
-    public enum Blend { NORMAL,MULTIPLY,SCREEN,OVERLAY,DARKEN,LIGHTEN }
+    public enum Blend {
+        NORMAL,DISSOLVE,DARKEN,MULTIPLY,COLOR_BURN,LINEAR_BURN,DARKER_COLOR,
+        LIGHTEN,SCREEN,COLOR_DODGE,LINEAR_DODGE,LIGHTER_COLOR,
+        OVERLAY,SOFT_LIGHT,HARD_LIGHT,VIVID_LIGHT,LINEAR_LIGHT,PIN_LIGHT,HARD_MIX,
+        DIFFERENCE,EXCLUSION,SUBTRACT,DIVIDE,HUE,SATURATION,COLOR,LUMINOSITY
+    }
     public static final class Layer {
         public final String id;
         public String name;
@@ -127,6 +132,8 @@ public final class StudioDocument {
     public int width,height;
     public final int dpi;
     public int background=Color.TRANSPARENT;
+    public final ArrayList<Float> verticalGuides=new ArrayList<>(),horizontalGuides=new ArrayList<>();
+    public boolean guidesVisible=true,snapEnabled=true,rulersVisible=false;
     public RectF selection;
     public Bitmap selectionPixels;
     public float zoom=1f,panX,panY;
@@ -302,6 +309,22 @@ public final class StudioDocument {
         selection=null;selectionPixels=null;
     }
     public void render(Canvas canvas){
+        if(hasExtendedBlends()){
+            Bitmap buffer=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+            try{
+                renderDirect(new Canvas(buffer),buffer);
+                canvas.drawBitmap(buffer,0,0,new Paint(Paint.FILTER_BITMAP_FLAG));
+            }finally{buffer.recycle();}
+            return;
+        }
+        renderDirect(canvas,null);
+    }
+    private boolean hasExtendedBlends(){
+        for(Layer l:layers)if(l.visible&&l.blend!=Blend.NORMAL&&
+            StudioBlendMath.needsSoftware(StudioBlendMath.of(l.blend.name())))return true;
+        return false;
+    }
+    private void renderDirect(Canvas canvas,Bitmap buffer){
         canvas.save();canvas.clipRect(0,0,width,height);
         if(Color.alpha(background)!=0)canvas.drawColor(background);
         for(int index=0;index<layers.size();index++){
@@ -311,7 +334,10 @@ public final class StudioDocument {
             if(l.clippingMask&&base!=null&&!base.visible)continue;
             canvas.save();
             try{
-            if(base!=null){
+            if(buffer!=null&&StudioBlendMath.needsSoftware(
+                StudioBlendMath.of(l.blend.name()))&&l.blend!=Blend.NORMAL){
+                softwareLayer(canvas,buffer,l,base);
+            }else if(base!=null){
                 RectF clipBounds=StudioTransformMath.bounds(base);
                 if(!clipBounds.intersect(0,0,width,height))continue;
                 // Apply the clipped layer's global blend mode when the
@@ -346,6 +372,48 @@ public final class StudioDocument {
         }
         canvas.restore();
     }
+    /** Composites unsupported blend modes by tiles over the current
+     * document's pixels, without rasterizing or replacing the original layer. */
+    private void softwareLayer(Canvas main,Bitmap backdrop,Layer layer,Layer base){
+        RectF box=StudioTransformMath.bounds(layer);
+        if(base!=null){
+            RectF foundation=StudioTransformMath.bounds(base);
+            if(!box.intersect(foundation))return;
+        }
+        if(!box.intersect(0,0,width,height))return;
+        int left=Math.max(0,(int)Math.floor(box.left)-2);
+        int top=Math.max(0,(int)Math.floor(box.top)-2);
+        int right=Math.min(width,(int)Math.ceil(box.right)+2);
+        int bottom=Math.min(height,(int)Math.ceil(box.bottom)+2);
+        int tw=right-left,th=bottom-top;
+        if(tw<1||th<1)return;
+        Bitmap source=Bitmap.createBitmap(tw,th,Bitmap.Config.ARGB_8888);
+        try{
+            Canvas c=new Canvas(source);
+            c.translate(-left,-top);
+            drawOneLayer(c,layer,true);
+            if(base!=null){
+                c.save();
+                StudioTransformMath.apply(c,base);
+                Paint matte=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                matte.setAlpha(Math.round(Math.max(0,Math.min(1,base.opacity))*255));
+                matte.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+                Bitmap src=StudioLayerEffects.processed(base);
+                if(src!=null)c.drawBitmap(src,0,0,matte);
+                c.restore();
+            }
+            final int strip=64;
+            for(int row=0;row<th;row+=strip){
+                int heightPart=Math.min(strip,th-row);
+                int[] b=new int[tw*heightPart],a=new int[b.length];
+                backdrop.getPixels(b,0,tw,left,top+row,tw,heightPart);
+                source.getPixels(a,0,tw,0,row,tw,heightPart);
+                StudioBlendMath.blendTile(b,a,tw,heightPart,left,top+row,
+                    StudioBlendMath.of(layer.blend.name()),1f);
+                backdrop.setPixels(b,0,tw,left,top+row,tw,heightPart);
+            }
+        }finally{source.recycle();}
+    }
     private Layer clippingBase(int index){
         int below=index-1;
         while(below>=0&&layers.get(below).clippingMask)below--;
@@ -353,17 +421,9 @@ public final class StudioDocument {
     }
     private Paint layerBlendPaint(Layer l){
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-        if(Build.VERSION.SDK_INT>=29){
-            BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
-                l.blend==Blend.SCREEN?BlendMode.SCREEN:
-                l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
-                l.blend==Blend.DARKEN?BlendMode.DARKEN:
-                l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
-            p.setBlendMode(blend);
-        }else if(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN){
-            p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
-                PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
-        }
+        android.graphics.BlendMode mode=StudioBlendMath.nativeBlend(
+            StudioBlendMath.of(l.blend.name()));
+        if(mode!=null&&Build.VERSION.SDK_INT>=29)p.setBlendMode(mode);
         return p;
     }
     private void drawOneLayer(Canvas canvas,Layer l,boolean isolatedClip){
@@ -373,16 +433,10 @@ public final class StudioDocument {
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             p.setColor(l.color);
             p.setAlpha(Math.round(Math.max(0,Math.min(1,l.opacity))*255));
-            if(!isolatedClip&&Build.VERSION.SDK_INT>=29){
-                BlendMode blend=l.blend==Blend.MULTIPLY?BlendMode.MULTIPLY:
-                    l.blend==Blend.SCREEN?BlendMode.SCREEN:
-                    l.blend==Blend.OVERLAY?BlendMode.OVERLAY:
-                    l.blend==Blend.DARKEN?BlendMode.DARKEN:
-                    l.blend==Blend.LIGHTEN?BlendMode.LIGHTEN:BlendMode.SRC_OVER;
-                p.setBlendMode(blend);
-            }else if(!isolatedClip&&(l.blend==Blend.MULTIPLY||l.blend==Blend.SCREEN)){
-                p.setXfermode(new PorterDuffXfermode(l.blend==Blend.MULTIPLY?
-                    PorterDuff.Mode.MULTIPLY:PorterDuff.Mode.SCREEN));
+            if(!isolatedClip){
+                android.graphics.BlendMode mode=StudioBlendMath.nativeBlend(
+                    StudioBlendMath.of(l.blend.name()));
+                if(mode!=null&&Build.VERSION.SDK_INT>=29)p.setBlendMode(mode);
             }
             if(StudioLayerEffects.requiresProcessing(l)||l.shadowEnabled||StudioLayerStyles.hasStyles(l)){
                 StudioLayerEffects.draw(canvas,l,p);
@@ -407,7 +461,13 @@ public final class StudioDocument {
         JSONObject j=new JSONObject().put("format",FORMAT_VERSION)
             .put("id",id).put("name",name).put("width",width).put("height",height)
             .put("dpi",dpi).put("background",background).put("active",activeId)
-            .put("zoom",zoom).put("panX",panX).put("panY",panY);
+            .put("zoom",zoom).put("panX",panX).put("panY",panY)
+            .put("rulersVisible",rulersVisible).put("guidesVisible",guidesVisible)
+            .put("snapEnabled",snapEnabled);
+        JSONArray gx=new JSONArray(),gy=new JSONArray();
+        for(float v:verticalGuides)gx.put(v);
+        for(float v:horizontalGuides)gy.put(v);
+        j.put("guidesX",gx).put("guidesY",gy);
         if(selectionPixels!=null)j.put("pixelSelection",true);
         if(selection!=null)j.put("selection",new JSONArray()
             .put(selection.left).put(selection.top).put(selection.right).put(selection.bottom));
@@ -424,6 +484,24 @@ public final class StudioDocument {
         d.activeId=j.optString("active",null);
         d.zoom=(float)j.optDouble("zoom",1);
         d.panX=(float)j.optDouble("panX",0);d.panY=(float)j.optDouble("panY",0);
+        d.rulersVisible=j.optBoolean("rulersVisible",false);
+        d.guidesVisible=j.optBoolean("guidesVisible",true);
+        d.snapEnabled=j.optBoolean("snapEnabled",true);
+        JSONArray gx=j.optJSONArray("guidesX"),gy=j.optJSONArray("guidesY");
+        if(gx!=null&&gx.length()>100||gy!=null&&gy.length()>100)
+            throw new java.io.IOException("Guias demais");
+        if(gx!=null)for(int i=0;i<gx.length();i++){
+            float value=(float)gx.getDouble(i);
+            if(!Float.isFinite(value)||value<0||value>d.width)
+                throw new java.io.IOException("Guia vertical inválida");
+            d.verticalGuides.add(value);
+        }
+        if(gy!=null)for(int i=0;i<gy.length();i++){
+            float value=(float)gy.getDouble(i);
+            if(!Float.isFinite(value)||value<0||value>d.height)
+                throw new java.io.IOException("Guia horizontal inválida");
+            d.horizontalGuides.add(value);
+        }
         JSONArray s=j.optJSONArray("selection");
         if(s!=null&&s.length()==4)d.selection=new RectF((float)s.getDouble(0),
             (float)s.getDouble(1),(float)s.getDouble(2),(float)s.getDouble(3));
@@ -509,6 +587,8 @@ public final class StudioDocument {
         d.background=background;d.zoom=zoom;d.panX=panX;d.panY=panY;d.activeId=activeId;
         d.selection=selection==null?null:new RectF(selection);
         d.selectionPixels=selectionPixels;
+        d.verticalGuides.addAll(verticalGuides);d.horizontalGuides.addAll(horizontalGuides);
+        d.guidesVisible=guidesVisible;d.snapEnabled=snapEnabled;d.rulersVisible=rulersVisible;
         for(Layer l:layers)d.layers.add(l.copy());
         d.dirty=dirty;return d;
     }
