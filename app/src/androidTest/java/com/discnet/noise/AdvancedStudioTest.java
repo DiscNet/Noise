@@ -548,6 +548,81 @@ final class AdvancedStudioTest {
             "Separate optical blend modes survive .noise roundtrip");
         new File(activity.getFilesDir(),"advanced_studio/"+optical.id+".noise").delete();
         baseline.recycle();both.recycle();onlyShadow.recycle();onlyLight.recycle();
+        // Centered stroke must be truly split across the outline, never
+        // painted only behind the opaque source.
+        StudioDocument strokeDoc=StudioDocument.blank("Center stroke",80,80,true);
+        StudioDocument.Layer frame=strokeDoc.addShape(
+            StudioDocument.Type.RECTANGLE,Color.WHITE,24,24);
+        frame.x=24;frame.y=24;
+        StudioLayerStyles.Style outline=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.STROKE);
+        outline.color=Color.RED;outline.opacity=1;outline.size=8;
+        outline.position="CENTER";
+        frame.styles.add(outline);
+        Bitmap centered=strokeDoc.composite();
+        check(centered.getPixel(22,36)==Color.RED,
+            "Center stroke paints its outside half beyond source");
+        check(centered.getPixel(26,36)==Color.RED,
+            "Center stroke paints its inside half over source, not underneath");
+        check(centered.getPixel(36,36)==Color.WHITE,
+            "Center stroke preserves the untouched interior");
+        check(Color.alpha(centered.getPixel(15,36))==0,
+            "Center stroke does not fill distant transparent pixels");
+        centered.recycle();
+        outline.position="INSIDE";
+        Bitmap onlyInside=strokeDoc.composite();
+        check(Color.alpha(onlyInside.getPixel(22,36))==0&&
+            onlyInside.getPixel(26,36)==Color.RED,
+            "Inside stroke stays entirely within the visible layer");
+        onlyInside.recycle();
+        outline.position="OUTSIDE";
+        Bitmap onlyOutside=strokeDoc.composite();
+        check(onlyOutside.getPixel(22,36)==Color.RED&&
+            onlyOutside.getPixel(26,36)==Color.WHITE,
+            "Outside stroke never paints inside opaque content");
+        onlyOutside.recycle();
+
+        // PhotoCraft's emboss / pillow emboss must straddle the edge at
+        // approximately half width on each side. Inner bevel cannot paint
+        // outside and pillow reverses only its outside-facing normal.
+        StudioDocument embossDoc=StudioDocument.blank("Emboss both halves",96,76,true);
+        StudioDocument.Layer plaque=embossDoc.addShape(
+            StudioDocument.Type.RECTANGLE,0xff9775c5,32,28);
+        plaque.x=32;plaque.y=23;
+        StudioLayerStyles.Style bevelBoth=
+            new StudioLayerStyles.Style(StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        bevelBoth.size=12;bevelBoth.soften=0;bevelBoth.depth=330;
+        bevelBoth.opacity=1;bevelBoth.highlightOpacity=1;
+        bevelBoth.shadowOpacity=1;bevelBoth.technique="SMOOTH";
+        plaque.styles.add(bevelBoth);
+        bevelBoth.bevelStyle="INNER_BEVEL";
+        Bitmap innerOnly=embossDoc.composite();
+        check(Color.alpha(innerOnly.getPixel(30,36))==0,
+            "Inner bevel cannot produce any outside glow");
+        innerOnly.recycle();
+        bevelBoth.bevelStyle="EMBOSS";
+        Bitmap bothBevel=embossDoc.composite();
+        bevelBoth.bevelStyle="PILLOW";
+        Bitmap pillowBevel=embossDoc.composite();
+        int outsideBoth=0,outsidePillow=0,insideChanged=0,pillowDifference=0;
+        for(int y=0;y<76;y++)for(int x=0;x<96;x++){
+            boolean isInterior=x>=32&&x<64&&y>=23&&y<51;
+            int v=bothBevel.getPixel(x,y),pillowV=pillowBevel.getPixel(x,y);
+            if(isInterior){
+                if(v!=0xff9775c5)insideChanged++;
+            }else{
+                if(Color.alpha(v)>4)outsideBoth++;
+                if(Color.alpha(pillowV)>4)outsidePillow++;
+                if(v!=pillowV)pillowDifference++;
+            }
+        }
+        check(outsideBoth>12&&outsidePillow>12,
+            "Emboss and pillow emboss paint a true exterior half");
+        check(insideChanged>25,
+            "Emboss also bevels the inside half of the same edge");
+        check(pillowDifference>8,
+            "Pillow emboss reverses the outer bevel illumination");
+        bothBevel.recycle();pillowBevel.recycle();
         // Rotation must pivot at visual center for raster, text and vector layers.
         StudioDocument centers=StudioDocument.blank("Pivot checks",256,256,true);
         StudioDocument.Layer pivotText=centers.addText("Noise!",Color.CYAN,48);

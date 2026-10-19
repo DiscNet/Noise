@@ -148,6 +148,13 @@ public final class StudioBevelRenderer {
         return f[Math.max(0,Math.min(h-1,y))*w+
             Math.max(0,Math.min(w-1,x))];
     }
+    private static int mixRgb(int a,int b,float weight){
+        float t=clamp(weight),u=1-t;
+        return Color.rgb(
+            Math.round(Color.red(a)*u+Color.red(b)*t),
+            Math.round(Color.green(a)*u+Color.green(b)*t),
+            Math.round(Color.blue(a)*u+Color.blue(b)*t));
+    }
     private static int blend(int base,int tint,float amount,String mode){
         amount=clamp(amount);
         if(amount<=0)return base;
@@ -292,45 +299,74 @@ public final class StudioBevelRenderer {
         for(int y=0;y<H;y++)for(int x=0;x<W;x++){
             int i=y*W+x,pixel=base[i],a=alpha[i];
             float cov=coverage[i];
-            boolean outside=cov<=.001f;
-            if(outer&&!outside){out[i]=pixel;continue;}
-            if(!outer&&!both&&outside){out[i]=pixel;continue;}
-            // Slightly use the outer half of partial pixels for emboss
-            // while avoiding any outside halo on inner bevel.
-            float region=outer?1f-cov:both?1f:cov;
-            if(region<=0){out[i]=pixel;continue;}
+            boolean shadeInside=!outer&&cov>.001f;
+            boolean shadeOutside=(outer||both)&&cov<.999f;
+            if(!shadeInside&&!shadeOutside){out[i]=pixel;continue;}
             float gx=(at(height,W,H,x+1,y)-at(height,W,H,x-1,y))*
                 .5f*depth;
             float gy=(at(height,W,H,x,y+1)-at(height,W,H,x,y-1))*
                 .5f*depth;
-            if(pillow&&cov<.5f){gx=-gx;gy=-gy;}
             float denom=(float)Math.sqrt(1+gx*gx+gy*gy);
-            float reflected=(-gx*lx-gy*ly+se)/denom;
-            float delta=reflected-se;
-            float hi=delta>0?clamp(delta/Math.max(.001f,1-se)):0f;
-            float sh=delta<0?clamp(-delta/Math.max(.001f,se)):0f;
-            // Gloss curves operate on independent light and shade
-            // maps. They never alter the source's alpha or silhouette.
-            if(hi>0)hi=StudioLayerStyles.curve(s,hi);
-            if(sh>0)sh=StudioLayerStyles.curve(s,sh);
-            float lightAmount=clamp(hi*opacity*clamp(s.highlightOpacity)*
-                (Color.alpha(hiColor)/255f));
-            float darkAmount=clamp(sh*opacity*clamp(s.shadowOpacity)*
-                (Color.alpha(shadowColor)/255f));
-            if(outside){
-                if(!outer&&!both)continue;
-                // External bevels have a separate coverage map. No solid
-                // white extrusion / unrelated shadow is generated.
-                float reach=smooth?height[i]:Math.max(0,Math.min(1,height[i]));
-                float glow=clamp(reach*(1-cov));
-                int tint=lightAmount>=darkAmount?hiColor:shadowColor;
-                int opacityPx=Math.round(255*glow*Math.max(lightAmount,darkAmount));
-                out[i]=(opacityPx<<24)|(tint&0xffffff);
-            }else{
-                int lit=blend(pixel,hiColor,lightAmount,s.highlightBlend);
-                int shaded=blend(lit,shadowColor,darkAmount,s.shadowBlend);
-                out[i]=(a<<24)|(shaded&0xffffff);
+            float innerDelta=(-gx*lx-gy*ly+se)/denom-se;
+
+            // Bevel maps are split into interior and exterior masks. For
+            // pillow emboss ONLY the exterior surface faces the opposite
+            // direction, as in PhotoCraft's BevelPaint::Both.
+            float outerDelta=pillow?
+                (gx*lx+gy*ly+se)/denom-se:innerDelta;
+            float hi=0,sh=0,ho=0,so=0;
+            if(shadeInside){
+                hi=innerDelta>0?clamp(innerDelta/Math.max(.001f,1-se)):0;
+                sh=innerDelta<0?clamp(-innerDelta/Math.max(.001f,se)):0;
+                if(hi>0)hi=StudioLayerStyles.curve(s,hi);
+                if(sh>0)sh=StudioLayerStyles.curve(s,sh);
             }
+            if(shadeOutside){
+                ho=outerDelta>0?clamp(outerDelta/Math.max(.001f,1-se)):0;
+                so=outerDelta<0?clamp(-outerDelta/Math.max(.001f,se)):0;
+                if(ho>0)ho=StudioLayerStyles.curve(s,ho);
+                if(so>0)so=StudioLayerStyles.curve(s,so);
+            }
+            float lightScale=opacity*clamp(s.highlightOpacity)*
+                (Color.alpha(hiColor)/255f);
+            float shadowScale=opacity*clamp(s.shadowOpacity)*
+                (Color.alpha(shadowColor)/255f);
+            int insideRgb=pixel&0xffffff;
+            if(shadeInside){
+                int lit=blend(pixel,hiColor,hi*lightScale,s.highlightBlend);
+                int shaded=blend(lit,shadowColor,sh*shadowScale,s.shadowBlend);
+                insideRgb=shaded&0xffffff;
+            }
+            float exteriorLight=ho*lightScale,exteriorShade=so*shadowScale;
+            float exteriorAmount=Math.max(exteriorLight,exteriorShade);
+
+            // Height map is nonzero only near the boundary. Use its smooth
+            // support instead of an unconditional rectangular halo. The
+            // exterior is computed independently even at partially covered
+            // edge pixels (otherwise a 50% edge loses its outer half).
+            float exteriorMatte=shadeOutside?
+                smooth(clamp(height[i]*2.4f)):0f;
+            float exteriorAlpha=clamp((1-cov)*exteriorAmount*exteriorMatte);
+            int exteriorA=Math.round(255*exteriorAlpha);
+            if(exteriorA==0){
+                out[i]=a==0?Color.TRANSPARENT:(a<<24)|insideRgb;
+                continue;
+            }
+            float sum=exteriorLight+exteriorShade;
+            int outerRgb=sum<.0001f?0:
+                (mixRgb(shadowColor,hiColor,exteriorLight/sum)&0xffffff);
+            // SRC_OVER premultiplied-alpha combination preserves the true
+            // edge shape, while extending emboss across both sides.
+            int addedAlpha=exteriorA;
+            int outAlpha=Math.min(255,a+addedAlpha);
+            if(outAlpha==0){out[i]=0;continue;}
+            int r=Math.round((Color.red(insideRgb)*a+
+                Color.red(outerRgb)*addedAlpha)/(float)outAlpha);
+            int g=Math.round((Color.green(insideRgb)*a+
+                Color.green(outerRgb)*addedAlpha)/(float)outAlpha);
+            int b=Math.round((Color.blue(insideRgb)*a+
+                Color.blue(outerRgb)*addedAlpha)/(float)outAlpha);
+            out[i]=Color.argb(outAlpha,r,g,b);
         }
         Bitmap result=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
         result.setPixels(out,0,W,0,0,W,H);

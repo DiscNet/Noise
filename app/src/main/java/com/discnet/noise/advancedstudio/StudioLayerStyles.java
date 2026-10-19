@@ -133,14 +133,15 @@ public final class StudioLayerStyles {
         new LruCache<String,Bitmap>(24*1024*1024){
             @Override protected int sizeOf(String key,Bitmap value){return value.getByteCount();}
         };
-    private static Bitmap cached(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
+    private static Bitmap cached(StudioDocument.Layer layer,Bitmap source,Style s,
+                                 int padding,boolean innerStroke){
         String k;
         try{k=System.identityHashCode(source)+":"+source.getGenerationId()+":"+padding+
-            ":"+s.toJson().toString();}
-        catch(JSONException ignored){return drawStyle(layer,source,s,padding);}
+            ":"+s.toJson().toString()+":strokePart="+innerStroke;}
+        catch(JSONException ignored){return drawStyle(layer,source,s,padding,innerStroke);}
         Bitmap result=STYLE_CACHE.get(k);
         if(result!=null&&!result.isRecycled())return result;
-        result=drawStyle(layer,source,s,padding);
+        result=drawStyle(layer,source,s,padding,innerStroke);
         STYLE_CACHE.put(k,result);return result;
     }
     private static Paint compositingPaint(Style s,float opacity){
@@ -191,12 +192,21 @@ public final class StudioLayerStyles {
      * Bevel uses a dedicated high-quality alpha renderer. Other effects
      * retain the existing raster pipeline for backward compatibility.
      */
-    private static Bitmap drawStyle(StudioDocument.Layer layer,Bitmap source,Style s,int padding){
+    private static Bitmap drawStyle(StudioDocument.Layer layer,Bitmap source,Style s,
+                                    int padding,boolean innerStroke){
         if(s.kind==Kind.BEVEL_EMBOSS)
             return StudioBevelRenderer.compose(layer,source,s,padding);
-        return drawStyleCore(source,s,padding);
+        return drawStyleCore(source,s,padding,innerStroke);
     }
-    private static Bitmap drawStyleCore(Bitmap source,Style s,int padding){
+    // A centered contour is two independent halves. The exterior pass is
+    // behind the source, while the interior pass is over the source.
+    // PhotoCraft uses the same (size/2, size/2) distribution.
+    private static float strokeCoverage(float distance,float halfWidth){
+        // A one-pixel transition keeps diagonal and circular contours clean.
+        return cap(halfWidth+.5f-distance);
+    }
+    private static Bitmap drawStyleCore(Bitmap source,Style s,int padding,
+                                         boolean innerStroke){
         int w=source.getWidth(),h=source.getHeight();
         int W=w+padding*2,H=h+padding*2,n=W*H;
         int[] src=new int[w*h];source.getPixels(src,0,w,0,0,w,h);
@@ -237,13 +247,20 @@ public final class StudioLayerStyles {
                         cap(1-di/Math.max(1,radius));
                     break;
                 }
-                case STROKE:
-                    if("INSIDE".equals(s.position))t=coverage*(di<=s.size?1:0);
-                    else if("CENTER".equals(s.position))
-                        t=di<=s.size*.5f&&coverage>0?coverage:
-                            (de<=s.size*.5f?1-coverage:0);
-                    else t=(1-coverage)*(de<=s.size?1:0);
+                case STROKE: {
+                    // Separate the two halves in the compositor. Painting
+                    // both before the source used to hide the inner half.
+                    boolean center="CENTER".equals(s.position);
+                    float inside=center?s.size*.5f:s.size;
+                    float outside=center?s.size*.5f:s.size;
+                    if(innerStroke){
+                        if(center||"INSIDE".equals(s.position))
+                            t=coverage*strokeCoverage(di,inside);
+                    }else if(center||"OUTSIDE".equals(s.position)){
+                        t=(1-coverage)*strokeCoverage(de,outside);
+                    }
                     break;
+                }
                 case COLOR_OVERLAY:t=coverage;break;
                 case GRADIENT_OVERLAY: {
                     float gradient=(float)((x-padding-w*.5)*dx+
@@ -294,7 +311,7 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
              s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding);
+            Bitmap fx=cached(layer,source,s,padding,false);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
@@ -315,8 +332,8 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.COLOR_OVERLAY||s.kind==Kind.GRADIENT_OVERLAY||
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
-             s.kind==Kind.STROKE&&"INSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding);
+             s.kind==Kind.STROKE&&!"OUTSIDE".equals(s.position))){
+            Bitmap fx=cached(layer,source,s,padding,true);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
