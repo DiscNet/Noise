@@ -311,7 +311,7 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.DROP_SHADOW||s.kind==Kind.OUTER_GLOW||
              s.kind==Kind.STROKE&&!"INSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding,true);
+            Bitmap fx=cached(layer,source,s,padding,false);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
@@ -333,7 +333,7 @@ public final class StudioLayerStyles {
             (s.kind==Kind.COLOR_OVERLAY||s.kind==Kind.GRADIENT_OVERLAY||
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
              s.kind==Kind.STROKE&&!"OUTSIDE".equals(s.position))){
-            Bitmap fx=cached(layer,source,s,padding);
+            Bitmap fx=cached(layer,source,s,padding,true);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
         }
