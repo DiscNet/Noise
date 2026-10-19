@@ -1392,7 +1392,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     v->style.position=v);
                 break;
             case INNER_GLOW:case OUTER_GLOW:
-                styleColor(layer,"Cor do brilho",style.color,v->style.color=v);
+                styleChoice(effectControls,layer,"Preenchimento",
+                    new String[]{"Cor sólida","Degradê"},
+                    new String[]{"COLOR","GRADIENT"},style.strokeFill,v->style.strokeFill=v);
+                if("GRADIENT".equals(style.strokeFill))styleGradient(layer,style);
+                else styleColor(layer,"Cor do brilho",style.color,v->style.color=v);
                 styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
                 styleValue(layer,style.kind==StudioLayerStyles.Kind.OUTER_GLOW?"Expansão":"Contração",
                     "%",style.spread,0,100,1,v->style.spread=(float)v);
