@@ -552,13 +552,13 @@ final class AdvancedStudioTest {
         // must straddle the exact silhouette, with the inner half ON TOP
         // of opaque source pixels and the outer half behind them.
         StudioDocument strokeDoc=StudioDocument.blank("Centered stroke",164,164,true);
-        StudioDocument.Layer blue=strokeDoc.addShape(
+        StudioDocument.Layer strokeRectangle=strokeDoc.addShape(
             StudioDocument.Type.RECTANGLE,Color.BLUE,80,80);
-        blue.x=40;blue.y=40;
+        strokeRectangle.x=40;strokeRectangle.y=40;
         StudioLayerStyles.Style outline=
             new StudioLayerStyles.Style(StudioLayerStyles.Kind.STROKE);
         outline.position="CENTER";outline.size=12;outline.color=Color.RED;
-        outline.opacity=1f;blue.styles.add(outline);
+        outline.opacity=1f;strokeRectangle.styles.add(outline);
         Bitmap centered=strokeDoc.composite();
         int outerPixel=centered.getPixel(36,80);
         int innerPixel=centered.getPixel(44,80);
