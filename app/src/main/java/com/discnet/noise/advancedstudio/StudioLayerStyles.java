@@ -318,6 +318,62 @@ public final class StudioLayerStyles {
         STYLE_CACHE.put(key,baked);
         return baked;
     }
+    private static boolean needsStyleSoftware(StudioDocument.Layer layer){
+        for(Style fx:layer.styles)if(fx.enabled&&StudioBlendMath.needsSoftware(
+            StudioBlendMath.of(fx.blend))&&!fx.blend.equals("NORMAL"))return true;
+        return false;
+    }
+    private static void blendEffect(Bitmap destination,Canvas c,Bitmap effect,
+                                    Style style,int layerAlpha){
+        StudioBlendMath.Mode mode=StudioBlendMath.of(style.blend);
+        float amount=cap(style.opacity);
+        if(!StudioBlendMath.needsSoftware(mode)||mode==StudioBlendMath.Mode.NORMAL){
+            Paint p=compositingPaint(style,amount);
+            c.drawBitmap(effect,0,0,p);return;
+        }
+        int width=destination.getWidth(),height=destination.getHeight();
+        for(int y=0;y<height;y+=64){
+            int count=Math.min(64,height-y);
+            int[] behind=new int[width*count],front=new int[behind.length];
+            destination.getPixels(behind,0,width,0,y,width,count);
+            effect.getPixels(front,0,width,0,y,width,count);
+            StudioBlendMath.blendTile(behind,front,width,count,0,y,mode,amount);
+            destination.setPixels(behind,0,width,0,y,width,count);
+        }
+    }
+    /** Isolate an effect stack when an Android-unsupported blend mode is used.
+     * This is important for Linear Burn, Hard Mix, Divide and similar modes.
+     * The output remains a single non-destructive layer in the document.
+     */
+    private static void drawSoftwareStyles(Canvas canvas,StudioDocument.Layer layer,
+                                            Bitmap source,Paint paint,int padding){
+        int width=source.getWidth()+2*padding,height=source.getHeight()+2*padding;
+        Bitmap group=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+        try{
+            Canvas off=new Canvas(group);
+            for(Style style:layer.styles)if(style.enabled&&
+                (style.kind==Kind.DROP_SHADOW||style.kind==Kind.OUTER_GLOW||
+                 style.kind==Kind.STROKE&&!"INSIDE".equals(style.position))){
+                Bitmap fx=cached(layer,source,style,padding,false);
+                blendEffect(group,off,fx,style,255);
+            }
+            Style bevel=null;
+            for(Style style:layer.styles)if(style.enabled&&
+                style.kind==Kind.BEVEL_EMBOSS){bevel=style;break;}
+            Paint normal=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+            if(bevel==null)off.drawBitmap(source,padding,padding,normal);
+            else off.drawBitmap(composedBevel(layer,source,bevel,padding),0,0,normal);
+            for(Style style:layer.styles)if(style.enabled&&
+                (style.kind==Kind.COLOR_OVERLAY||style.kind==Kind.GRADIENT_OVERLAY||
+                 style.kind==Kind.SATIN||style.kind==Kind.PATTERN_OVERLAY||
+                 style.kind==Kind.INNER_GLOW||style.kind==Kind.INNER_SHADOW||
+                 style.kind==Kind.STROKE&&!"OUTSIDE".equals(style.position))){
+                Bitmap fx=cached(layer,source,style,padding,true);
+                blendEffect(group,off,fx,style,255);
+            }
+            canvas.drawBitmap(group,-padding,-padding,paint);
+        }finally{group.recycle();}
+    }
     public static void draw(Canvas canvas,StudioDocument.Layer layer,Bitmap source,Paint paint){
         if(source==null)return;
         if(!hasStyles(layer)||((long)source.getWidth()*source.getHeight()>MAX_PIXELS)){
@@ -329,6 +385,10 @@ public final class StudioLayerStyles {
         padding=Math.min(264,padding);
         if((long)(source.getWidth()+padding*2)*(source.getHeight()+padding*2)>MAX_PIXELS*2L)
             padding=0;
+        if(needsStyleSoftware(layer)){
+            drawSoftwareStyles(canvas,layer,source,paint,padding);
+            return;
+        }
 
         // Drop shadows and outer borders appear behind the bevel/source.
         for(Style s:layer.styles)if(s.enabled&&
