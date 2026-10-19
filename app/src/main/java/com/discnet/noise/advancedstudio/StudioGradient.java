@@ -130,6 +130,27 @@ public final class StudioGradient {
             Math.max(0,Math.min(255,Color.green(c)+shift)),
             Math.max(0,Math.min(255,Color.blue(c)+shift)));
     }
+    /** Drag geometry: the start/end points are editable handles, like PhotoCraft.
+     * Radial/angle/reflected/diamond use the start point as the centre.
+     */
+    public float coordinateFromDrag(float x,float y,float startX,float startY,
+                                    float endX,float endY){
+        float dx=endX-startX,dy=endY-startY;
+        float length=Math.max(.001f,(float)Math.hypot(dx,dy));
+        float ux=dx/length,uy=dy/length;
+        float px=x-startX-offsetX*length/100f;
+        float py=y-startY-offsetY*length/100f;
+        float along=px*ux+py*uy,across=px*(-uy)+py*ux;
+        float reach=length*Math.max(.01f,scale/100f);
+        switch(type){
+            case "RADIAL":return clamp((float)Math.hypot(px,py)/reach);
+            case "ANGLE":return clamp((float)((Math.atan2(across,along)/
+                (2*Math.PI)+1)%1));
+            case "REFLECTED":return clamp(Math.abs(along)/reach);
+            case "DIAMOND":return clamp((Math.abs(along)+Math.abs(across))/reach);
+            default:return clamp(along/reach);
+        }
+    }
     /** A normalized point in a layer/object rectangle. Offset is percent
      * of dimensions; linear projection spans the full center chord. */
     public float coordinate(float x,float y,float width,float height){
