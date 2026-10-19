@@ -628,17 +628,17 @@ final class AdvancedStudioTest {
         // PhotoCraft reference for Photoshop-style blending.
         check(StudioDocument.Blend.values().length==27,
             "All 27 standard Photoshop RGB layer modes are selectable");
-        int red=0xffff0000,blue=0xff0000ff;
-        check(StudioBlendMath.composite(StudioBlendMath.Mode.MULTIPLY,red,blue,1,0,0)
+        int blendRed=0xffff0000,blendBlue=0xff0000ff;
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.MULTIPLY,blendRed,blendBlue,1,0,0)
                 ==0xff000000,"Multiply black with disjoint primaries");
-        check(StudioBlendMath.composite(StudioBlendMath.Mode.SCREEN,red,blue,1,0,0)
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SCREEN,blendRed,blendBlue,1,0,0)
                 ==0xffff00ff,"Screen is additive complement");
-        check(StudioBlendMath.composite(StudioBlendMath.Mode.DIFFERENCE,red,red,1,0,0)
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.DIFFERENCE,blendRed,blendRed,1,0,0)
                 ==0xff000000,"Difference of identical colors is black");
-        check(StudioBlendMath.composite(StudioBlendMath.Mode.SUBTRACT,blue,red,1,0,0)
-                ==blue,"Subtract operates on backdrop only");
-        check(StudioBlendMath.composite(StudioBlendMath.Mode.NORMAL,red,blue,0,0,0)
-                ==red,"Zero opacity does not change the canvas");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.SUBTRACT,blendBlue,blendRed,1,0,0)
+                ==blendBlue,"Subtract operates on backdrop only");
+        check(StudioBlendMath.composite(StudioBlendMath.Mode.NORMAL,blendRed,blendBlue,0,0,0)
+                ==blendRed,"Zero opacity does not change the canvas");
         for(StudioBlendMath.Mode mode:StudioBlendMath.Mode.values()){
             int result=StudioBlendMath.composite(mode,0x8872b3cc,0x99e74a72,
                 .55f,17,42);
@@ -662,8 +662,10 @@ final class AdvancedStudioTest {
             new RectF(81,26,111,46),2);
         check(Math.abs(layerSnap.dx+1)<.01f,
             "Snapping recognizes another layer's right edge");
-        JSONObject guideJson=guideTest.toJson();
-        StudioDocument reopenedGuides=StudioDocument.fromJson(guideJson);
+        storage.save(guideTest);
+        StudioDocument reopenedGuides=storage.load(guideTest.id);
+        new File(activity.getFilesDir(),"advanced_studio/"+
+            guideTest.id+".noise").delete();
         check(reopenedGuides.verticalGuides.size()==1&&
             reopenedGuides.horizontalGuides.size()==1&&
             reopenedGuides.rulersVisible&&reopenedGuides.snapEnabled,
