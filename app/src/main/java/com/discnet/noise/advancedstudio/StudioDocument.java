@@ -455,7 +455,9 @@ public final class StudioDocument {
     }
     public Bitmap composite(){
         Bitmap result=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
-        render(new Canvas(result));return result;
+        if(hasExtendedBlends())renderDirect(new Canvas(result),result);
+        else render(new Canvas(result));
+        return result;
     }
     public JSONObject toJson()throws JSONException{
         JSONObject j=new JSONObject().put("format",FORMAT_VERSION)
