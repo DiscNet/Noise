@@ -174,8 +174,7 @@ public final class StudioBevelRenderer {
      * The gradient of HEIGHT, not the gradient of the alpha outline,
      * determines the reflected light. Each pixel has a neutral baseline.
      *
-     * Inspired by PhotoCraft's crates/compose/src/effects.rs, licensed MIT
-     * or Apache-2.0, rewritten independently for Android/ARGB memory limits.
+     * Inspired by PhotoCraft's crates/compose/src/effects.rs, licensed Apache-2.0, rewritten independently for Android/ARGB memory limits.
      */
     private static float[] boxPass(float[] data,int w,int h,int radius,boolean horizontal){
         if(radius<=0)return data.clone();
@@ -295,41 +294,66 @@ public final class StudioBevelRenderer {
             boolean outside=cov<=.001f;
             if(outer&&!outside){out[i]=pixel;continue;}
             if(!outer&&!both&&outside){out[i]=pixel;continue;}
-            // Slightly use the outer half of partial pixels for emboss
-            // while avoiding any outside halo on inner bevel.
-            float region=outer?1f-cov:both?1f:cov;
-            if(region<=0){out[i]=pixel;continue;}
+            if(outer&&cov>=1f){out[i]=pixel;continue;}
             float gx=(at(height,W,H,x+1,y)-at(height,W,H,x-1,y))*
                 .5f*depth;
             float gy=(at(height,W,H,x,y+1)-at(height,W,H,x,y-1))*
                 .5f*depth;
-            if(pillow&&cov<.5f){gx=-gx;gy=-gy;}
             float denom=(float)Math.sqrt(1+gx*gx+gy*gy);
-            float reflected=(-gx*lx-gy*ly+se)/denom;
-            float delta=reflected-se;
-            float hi=delta>0?clamp(delta/Math.max(.001f,1-se)):0f;
-            float sh=delta<0?clamp(-delta/Math.max(.001f,se)):0f;
-            // Gloss curves operate on independent light and shade
-            // maps. They never alter the source's alpha or silhouette.
-            if(hi>0)hi=StudioLayerStyles.curve(s,hi);
-            if(sh>0)sh=StudioLayerStyles.curve(s,sh);
-            float lightAmount=clamp(hi*opacity*clamp(s.highlightOpacity)*
-                (Color.alpha(hiColor)/255f));
-            float darkAmount=clamp(sh*opacity*clamp(s.shadowOpacity)*
-                (Color.alpha(shadowColor)/255f));
-            if(outside){
-                if(!outer&&!both)continue;
-                // External bevels have a separate coverage map. No solid
-                // white extrusion / unrelated shadow is generated.
-                float reach=smooth?height[i]:Math.max(0,Math.min(1,height[i]));
-                float glow=clamp(reach*(1-cov));
-                int tint=lightAmount>=darkAmount?hiColor:shadowColor;
-                int opacityPx=Math.round(255*glow*Math.max(lightAmount,darkAmount));
-                out[i]=(opacityPx<<24)|(tint&0xffffff);
+            // Emboss shades inside and outside with identical normals.
+            // Pillow reverses OUTSIDE normals only; a 70%-covered pixel
+            // combines 70% interior with 30% exterior shading.
+            float insideDelta=(-gx*lx-gy*ly+se)/denom-se;
+            float outsideDelta=((pillow?gx:-gx)*lx+
+                (pillow?gy:-gy)*ly+se)/denom-se;
+            float insideHi=insideDelta>0?
+                StudioLayerStyles.curve(s,clamp(insideDelta/Math.max(.001f,1-se))):0f;
+            float insideSh=insideDelta<0?
+                StudioLayerStyles.curve(s,clamp(-insideDelta/Math.max(.001f,se))):0f;
+            float outsideHi=outsideDelta>0?
+                StudioLayerStyles.curve(s,clamp(outsideDelta/Math.max(.001f,1-se))):0f;
+            float outsideSh=outsideDelta<0?
+                StudioLayerStyles.curve(s,clamp(-outsideDelta/Math.max(.001f,se))):0f;
+
+            int shaded=pixel;
+            if(!outer&&cov>0){
+                float light=clamp(insideHi*opacity*clamp(s.highlightOpacity)*
+                    Color.alpha(hiColor)/255f);
+                float dark=clamp(insideSh*opacity*clamp(s.shadowOpacity)*
+                    Color.alpha(shadowColor)/255f);
+                shaded=blend(blend(pixel,hiColor,light,s.highlightBlend),
+                    shadowColor,dark,s.shadowBlend);
+            }
+            float extAlpha=0;
+            int extTint=0;
+            if((outer||both)&&cov<1f){
+                // The outside follows the actual height ramp, never a
+                // translated copy of the glyph or a solid extruded side.
+                float reach=clamp(height[i]*1.65f);
+                float light=clamp(outsideHi*opacity*clamp(s.highlightOpacity)*
+                    Color.alpha(hiColor)/255f);
+                float dark=clamp(outsideSh*opacity*clamp(s.shadowOpacity)*
+                    Color.alpha(shadowColor)/255f);
+                extAlpha=reach*Math.max(light,dark)*(1-cov);
+                extTint=light>=dark?hiColor:shadowColor;
+            }
+            if(extAlpha<=0f){
+                out[i]=outer?pixel:(a<<24)|(shaded&0xffffff);
             }else{
-                int lit=blend(pixel,hiColor,lightAmount,s.highlightBlend);
-                int shaded=blend(lit,shadowColor,darkAmount,s.shadowBlend);
-                out[i]=(a<<24)|(shaded&0xffffff);
+                // Exterior behind interior; premultiplied alpha keeps
+                // the subpixel boundary clean and both halves visible.
+                float interiorAlpha=a/255f;
+                float externalBehind=extAlpha*(1-interiorAlpha);
+                float resultAlpha=interiorAlpha+externalBehind;
+                if(resultAlpha<=0)continue;
+                int red=Math.round((Color.red(shaded)*interiorAlpha+
+                    Color.red(extTint)*externalBehind)/resultAlpha);
+                int green=Math.round((Color.green(shaded)*interiorAlpha+
+                    Color.green(extTint)*externalBehind)/resultAlpha);
+                int blue=Math.round((Color.blue(shaded)*interiorAlpha+
+                    Color.blue(extTint)*externalBehind)/resultAlpha);
+                out[i]=Color.argb(Math.round(255*clamp(resultAlpha)),
+                    red,green,blue);
             }
         }
         Bitmap result=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
