@@ -10,7 +10,7 @@ import java.util.*;
  * history retains independent pixel versions. Vectors/text remain parametric.
  */
 public final class StudioDocument {
-    public static final int FORMAT_VERSION=8, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
+    public static final int FORMAT_VERSION=9, MAX_SIDE=8192, MAX_PIXELS=16_777_216, MAX_LAYERS=40;
     public enum Type { RASTER,SMART,TEXT,RECTANGLE,ELLIPSE }
     public enum Blend {
         NORMAL,DISSOLVE,DARKEN,MULTIPLY,COLOR_BURN,LINEAR_BURN,DARKER_COLOR,

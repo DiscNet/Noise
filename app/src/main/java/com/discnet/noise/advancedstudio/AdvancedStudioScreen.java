@@ -49,6 +49,8 @@ public final class AdvancedStudioScreen extends FrameLayout {
     private int foreground=0xffba8cf0,brushSize=24,brushOpacity=100;
     private RectF pendingCrop;
     private TextView toolMode;
+    private LinearLayout toolOptions;
+    private StudioGradient rasterGradient=StudioGradient.of(0xffba8cf0,0x00ba8cf0);
     private int revision,savedRevision;
     private boolean refreshingPanels;
     private final Runnable deferredPanelRefresh=this::refreshPanelsIfIdle;
@@ -110,8 +112,13 @@ public final class AdvancedStudioScreen extends FrameLayout {
             if(selectedTool==Tool.TRANSFORM)transformDialog();
             else if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
             else if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER)brushSettings();
+            else if(selectedTool==Tool.GRADIENT)gradientSettings();
         }));
-        page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(41)));
+        page.addView(contextBar,new LinearLayout.LayoutParams(-1,dp(39)));
+        toolOptions=new LinearLayout(a);toolOptions.setGravity(Gravity.CENTER_VERTICAL);
+        toolOptions.setPadding(dp(8),0,dp(8),0);
+        toolOptions.setBackgroundColor(0xff201b27);
+        page.addView(toolOptions,new LinearLayout.LayoutParams(-1,dp(43)));
 
         LinearLayout body=new LinearLayout(a);
         boolean wide=a.getResources().getDisplayMetrics().widthPixels>=dp(620);
@@ -127,7 +134,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         toolScroll.setFillViewport(false);
         toolScroll.setVerticalScrollBarEnabled(false);
         toolScroll.addView(tools);
-        working.addView(toolScroll,new LinearLayout.LayoutParams(dp(51),-1));
+        working.addView(toolScroll,new LinearLayout.LayoutParams(dp(49),-1));
         toolGroup("move",Tool.MOVE,Tool.HAND);
         toolGroup("selection",Tool.SELECTION,Tool.CROP);
         toolGroup("brush",Tool.BRUSH,Tool.ERASER,Tool.MASK_HIDE,Tool.MASK_REVEAL);
@@ -142,25 +149,38 @@ public final class AdvancedStudioScreen extends FrameLayout {
         LinearLayout dock=new LinearLayout(a);dock.setOrientation(LinearLayout.VERTICAL);
         dock.setBackgroundColor(panel);
         if(wide)body.addView(dock,new LinearLayout.LayoutParams(dp(220),-1));
-        else body.addView(dock,new LinearLayout.LayoutParams(-1,dp(295)));
+        else {
+            int available=Math.round(a.getResources().getDisplayMetrics().heightPixels/
+                a.getResources().getDisplayMetrics().density*.43f);
+            body.addView(dock,new LinearLayout.LayoutParams(-1,
+                dp(Math.max(254,Math.min(340,available)))));
+        }
         propertyPanel=dock;
         LinearLayout dockHead=new LinearLayout(a);dockHead.setGravity(Gravity.CENTER_VERTICAL);
         dockHead.setPadding(dp(8),0,dp(8),0);
-        dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(42)));
-        TextView layersTitle=action("▤",()->{showTextPanel=false;showTransformPanel=false;updatePanels();});
-        layersTitle.setContentDescription("Painel de camadas");
-        layersTitle.setTextSize(11);layersTitle.setTextColor(accent);
-        dockHead.addView(layersTitle,new LinearLayout.LayoutParams(0,-1,1));
-        TextView textTab=action("T",()->{showTextPanel=true;showTransformPanel=false;updatePanels();});
-        textTab.setContentDescription("Painel de texto");
-        textTab.setTextSize(11);
-        dockHead.addView(textTab,new LinearLayout.LayoutParams(dp(32),-1));
-        dockHead.addView(action("⛶",this::transformDialog),new LinearLayout.LayoutParams(dp(39),-1));
-        dockHead.addView(action("＋",()->layerCommand("Nova camada")));
-        dockHead.addView(action("⧉",()->layerCommand("Duplicar")));
-        dockHead.addView(action("↑",()->layerCommand("Para cima")));
-        dockHead.addView(action("↓",()->layerCommand("Para baixo")));
-        dockHead.addView(action("×",()->layerCommand("Excluir")));
+        dock.addView(dockHead,new LinearLayout.LayoutParams(-1,dp(40)));
+        HorizontalScrollView panelButtonsScroll=new HorizontalScrollView(a);
+        panelButtonsScroll.setHorizontalScrollBarEnabled(false);
+        dockHead.addView(panelButtonsScroll,new LinearLayout.LayoutParams(-1,-1));
+        LinearLayout panelButtons=new LinearLayout(a);
+        panelButtons.setGravity(Gravity.CENTER_VERTICAL);
+        panelButtonsScroll.addView(panelButtons,new android.widget.FrameLayout.LayoutParams(-2,-1));
+        String[] commands={"▤","T","⛶","＋","⧉","↑","↓","×"};
+        Runnable[] panelActions={
+            ()->{showTextPanel=false;showTransformPanel=false;updatePanels();},
+            ()->{showTextPanel=true;showTransformPanel=false;updatePanels();},
+            this::transformDialog,()->layerCommand("Nova camada"),
+            ()->layerCommand("Duplicar"),()->layerCommand("Para cima"),
+            ()->layerCommand("Para baixo"),()->layerCommand("Excluir")
+        };
+        String[] hints={"Camadas","Texto","Transformar","Nova camada",
+            "Duplicar","Subir camada","Descer camada","Excluir"};
+        for(int i=0;i<commands.length;i++){
+            TextView v=action(commands[i],panelActions[i]);
+            v.setGravity(Gravity.CENTER);v.setTextSize(16);v.setPadding(0,0,0,0);
+            v.setContentDescription(hints[i]);
+            panelButtons.addView(v,new LinearLayout.LayoutParams(dp(37),dp(39)));
+        }
         layerPane=new LinearLayout(a);layerPane.setOrientation(LinearLayout.VERTICAL);
         dock.addView(layerPane,new LinearLayout.LayoutParams(-1,0,1));
         blendButton=action("Normal  ⌄",this::blendDialog);
@@ -168,27 +188,26 @@ public final class AdvancedStudioScreen extends FrameLayout {
         blendRow.setGravity(Gravity.CENTER_VERTICAL);
         blendRow.setPadding(dp(10),0,dp(10),0);
         blendRow.setBackgroundColor(0xff211c29);
-        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(35)));
-        blendRow.addView(text("MESCLAGEM",10,muted),
-            new LinearLayout.LayoutParams(dp(78),dp(33)));
+        layerPane.addView(blendRow,new LinearLayout.LayoutParams(-1,dp(43)));
+        blendRow.addView(text("MODO",10,muted),
+            new LinearLayout.LayoutParams(dp(42),dp(33)));
         blendButton.setTextColor(accent);blendButton.setTextSize(12);
         blendRow.addView(blendButton,new LinearLayout.LayoutParams(0,dp(34),1));
         LinearLayout alphaRow=new LinearLayout(a);alphaRow.setGravity(Gravity.CENTER_VERTICAL);
         alphaRow.setPadding(dp(10),0,dp(10),0);
-        layerPane.addView(alphaRow,new LinearLayout.LayoutParams(-1,dp(35)));
-        opacityLabel=text("OPACIDADE",10,muted);
-        alphaRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(79),-1));
+        opacityLabel=text("OPAC.",9,muted);
+        blendRow.addView(opacityLabel,new LinearLayout.LayoutParams(dp(43),-1));
         opacity=new SeekBar(a);opacity.setMax(100);
         opacity.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
         opacity.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
-        alphaRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
+        blendRow.addView(opacity,new LinearLayout.LayoutParams(0,-1,1));
         opacityInput=new EditText(a);opacityInput.setSingleLine(true);
         opacityInput.setTextSize(12);opacityInput.setTextColor(accent);
         opacityInput.setGravity(Gravity.CENTER);
         opacityInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         opacityInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         opacityInput.setSelectAllOnFocus(true);
-        alphaRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(48),dp(32)));
+        blendRow.addView(opacityInput,new LinearLayout.LayoutParams(dp(41),dp(32)));
         opacityInput.setOnEditorActionListener((v,action,event)->{
             try{
                 StudioDocument.Layer selected=document.active();
@@ -250,25 +269,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         footer.addView(action("−",()->canvas.zoomBy(.8f)));
         footer.addView(action("+",()->canvas.zoomBy(1.25f)));
         page.addView(footer,new LinearLayout.LayoutParams(-1,dp(37)));
-        LinearLayout properties=new LinearLayout(a);properties.setGravity(Gravity.CENTER_VERTICAL);
-        properties.setPadding(dp(7),0,dp(7),0);
-        properties.setBackgroundColor(0xff201b27);
-        page.addView(properties,new LinearLayout.LayoutParams(-1,dp(45)));
-        properties.addView(action("◉ Cor",this::colorDialog),
-            new LinearLayout.LayoutParams(0,-1,1));
-        TextView brushAction=action("✎ Pincel",this::brushSettings);
-        brushAction.setContentDescription("Configurações de pincel e borracha");
-        properties.addView(brushAction,new LinearLayout.LayoutParams(0,-1,1));
-        TextView free=action("↔ Livre",()->{
-            keepAspect=!keepAspect;
-            message(keepAspect?"Proporção vinculada":"Proporção desligada: esticar livremente");
-        });
-        free.setContentDescription("Alternar proporções vinculadas para transformação");
-        properties.addView(free,new LinearLayout.LayoutParams(0,-1,1));
-        properties.addView(action("T",()->{
-            showTextPanel=true;showTransformPanel=false;updatePanels();
-        }),new LinearLayout.LayoutParams(dp(33),-1));
-        updateToolbar();
+        updateToolbar();updateToolOptions();
         updateUi();
         if(imported!=null)scheduleSave();
     }
@@ -294,17 +295,18 @@ public final class AdvancedStudioScreen extends FrameLayout {
     }
     private void activateTool(Tool t){
         selectedTool=t;toolMode.setText(toolName(t));
+        updateToolOptions();
         if(t==Tool.TEXT){showTextPanel=true;showTransformPanel=false;updatePanels();}
         if(t==Tool.TRANSFORM){showTextPanel=false;showTransformPanel=true;updatePanels();}
         updateToolbar();canvas.invalidate();
     }
     private void toolGroup(String icon,Tool first,Tool... variants){
         FrameLayout button=new FrameLayout(activity);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(45),dp(44));
-        lp.setMargins(dp(3),dp(1),dp(3),dp(1));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(41),dp(42));
+        lp.setMargins(dp(1),dp(1),dp(1),dp(1));
         tools.addView(button,lp);
         StudioToolIcon glyph=new StudioToolIcon(activity,icon);
-        FrameLayout.LayoutParams ip=new FrameLayout.LayoutParams(dp(27),dp(27),Gravity.CENTER);
+        FrameLayout.LayoutParams ip=new FrameLayout.LayoutParams(dp(25),dp(25),Gravity.CENTER);
         button.addView(glyph,ip);
         if(variants.length>0){
             TextView marker=text("⌄",10,muted);marker.setGravity(Gravity.CENTER);
@@ -344,6 +346,61 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 if(toolGroups.get(glyph.getKey())==button)
                     glyph.getValue().setSelectedTool(active);
         }
+    }
+    /** Contextual options live above the canvas, never in layer inspector. */
+    private void updateToolOptions(){
+        if(toolOptions==null)return;
+        toolOptions.removeAllViews();
+        if(selectedTool==Tool.BRUSH||selectedTool==Tool.ERASER||
+           selectedTool==Tool.MASK_HIDE||selectedTool==Tool.MASK_REVEAL){
+            toolOptions.addView(action("● Cor",this::colorDialog),
+                new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action("✎ "+brushSize+" px",this::brushSettings),
+                new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action(brushOpacity+"% · Opac.",this::brushSettings),
+                new LinearLayout.LayoutParams(0,-1,1));
+        }else if(selectedTool==Tool.GRADIENT){
+            toolOptions.addView(action("◩ Degradê",this::gradientSettings),
+                new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action(gradientName(rasterGradient.type),this::gradientSettings),
+                new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action("Editar pontos",this::gradientSettings),
+                new LinearLayout.LayoutParams(0,-1,1));
+        }else if(selectedTool==Tool.BUCKET||selectedTool==Tool.RECTANGLE||
+            selectedTool==Tool.ELLIPSE||selectedTool==Tool.TEXT){
+            toolOptions.addView(action("● Cor",this::colorDialog),
+                new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action("Propriedades da camada",()->{
+                if(selectedTool==Tool.TEXT){showTextPanel=true;showTransformPanel=false;}
+                else{showTextPanel=false;showTransformPanel=false;}
+                updatePanels();
+            }),new LinearLayout.LayoutParams(0,-1,2));
+        }else if(selectedTool==Tool.TRANSFORM||selectedTool==Tool.MOVE){
+            toolOptions.addView(action(keepAspect?"↔ Proporção vinculada":"↔ Transformação livre",()->{
+                keepAspect=!keepAspect;updateToolOptions();
+            }),new LinearLayout.LayoutParams(0,-1,1));
+            toolOptions.addView(action("Transformar",this::transformDialog),
+                new LinearLayout.LayoutParams(0,-1,1));
+        }else{
+            TextView hint=text("Ferramenta: "+toolName(selectedTool),11,muted);
+            toolOptions.addView(hint);
+        }
+    }
+    private String gradientName(String type){
+        switch(type){
+            case "RADIAL":return "Radial";
+            case "ANGLE":return "Angular";
+            case "REFLECTED":return "Refletido";
+            case "DIAMOND":return "Diamante";
+            default:return "Linear";
+        }
+    }
+    private void gradientSettings(){
+        StudioGradientEditor.show(activity,"Degradê da ferramenta",
+            rasterGradient,gradient->{
+                rasterGradient=gradient;updateToolOptions();
+                message("Degradê configurado · arraste na camada raster");
+            });
     }
     private void brushSettings(){
         LinearLayout panel=new LinearLayout(activity);panel.setOrientation(LinearLayout.VERTICAL);
@@ -504,7 +561,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         TextView label=text(title,12,ink),detail=text(value,12,accent);
         row.addView(label,new LinearLayout.LayoutParams(0,dp(41),1));
         detail.setSingleLine(true);detail.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        row.addView(detail,new LinearLayout.LayoutParams(dp(138),dp(41)));
+        row.addView(detail,new LinearLayout.LayoutParams(0,dp(41),1.1f));
         row.setOnClickListener(v->action.run());
         row.setBackgroundColor(0xff241f2b);
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(42));
@@ -737,15 +794,6 @@ public final class AdvancedStudioScreen extends FrameLayout {
             });
         }
         textPanel.addView(swatches,new LinearLayout.LayoutParams(-1,dp(34)));
-        inspectorField(textPanel,layer,"Vermelho","R",Color.red(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Math.round(v),
-                Color.green(l.color),Color.blue(l.color)),false);
-        inspectorField(textPanel,layer,"Verde","G",Color.green(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
-                Math.round(v),Color.blue(l.color)),false);
-        inspectorField(textPanel,layer,"Azul","B",Color.blue(layer.color),0,255,1,
-            (l,v)->l.color=Color.argb(Color.alpha(l.color),Color.red(l.color),
-                Color.green(l.color),Math.round(v)),false);
         textOption("Negrito",layer.fontBold?"Ativado":"Desativado",()->textSetting("bold"));
         textOption("Itálico",layer.fontItalic?"Ativado":"Desativado",()->textSetting("italic"));
         inspectorField(textPanel,layer,"Espaç. letras","em",layer.letterSpacing,-.2f,1.5f,.01f,
@@ -1231,7 +1279,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         int pos=Arrays.asList(ids).indexOf(current);
         TextView selected=action(pos<0?current:names[pos]+"  ⌄",()->{});
         selected.setTextSize(11);selected.setTextColor(accent);
-        row.addView(selected,new LinearLayout.LayoutParams(dp(125),dp(39)));
+        row.addView(selected,new LinearLayout.LayoutParams(0,dp(39),1.1f));
         selected.setOnClickListener(v->{
             PopupMenu menu=new PopupMenu(activity,selected);
             for(int k=0;k<ids.length;k++)
@@ -1267,6 +1315,25 @@ public final class AdvancedStudioScreen extends FrameLayout {
         }));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(43));
         lp.bottomMargin=dp(4);effectControls.addView(row,lp);
+    }
+    private void styleGradient(StudioDocument.Layer layer,StudioLayerStyles.Style style){
+        LinearLayout row=new LinearLayout(activity);row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(10),0,dp(8),0);
+        row.setBackgroundColor(0xff292331);
+        TextView name=text("Degradê · "+gradientName(style.gradient.type),12,ink);
+        row.addView(name,new LinearLayout.LayoutParams(0,dp(46),1));
+        TextView edit=action("Editar ↗",()->{
+            StudioGradientEditor.show(activity,"Degradê · "+style.kind.title,
+                style.gradient,gradient->{
+                    if(layer.locked)return;
+                    document.checkpoint();style.gradient=gradient;changed(true);
+                });
+        });
+        edit.setTextColor(accent);
+        row.addView(edit,new LinearLayout.LayoutParams(dp(96),dp(46)));
+        row.setOnClickListener(v->edit.performClick());
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(46));
+        lp.bottomMargin=dp(8);effectControls.addView(row,lp);
     }
     private void styleToggle(StudioDocument.Layer layer,String label,
                              boolean current,java.util.function.Consumer<Boolean> setter){
@@ -1310,15 +1377,14 @@ public final class AdvancedStudioScreen extends FrameLayout {
             case COLOR_OVERLAY:
                 styleColor(layer,"Cor",style.color,v->style.color=v);break;
             case GRADIENT_OVERLAY:
-                styleColor(layer,"Cor inicial",style.color,v->style.color=v);
-                styleColor(layer,"Cor final",style.color2,v->style.color2=v);
-                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
-                styleValue(layer,"Escala","%",style.gradientScale,10,400,5,
-                    v->style.gradientScale=(float)v);
-                styleToggle(layer,"Inverter degradê",style.reverse,v->style.reverse=v);
+                styleGradient(layer,style);
                 break;
             case STROKE:
-                styleColor(layer,"Cor do contorno",style.color,v->style.color=v);
+                styleChoice(effectControls,layer,"Preenchimento",
+                    new String[]{"Cor sólida","Degradê"},
+                    new String[]{"COLOR","GRADIENT"},style.strokeFill,v->style.strokeFill=v);
+                if("GRADIENT".equals(style.strokeFill))styleGradient(layer,style);
+                else styleColor(layer,"Cor do contorno",style.color,v->style.color=v);
                 styleValue(layer,"Espessura","px",style.size,1,64,1,v->style.size=(float)v);
                 styleChoice(effectControls,layer,"Posição",
                     new String[]{"Fora","Dentro","Centro"},
@@ -1326,7 +1392,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     v->style.position=v);
                 break;
             case INNER_GLOW:case OUTER_GLOW:
-                styleColor(layer,"Cor do brilho",style.color,v->style.color=v);
+                styleChoice(effectControls,layer,"Preenchimento",
+                    new String[]{"Cor sólida","Degradê"},
+                    new String[]{"COLOR","GRADIENT"},style.strokeFill,v->style.strokeFill=v);
+                if("GRADIENT".equals(style.strokeFill))styleGradient(layer,style);
+                else styleColor(layer,"Cor do brilho",style.color,v->style.color=v);
                 styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
                 styleValue(layer,style.kind==StudioLayerStyles.Kind.OUTER_GLOW?"Expansão":"Contração",
                     "%",style.spread,0,100,1,v->style.spread=(float)v);
@@ -2166,7 +2236,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             StudioTransformMath.inversePoint(l,startDocX,startDocY)[1],
                             StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[0],
                             StudioTransformMath.inversePoint(l,docX(e.getX()),docY(e.getY()))[1],
-                            foreground,Color.TRANSPARENT);
+                            rasterGradient);
                         changed(true);
                     }catch(Exception ex){message(ex.getMessage());}
                 }
