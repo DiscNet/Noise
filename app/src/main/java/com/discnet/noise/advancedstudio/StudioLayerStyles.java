@@ -246,10 +246,17 @@ public final class StudioLayerStyles {
                     break;
                 }
                 case OUTER_GLOW:
-                    t=(1-coverage)*curve(s,cap(1-de/fade));break;
+                    t=(1-coverage)*curve(s,cap(1-de/fade));
+                    if("GRADIENT".equals(s.strokeFill))
+                        pigment=s.gradient.color(cap(de/fade),x,y);
+                    break;
                 case INNER_GLOW:
                     t=coverage*curve(s,s.sourceCenter?
-                        cap(di/Math.max(1,radius)):cap(1-di/fade));break;
+                        cap(di/Math.max(1,radius)):cap(1-di/fade));
+                    if("GRADIENT".equals(s.strokeFill))
+                        pigment=s.gradient.color(s.sourceCenter?
+                            cap(1-di/Math.max(1,radius)):cap(di/fade),x,y);
+                    break;
                 case INNER_SHADOW: {
                     int sx=Math.round(x+dx*s.distance),sy=Math.round(y+dy*s.distance);
                     float shifted= sx>=0&&sx<W&&sy>=0&&sy<H?
