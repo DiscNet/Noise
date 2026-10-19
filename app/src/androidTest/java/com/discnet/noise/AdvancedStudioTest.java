@@ -494,11 +494,11 @@ final class AdvancedStudioTest {
         rectangle.styles.add(bevelPlate);
         Bitmap plateRender=plate.composite();
         int center=plateRender.getPixel(80,60);
-        int top=plateRender.getPixel(80,24);
-        int bottom=plateRender.getPixel(80,96);
+        int litTopEdge=plateRender.getPixel(80,24);
+        int litBottomEdge=plateRender.getPixel(80,96);
         check((center&0xffffff)==(rectangle.color&0xffffff),
             "Smooth bevel center stays neutral, no dirty gray overlay");
-        check(top!=bottom,
+        check(litTopEdge!=litBottomEdge,
             "Directional light produces distinct highlight and shadow along the bevel");
         check(Color.alpha(plateRender.getPixel(8,8))==0,
             "Bevel does not create stray pixels outside the original rectangle");
