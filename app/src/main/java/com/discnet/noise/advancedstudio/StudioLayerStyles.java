@@ -302,9 +302,12 @@ public final class StudioLayerStyles {
         output.setPixels(argb,0,W,0,0,W,H);return output;
     }
     private static java.util.ArrayList<Style> fillOverlays(StudioDocument.Layer layer){
+        // Stable semantic bottom-to-top stacking, independent of effect-list
+        // insertion order: Pattern -> Gradient -> Color.
         java.util.ArrayList<Style> overlays=new java.util.ArrayList<>();
-        for(Style fx:layer.styles)if(fx.enabled&&isFillOverlay(fx))
-            overlays.add(fx);
+        Kind[] order={Kind.PATTERN_OVERLAY,Kind.GRADIENT_OVERLAY,Kind.COLOR_OVERLAY};
+        for(Kind kind:order)for(Style fx:layer.styles)
+            if(fx.enabled&&fx.kind==kind)overlays.add(fx);
         return overlays;
     }
     private static boolean isFillOverlay(Style fx){
@@ -379,7 +382,7 @@ public final class StudioLayerStyles {
                 off.drawBitmap(source,padding,padding,normal);
                 // The fill overlays are content colors: before all surface,
                 // stroke and lighting effects, independently of panel order.
-                for(Style style:layer.styles)if(style.enabled&&isFillOverlay(style)){
+                for(Style style:fillOverlays(layer)){
                     Bitmap fx=cached(layer,source,style,padding,true);
                     blendEffect(group,off,fx,style,255);
                 }
@@ -434,7 +437,7 @@ public final class StudioLayerStyles {
         }
         if(bevel==null){
             canvas.drawBitmap(source,0,0,paint);
-            for(Style style:layer.styles)if(style.enabled&&isFillOverlay(style)){
+            for(Style style:fillOverlays(layer)){
                 Bitmap fx=cached(layer,source,style,padding,true);
                 canvas.drawBitmap(fx,-padding,-padding,
                     compositingPaint(style,layer.opacity*style.opacity));
