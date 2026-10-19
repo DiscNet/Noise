@@ -1764,6 +1764,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
         private StudioRasterTools.Stroke stroke;
         private StudioLayerEffects.MaskStroke maskStroke;
         private Bitmap pixelAnts,selectionRef;
+        private Float snapGuideX,snapGuideY;
         private Bitmap buildPixelAnts(){
             Bitmap mask=document.selectionPixels;
             if(mask==null)return null;
@@ -1864,6 +1865,38 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 c.drawCircle(points[i][0],points[i][1],2.7f/scale(),paint);
             }
         }
+        private void drawGuides(Canvas c){
+            paint.setShader(null);paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(.5f,.9f/scale()));
+            if(document.guidesVisible){
+                paint.setColor(0xff64bacd);
+                for(float x:document.verticalGuides)
+                    c.drawLine(x,0,x,document.height,paint);
+                for(float y:document.horizontalGuides)
+                    c.drawLine(0,y,document.width,y,paint);
+            }
+            paint.setColor(0xffe2b4ff);paint.setStrokeWidth(Math.max(.8f,1.3f/scale()));
+            if(snapGuideX!=null)c.drawLine(snapGuideX,0,snapGuideX,document.height,paint);
+            if(snapGuideY!=null)c.drawLine(0,snapGuideY,document.width,snapGuideY,paint);
+            paint.setStyle(Paint.Style.FILL);
+            if(document.rulersVisible){
+                float tickStep=document.width>2000?250:document.width>500?100:25;
+                paint.setColor(0xaa19151e);
+                c.drawRect(0,0,document.width,Math.min(21/scale(),document.height),paint);
+                c.drawRect(0,0,Math.min(24/scale(),document.width),document.height,paint);
+                paint.setColor(0xffd2afed);
+                paint.setTextSize(10/scale());
+                for(float x=0;x<document.width;x+=tickStep){
+                    c.drawLine(x,0,x,7/scale(),paint);
+                    c.drawText(String.valueOf(Math.round(x)),x+2/scale(),18/scale(),paint);
+                }
+                for(float y=0;y<document.height;y+=tickStep){
+                    c.drawLine(0,y,7/scale(),y,paint);
+                    c.save();c.translate(18/scale(),y+2/scale());c.rotate(-90);
+                    c.drawText(String.valueOf(Math.round(y)),0,0,paint);c.restore();
+                }
+            }
+        }
         @Override protected void onDraw(Canvas c){
             super.onDraw(c);
             if(document==null)return;
@@ -1881,6 +1914,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         c.drawRect(x,y,Math.min(x+cell,document.width),
                             Math.min(y+cell,document.height),paint);
             document.render(c);
+            drawGuides(c);
             StudioDocument.Layer current=document.active();
             if(selectedTool==Tool.MOVE&&current!=null)
                 outline(c,activeBounds(current),0xffbd91e9);
@@ -1907,6 +1941,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                 startDocX=docX(lastX);startDocY=docY(lastY);
                 gestureMoving=false;gestureUsed=false;transformHandle=0;
                 gestureRect=null;stroke=null;maskStroke=null;
+                snapGuideX=snapGuideY=null;
                 if(!inDocument(startDocX,startDocY))return true;
                 switch(selectedTool){
                     case MASK_HIDE:case MASK_REVEAL:
@@ -2027,28 +2062,16 @@ public final class AdvancedStudioScreen extends FrameLayout {
                             selected.rotation=originalRotation+
                                 (float)Math.toDegrees(b-a);
                         }else{
-                            float rad=(float)Math.toRadians(originalRotation);
-                            float u=(float)(Math.cos(rad)*diffX+Math.sin(rad)*diffY);
-                            float v=(float)(-Math.sin(rad)*diffX+Math.cos(rad)*diffY);
-                            int index=transformHandle;
-                            float hSide=(index==1||index==4||index==6)?-1:
-                                (index==3||index==5||index==8)?1:0;
-                            float vSide=index<=3?-1:index>=6?1:0;
-                            float xs=Math.abs(originalScaleX),ys=Math.abs(originalScaleY);
-                            if(hSide!=0)
-                                xs=Math.max(.01f,Math.min(16,xs+hSide*u/
-                                    Math.max(1,selected.naturalWidth())));
-                            if(vSide!=0)
-                                ys=Math.max(.01f,Math.min(16,ys+vSide*v/
-                                    Math.max(1,selected.naturalHeight())));
-                            if(keepAspect){
-                                float ratio=hSide!=0?xs/Math.abs(originalScaleX):
-                                    ys/Math.abs(originalScaleY);
-                                xs=Math.max(.01f,Math.min(16,Math.abs(originalScaleX)*ratio));
-                                ys=Math.max(.01f,Math.min(16,Math.abs(originalScaleY)*ratio));
-                            }
-                            selected.scaleX=Math.copySign(xs,originalScaleX);
-                            selected.scaleY=Math.copySign(ys,originalScaleY);
+                            StudioTransformMath.resizeFromHandle(selected,transformHandle,
+                                diffX,diffY,originalX,originalY,originalScaleX,
+                                originalScaleY,originalRotation,keepAspect);
+                        }
+                        if(transformHandle==-1){
+                            StudioSnapGuides.Result match=StudioSnapGuides.snap(
+                                document,selected,StudioTransformMath.bounds(selected),
+                                dp(7)/scale());
+                            selected.x+=match.dx;selected.y+=match.dy;
+                            snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                         }
                         invalidate();
                     }
@@ -2061,6 +2084,11 @@ public final class AdvancedStudioScreen extends FrameLayout {
                         if(gestureMoving){
                             current.x+=dx/scale();
                             current.y+=dy/scale();
+                            StudioSnapGuides.Result match=StudioSnapGuides.snap(
+                                document,current,StudioTransformMath.bounds(current),
+                                dp(7)/scale());
+                            current.x+=match.dx;current.y+=match.dy;
+                            snapGuideX=match.xGuide;snapGuideY=match.yGuide;
                             invalidate();
                         }
                     }
@@ -2117,6 +2145,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
                     }catch(Exception ex){message(ex.getMessage());}
                 }
                 gestureRect=null;gestureMoving=false;gestureUsed=false;transformHandle=0;
+                snapGuideX=snapGuideY=null;
                 invalidate();return true;
             }
             return true;
