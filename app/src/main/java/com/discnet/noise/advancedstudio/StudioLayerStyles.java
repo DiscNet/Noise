@@ -17,7 +17,8 @@ public final class StudioLayerStyles {
         BEVEL_EMBOSS("Bisel e relevo"),DROP_SHADOW("Sombra projetada"),
         INNER_SHADOW("Sombra interna"),OUTER_GLOW("Brilho externo"),
         INNER_GLOW("Brilho interno"),STROKE("Contorno"),
-        COLOR_OVERLAY("Sobreposição de cor"),GRADIENT_OVERLAY("Sobreposição de degradê");
+        COLOR_OVERLAY("Sobreposição de cor"),GRADIENT_OVERLAY("Sobreposição de degradê"),
+        SATIN("Acetinado"),PATTERN_OVERLAY("Sobreposição de padrão");
         public final String title;
         Kind(String title){this.title=title;}
     }
@@ -25,6 +26,7 @@ public final class StudioLayerStyles {
         public final Kind kind;
         public boolean enabled=true,reverse=false,sourceCenter=false,antiAlias=true;
         public String highlightBlend="SCREEN",shadowBlend="MULTIPLY";
+        public String pattern="CHECKER";
         public String blend="NORMAL",position="OUTSIDE",contour="LINEAR",bevelStyle="INNER_BEVEL",
             technique="SMOOTH",direction="UP";
         public int color=0xff000000,color2=0xffffffff,highlight=0xffffffff,shade=0xff000000;
@@ -38,11 +40,13 @@ public final class StudioLayerStyles {
             if(kind==Kind.COLOR_OVERLAY){color=0xffb77fff;opacity=1;}
             if(kind==Kind.GRADIENT_OVERLAY){color=0xff7545dc;color2=0xfffcab66;opacity=1;}
             if(kind==Kind.BEVEL_EMBOSS){size=5;depth=100;}
+            if(kind==Kind.SATIN){color=0xff291c44;distance=12;size=9;angle=30;blend="MULTIPLY";}
+            if(kind==Kind.PATTERN_OVERLAY){color=0xffb79ae3;color2=0xffeae2fa;opacity=1;}
         }
         public Style copy(){
             Style s=new Style(kind);s.enabled=enabled;s.reverse=reverse;s.sourceCenter=sourceCenter;
             s.antiAlias=antiAlias;s.blend=blend;s.position=position;s.contour=contour;
-            s.highlightBlend=highlightBlend;s.shadowBlend=shadowBlend;
+            s.highlightBlend=highlightBlend;s.shadowBlend=shadowBlend;s.pattern=pattern;
             s.bevelStyle=bevelStyle;s.technique=technique;s.direction=direction;
             s.color=color;s.color2=color2;s.highlight=highlight;s.shade=shade;
             s.opacity=opacity;s.size=size;s.distance=distance;s.angle=angle;s.spread=spread;
@@ -55,7 +59,7 @@ public final class StudioLayerStyles {
                 .put("reverse",reverse).put("sourceCenter",sourceCenter)
                 .put("antiAlias",antiAlias).put("blend",blend).put("position",position)
                 .put("contour",contour).put("highlightBlend",highlightBlend)
-                .put("shadowBlend",shadowBlend).put("bevelStyle",bevelStyle)
+                .put("shadowBlend",shadowBlend).put("pattern",pattern).put("bevelStyle",bevelStyle)
                 .put("technique",technique).put("direction",direction)
                 .put("color",color).put("color2",color2).put("highlight",highlight)
                 .put("shade",shade).put("opacity",opacity).put("size",size)
@@ -75,6 +79,7 @@ public final class StudioLayerStyles {
             s.contour=j.optString("contour","LINEAR");
             s.highlightBlend=j.optString("highlightBlend","SCREEN");
             s.shadowBlend=j.optString("shadowBlend","MULTIPLY");
+            s.pattern=j.optString("pattern","CHECKER");
             s.bevelStyle=j.optString("bevelStyle","INNER_BEVEL");
             s.technique=j.optString("technique","SMOOTH");s.direction=j.optString("direction","UP");
             s.color=j.optInt("color",s.color);s.color2=j.optInt("color2",s.color2);
@@ -147,21 +152,13 @@ public final class StudioLayerStyles {
     private static Paint compositingPaint(Style s,float opacity){
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
         p.setAlpha(Math.round(255*cap(opacity)));
-        if(Build.VERSION.SDK_INT>=29){
-            BlendMode bm=BlendMode.SRC_OVER;
-            switch(s.blend){
-                case "MULTIPLY":bm=BlendMode.MULTIPLY;break;
-                case "SCREEN":bm=BlendMode.SCREEN;break;
-                case "OVERLAY":bm=BlendMode.OVERLAY;break;
-                case "DARKEN":bm=BlendMode.DARKEN;break;
-                case "LIGHTEN":bm=BlendMode.LIGHTEN;break;
-                case "ADD":bm=BlendMode.PLUS;break;
-            }
-            p.setBlendMode(bm);
-        }else if(s.blend.equals("MULTIPLY"))
-            p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.MULTIPLY));
-        else if(s.blend.equals("SCREEN"))
-            p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SCREEN));
+        android.graphics.BlendMode bm=StudioBlendMath.nativeBlend(
+            StudioBlendMath.of(s.blend));
+        if(bm!=null&&Build.VERSION.SDK_INT>=29)p.setBlendMode(bm);
+        else if("MULTIPLY".equals(s.blend))p.setXfermode(
+            new PorterDuffXfermode(PorterDuff.Mode.MULTIPLY));
+        else if("SCREEN".equals(s.blend))p.setXfermode(
+            new PorterDuffXfermode(PorterDuff.Mode.SCREEN));
         return p;
     }
     private static int[] distance(int[] alpha,int w,int h,boolean inside){
@@ -261,6 +258,32 @@ public final class StudioLayerStyles {
                     }
                     break;
                 }
+                case SATIN: {
+                    int shiftX=Math.round(dx*s.distance),shiftY=Math.round(dy*s.distance);
+                    int ax=x+shiftX,ay=y+shiftY,bx=x-shiftX,by=y-shiftY;
+                    float one=ax>=0&&ay>=0&&ax<W&&ay<H?alpha[ay*W+ax]/255f:0;
+                    float two=bx>=0&&by>=0&&bx<W&&by<H?alpha[by*W+bx]/255f:0;
+                    // Crossing displaced masks creates an inner satin ribbon;
+                    // distance and contour control the soft falloff.
+                    t=coverage*curve(s,cap(Math.abs(one-two)*.8f+
+                        (1-Math.min(one,two))*.2f))*cap(1-(di/Math.max(1,s.size))*.28f);
+                    break;
+                }
+                case PATTERN_OVERLAY: {
+                    float rad=(float)Math.toRadians(s.angle);
+                    float px=(float)(Math.cos(rad)*(x-padding)+Math.sin(rad)*(y-padding));
+                    float py=(float)(-Math.sin(rad)*(x-padding)+Math.cos(rad)*(y-padding));
+                    float scale=Math.max(2,12*s.gradientScale/100f);
+                    int ix=(int)Math.floor(px/scale),iy=(int)Math.floor(py/scale);
+                    if("DOTS".equals(s.pattern)){
+                        float cx=(px/scale)-(float)Math.floor(px/scale)-.5f;
+                        float cy=(py/scale)-(float)Math.floor(py/scale)-.5f;
+                        pigment=cx*cx+cy*cy<.14f?s.color:s.color2;
+                    }else if("STRIPES".equals(s.pattern))
+                        pigment=(ix&1)==0?s.color:s.color2;
+                    else pigment=((ix+iy)&1)==0?s.color:s.color2;
+                    t=coverage;break;
+                }
                 case COLOR_OVERLAY:t=coverage;break;
                 case GRADIENT_OVERLAY: {
                     float gradient=(float)((x-padding-w*.5)*dx+
@@ -332,6 +355,7 @@ public final class StudioLayerStyles {
         for(Style s:layer.styles)if(s.enabled&&
             (s.kind==Kind.COLOR_OVERLAY||s.kind==Kind.GRADIENT_OVERLAY||
              s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
+             s.kind==Kind.SATIN||s.kind==Kind.PATTERN_OVERLAY||
              s.kind==Kind.STROKE&&!"OUTSIDE".equals(s.position))){
             Bitmap fx=cached(layer,source,s,padding,true);
             canvas.drawBitmap(fx,-padding,-padding,
