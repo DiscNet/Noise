@@ -756,11 +756,11 @@ final class AdvancedStudioTest {
                 live.shadowEnabled=true;live.shadowRadius=2;
                 Method update=AdvancedStudioScreen.class.getDeclaredMethod("updateUi");
                 update.setAccessible(true);update.invoke(opened[0]);
-                View textTab=label(opened[0],"TEXTO");
+                View textTab=label(opened[0],"T");
                 check(textTab!=null,"Text panel tab is mounted");
                 textTab.performClick();
                 incrementFirstInspector(opened[0]);
-                View layerTab=label(opened[0],"CAMADAS");
+                View layerTab=label(opened[0],"▤");
                 check(layerTab!=null,"Layer panel tab is mounted");
                 layerTab.performClick();
                 View styles=label(opened[0],"fx");
