@@ -93,7 +93,7 @@ public final class AdvancedStudioScreen extends FrameLayout {
             this::maskCommand);
         commandMenu("Filtros",new String[]{"Adicionar filtro","Gerenciar filtros"},
             this::filterCommand);
-        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Remover sombra"},
+        commandMenu("Estilos",new String[]{"Adicionar estilo","Bisel e relevo","Sombra projetada","Sombra interna","Brilho externo","Brilho interno","Contorno","Sobreposição de cor","Sobreposição de degradê","Acetinado","Sobreposição de padrão","Remover sombra"},
             this::styleCommand);
         commandMenu("Texto",new String[]{"Novo texto","Painel Caractere / Parágrafo"},this::textCommand);
         commandMenu("Visualizar",new String[]{"Ajustar à tela","Zoom +","Zoom −","Réguas","Mostrar guias","Alinhar automaticamente","Nova guia vertical","Nova guia horizontal","Guias ao centro","Limpar guias","Camadas","Texto"},
@@ -1290,6 +1290,23 @@ public final class AdvancedStudioScreen extends FrameLayout {
             styleValue(layer,"Opacidade","%",style.opacity*100,0,100,1,v->style.opacity=(float)(v/100));
         }
         switch(style.kind){
+            case SATIN:
+                styleColor(layer,"Cor acetinada",style.color,v->style.color=v);
+                styleValue(layer,"Distância","px",style.distance,0,128,1,v->style.distance=(float)v);
+                styleValue(layer,"Tamanho","px",style.size,1,128,1,v->style.size=(float)v);
+                styleValue(layer,"Ângulo","°",style.angle,-180,180,1,v->style.angle=(float)v);
+                break;
+            case PATTERN_OVERLAY:
+                styleChoice(effectControls,layer,"Padrão",
+                    new String[]{"Xadrez","Listras","Pontos"},
+                    new String[]{"CHECKER","STRIPES","DOTS"},style.pattern,v->style.pattern=v);
+                styleColor(layer,"Cor 1",style.color,v->style.color=v);
+                styleColor(layer,"Cor 2",style.color2,v->style.color2=v);
+                styleValue(layer,"Escala","%",style.gradientScale,10,400,5,
+                    v->style.gradientScale=(float)v);
+                styleValue(layer,"Rotação","°",style.angle,-180,180,1,
+                    v->style.angle=(float)v);
+                break;
             case COLOR_OVERLAY:
                 styleColor(layer,"Cor",style.color,v->style.color=v);break;
             case GRADIENT_OVERLAY:
