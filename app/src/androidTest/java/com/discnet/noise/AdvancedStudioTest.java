@@ -646,6 +646,85 @@ final class AdvancedStudioTest {
                 .55f,17,42);
             check(Color.alpha(result)>0,"Blend mode outputs alpha: "+mode);
         }
+        // Rendering order is semantic, NOT whichever effect appears last
+        // in the panel. Overlay must shade the base before bevel and stroke.
+        StudioDocument orderedFx=StudioDocument.blank("Style order",180,100,true);
+        StudioDocument.Layer styleShape=orderedFx.addShape(
+            StudioDocument.Type.RECTANGLE,0xffbababa,110,62);
+        styleShape.x=23;styleShape.y=18;
+        StudioLayerStyles.Style fxGradient=new StudioLayerStyles.Style(
+            StudioLayerStyles.Kind.GRADIENT_OVERLAY);
+        fxGradient.color=0xfff7a3bb;fxGradient.color2=0xff327fd9;
+        fxGradient.opacity=1;
+        StudioLayerStyles.Style fxBevel=new StudioLayerStyles.Style(
+            StudioLayerStyles.Kind.BEVEL_EMBOSS);
+        fxBevel.size=12;fxBevel.depth=240;fxBevel.opacity=1;
+        fxBevel.angle=85;fxBevel.altitude=38;
+        StudioLayerStyles.Style fxStroke=new StudioLayerStyles.Style(
+            StudioLayerStyles.Kind.STROKE);
+        fxStroke.color=Color.GREEN;fxStroke.size=6;fxStroke.opacity=1;
+        fxStroke.position="CENTER";
+        styleShape.styles.add(fxBevel);
+        styleShape.styles.add(fxStroke);
+        styleShape.styles.add(fxGradient);
+        Bitmap firstOrder=orderedFx.composite();
+        int strokeInside=firstOrder.getPixel(25,45);
+        check(Color.green(strokeInside)>Color.red(strokeInside)&&
+            Color.green(strokeInside)>Color.blue(strokeInside),
+            "Center stroke paints OVER gradient and bevel inside layer");
+        check(Color.alpha(firstOrder.getPixel(21,45))>0,
+            "Centered stroke paints the external half too");
+        int surfaceColor=firstOrder.getPixel(65,48);
+        check(Color.red(surfaceColor)!=Color.green(surfaceColor),
+            "Gradient overlay paints base interior");
+        styleShape.styles.clear();
+        styleShape.styles.add(fxGradient);
+        styleShape.styles.add(fxStroke);
+        styleShape.styles.add(fxBevel);
+        Bitmap reordered=orderedFx.composite();
+        check(firstOrder.sameAs(reordered),
+            "Changing panel insertion order does not reorder Photoshop style stack");
+        styleShape.styles.remove(fxBevel);
+        Bitmap withoutBevel=orderedFx.composite();
+        int bevelChanged=0;
+        for(int y=21;y<78;y++)for(int x=27;x<125;x++){
+            if(firstOrder.getPixel(x,y)!=withoutBevel.getPixel(x,y))
+                bevelChanged++;
+        }
+        check(bevelChanged>30,
+            "Bevel shades a gradient overlay instead of being hidden below it");
+        firstOrder.recycle();reordered.recycle();withoutBevel.recycle();
+
+        // Real raster pixels rather than its large transparent rectangle.
+        StudioDocument realBounds=StudioDocument.blank("Snap alpha",200,140,true);
+        Bitmap mostlyEmpty=Bitmap.createBitmap(90,76,Bitmap.Config.ARGB_8888);
+        mostlyEmpty.eraseColor(Color.TRANSPARENT);
+        for(int y=15;y<35;y++)for(int x=25;x<45;x++)
+            mostlyEmpty.setPixel(x,y,Color.BLUE);
+        StudioDocument.Layer visibleOnly=realBounds.add("Visible area",mostlyEmpty);
+        visibleOnly.x=14;visibleOnly.y=19;
+        RectF actual=StudioSnapGuides.visibleBounds(visibleOnly);
+        check(actual!=null&&Math.abs(actual.left-39)<1&&
+            Math.abs(actual.top-34)<1&&Math.abs(actual.right-59)<1,
+            "Snapping uses actual alpha silhouette, excluding transparent margins");
+        realBounds.verticalGuides.add(60f);realBounds.snapEnabled=true;
+        StudioSnapGuides.Result nearPixels=StudioSnapGuides.snap(
+            realBounds,visibleOnly,StudioTransformMath.bounds(visibleOnly),3);
+        check(Math.abs(nearPixels.dx-1)<.01f&&nearPixels.xGuide==60f,
+            "Visible right pixel edge, not layer rectangle, snaps to ruler guide");
+        visibleOnly.scaleX=2;
+        RectF scaled=StudioSnapGuides.visibleBounds(visibleOnly);
+        check(scaled!=null&&scaled.width()>actual.width()*1.9f,
+            "Visible alignment bounds respect layer scale");
+        // The mask further narrows the real visible alpha.
+        visibleOnly.scaleX=1;
+        visibleOnly.mask=Bitmap.createBitmap(90,76,Bitmap.Config.ARGB_8888);
+        visibleOnly.mask.eraseColor(Color.BLACK);
+        for(int y=15;y<35;y++)for(int x=33;x<42;x++)
+            visibleOnly.mask.setPixel(x,y,Color.WHITE);
+        RectF maskedBounds=StudioSnapGuides.visibleBounds(visibleOnly);
+        check(maskedBounds!=null&&maskedBounds.width()<actual.width(),
+            "Mask changes visible alignment silhouette and invalidates cache");
         StudioDocument guideTest=StudioDocument.blank("Guides",240,160,true);
         StudioDocument.Layer alignBase=guideTest.addShape(
             StudioDocument.Type.RECTANGLE,Color.RED,50,40);

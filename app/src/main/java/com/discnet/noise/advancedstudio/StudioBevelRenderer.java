@@ -22,13 +22,24 @@ public final class StudioBevelRenderer {
 
     static Bitmap compose(StudioDocument.Layer layer,Bitmap source,
                           StudioLayerStyles.Style style,int padding){
+        return compose(layer,source,style,padding,null);
+    }
+
+    /** Colour/pattern/gradient overlays are intrinsic layer fill: they go
+     * UNDER the bevel, never over its directional highlights or shadows.
+     * They are painted into the SAME supersampled glyph mask as the bevel.
+     */
+    static Bitmap compose(StudioDocument.Layer layer,Bitmap source,
+                          StudioLayerStyles.Style style,int padding,
+                          java.util.List<StudioLayerStyles.Style> overlays){
         final int width=source.getWidth()+2*padding;
         final int height=source.getHeight()+2*padding;
         // No illumination must be a strict identity transform, including RGB
         // and the premultiplied edge pixels. Do not rerasterize glyphs just to
         // render a fully transparent lighting pass.
-        if(style.opacity<=0||
-           (style.highlightOpacity<=0&&style.shadowOpacity<=0)){
+        if((overlays==null||overlays.isEmpty())&&
+            (style.opacity<=0||
+             (style.highlightOpacity<=0&&style.shadowOpacity<=0))){
             Bitmap untouched=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
             new Canvas(untouched).drawBitmap(source,padding,padding,
                 new Paint(Paint.FILTER_BITMAP_FLAG));
@@ -70,6 +81,8 @@ public final class StudioBevelRenderer {
             }
             int[] src=new int[w*h];
             base.getPixels(src,0,w,0,0,w,h);
+            if(overlays!=null&&!overlays.isEmpty())
+                applyFillOverlays(src,w,h,factor,overlays);
             styled=shade(src,w,h,pad,style,factor);
             Bitmap output;
             if(styled.getWidth()==width&&styled.getHeight()==height){
@@ -88,6 +101,64 @@ public final class StudioBevelRenderer {
             if(base!=null&&!base.isRecycled())base.recycle();
             if(styled!=null&&styled.getWidth()!=width&&
                 !styled.isRecycled())styled.recycle();
+        }
+    }
+
+    /** Non-destructive color application, preserving the glyph coverage.
+     * The per-style blend and opacity are evaluated on unassociated RGB; the
+     * bevel then shades that RGB while retaining the ORIGINAL alpha mask.
+     */
+    private static void applyFillOverlays(int[] pixels,int w,int h,float factor,
+                    java.util.List<StudioLayerStyles.Style> overlays){
+        StudioLayerStyles.Kind[] order={
+            StudioLayerStyles.Kind.PATTERN_OVERLAY,
+            StudioLayerStyles.Kind.GRADIENT_OVERLAY,
+            StudioLayerStyles.Kind.COLOR_OVERLAY
+        };
+        for(StudioLayerStyles.Kind kind:order){
+            for(StudioLayerStyles.Style effect:overlays){
+                if(!effect.enabled||effect.kind!=kind||effect.opacity<=0)continue;
+                float theta=(float)Math.toRadians(effect.angle);
+                float cos=(float)Math.cos(theta),sin=-(float)Math.sin(theta);
+                float max=Math.max(w,h);
+                float unit=1f/Math.max(.01f,factor);
+                for(int y=0;y<h;y++)for(int x=0;x<w;x++){
+                    int i=y*w+x,original=pixels[i];
+                    int a=Color.alpha(original);
+                    if(a==0)continue;
+                    int color=effect.color;
+                    float px=(x+.5f-w*.5f)*unit;
+                    float py=(y+.5f-h*.5f)*unit;
+                    if(kind==StudioLayerStyles.Kind.GRADIENT_OVERLAY){
+                        float scaled=Math.max(.001f,max*unit*
+                            effect.gradientScale/100f);
+                        float t=clamp((px*cos+py*sin)/scaled+.5f);
+                        if(effect.reverse)t=1-t;
+                        color=mixRgb(effect.color,effect.color2,t);
+                    }else if(kind==StudioLayerStyles.Kind.PATTERN_OVERLAY){
+                        float sx=(px*cos+py*sin)/
+                            Math.max(2f,12f*effect.gradientScale/100f);
+                        float sy=(-px*sin+py*cos)/
+                            Math.max(2f,12f*effect.gradientScale/100f);
+                        int ix=(int)Math.floor(sx),iy=(int)Math.floor(sy);
+                        if("DOTS".equals(effect.pattern)){
+                            float cx=sx-ix-.5f,cy=sy-iy-.5f;
+                            color=cx*cx+cy*cy<.14f?effect.color:effect.color2;
+                        }else if("STRIPES".equals(effect.pattern)){
+                            color=(ix&1)==0?effect.color:effect.color2;
+                        }else{
+                            color=((ix+iy)&1)==0?effect.color:effect.color2;
+                        }
+                    }
+                    float amount=clamp(effect.opacity)*
+                        Color.alpha(color)/255f;
+                    int recolored=StudioBlendMath.composite(
+                        StudioBlendMath.of(effect.blend),
+                        0xff000000|(original&0xffffff),
+                        0xff000000|(color&0xffffff),amount,0,0);
+                    pixels[i]=(a<<24)|(recolored&0xffffff);
+                }
+            }
         }
     }
 

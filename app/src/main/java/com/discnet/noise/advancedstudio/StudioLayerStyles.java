@@ -301,9 +301,23 @@ public final class StudioLayerStyles {
         Bitmap output=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
         output.setPixels(argb,0,W,0,0,W,H);return output;
     }
+    private static java.util.ArrayList<Style> fillOverlays(StudioDocument.Layer layer){
+        // Stable semantic bottom-to-top stacking, independent of effect-list
+        // insertion order: Pattern -> Gradient -> Color.
+        java.util.ArrayList<Style> overlays=new java.util.ArrayList<>();
+        Kind[] order={Kind.PATTERN_OVERLAY,Kind.GRADIENT_OVERLAY,Kind.COLOR_OVERLAY};
+        for(Kind kind:order)for(Style fx:layer.styles)
+            if(fx.enabled&&fx.kind==kind)overlays.add(fx);
+        return overlays;
+    }
+    private static boolean isFillOverlay(Style fx){
+        return fx.kind==Kind.COLOR_OVERLAY||fx.kind==Kind.GRADIENT_OVERLAY||
+            fx.kind==Kind.PATTERN_OVERLAY;
+    }
     private static Bitmap composedBevel(StudioDocument.Layer layer,Bitmap source,
                                        Style s,int padding){
         String key;
+        java.util.ArrayList<Style> overlays=fillOverlays(layer);
         try{
             key="bevel-composed:"+layer.id+":"+source.getGenerationId()+":"+
                 System.identityHashCode(source)+":"+layer.type+":"+
@@ -311,10 +325,13 @@ public final class StudioLayerStyles {
                 layer.fontBold+":"+layer.fontItalic+":"+
                 layer.letterSpacing+":"+layer.textAlign+":"+padding+":"+
                 s.toJson().toString();
-        }catch(JSONException impossible){return StudioBevelRenderer.compose(layer,source,s,padding);}
+            for(Style fx:overlays)key+=":"+fx.toJson().toString();
+        }catch(JSONException impossible){
+            return StudioBevelRenderer.compose(layer,source,s,padding,overlays);
+        }
         Bitmap cached=STYLE_CACHE.get(key);
         if(cached!=null&&!cached.isRecycled())return cached;
-        Bitmap baked=StudioBevelRenderer.compose(layer,source,s,padding);
+        Bitmap baked=StudioBevelRenderer.compose(layer,source,s,padding,overlays);
         STYLE_CACHE.put(key,baked);
         return baked;
     }
@@ -361,13 +378,28 @@ public final class StudioLayerStyles {
             for(Style style:layer.styles)if(style.enabled&&
                 style.kind==Kind.BEVEL_EMBOSS){bevel=style;break;}
             Paint normal=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-            if(bevel==null)off.drawBitmap(source,padding,padding,normal);
-            else off.drawBitmap(composedBevel(layer,source,bevel,padding),0,0,normal);
+            if(bevel==null){
+                off.drawBitmap(source,padding,padding,normal);
+                // The fill overlays are content colors: before all surface,
+                // stroke and lighting effects, independently of panel order.
+                for(Style style:fillOverlays(layer)){
+                    Bitmap fx=cached(layer,source,style,padding,true);
+                    blendEffect(group,off,fx,style,255);
+                }
+            }else{
+                // Rendering bevel + fill together prevents the gradient from
+                // hiding the bevel or adding a second glyph silhouette.
+                off.drawBitmap(composedBevel(layer,source,bevel,padding),0,0,normal);
+            }
             for(Style style:layer.styles)if(style.enabled&&
-                (style.kind==Kind.COLOR_OVERLAY||style.kind==Kind.GRADIENT_OVERLAY||
-                 style.kind==Kind.SATIN||style.kind==Kind.PATTERN_OVERLAY||
-                 style.kind==Kind.INNER_GLOW||style.kind==Kind.INNER_SHADOW||
-                 style.kind==Kind.STROKE&&!"OUTSIDE".equals(style.position))){
+                (style.kind==Kind.SATIN||
+                 style.kind==Kind.INNER_GLOW||style.kind==Kind.INNER_SHADOW)){
+                Bitmap fx=cached(layer,source,style,padding,true);
+                blendEffect(group,off,fx,style,255);
+            }
+            // Strokes are foreground geometry even with a gradient overlay.
+            for(Style style:layer.styles)if(style.enabled&&
+                style.kind==Kind.STROKE&&!"OUTSIDE".equals(style.position)){
                 Bitmap fx=cached(layer,source,style,padding,true);
                 blendEffect(group,off,fx,style,255);
             }
@@ -405,18 +437,24 @@ public final class StudioLayerStyles {
         }
         if(bevel==null){
             canvas.drawBitmap(source,0,0,paint);
+            for(Style style:fillOverlays(layer)){
+                Bitmap fx=cached(layer,source,style,padding,true);
+                canvas.drawBitmap(fx,-padding,-padding,
+                    compositingPaint(style,layer.opacity*style.opacity));
+            }
         }else{
-            // Draw the original glyph and its bevel as ONE composited bitmap
-            // built from the SAME high-resolution raster. Never superimpose
-            // a second, independently rasterized text outline.
             Bitmap composed=composedBevel(layer,source,bevel,padding);
             canvas.drawBitmap(composed,-padding,-padding,paint);
         }
         for(Style s:layer.styles)if(s.enabled&&
-            (s.kind==Kind.COLOR_OVERLAY||s.kind==Kind.GRADIENT_OVERLAY||
-             s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
-             s.kind==Kind.SATIN||s.kind==Kind.PATTERN_OVERLAY||
-             s.kind==Kind.STROKE&&!"OUTSIDE".equals(s.position))){
+            (s.kind==Kind.INNER_SHADOW||s.kind==Kind.INNER_GLOW||
+             s.kind==Kind.SATIN)){
+            Bitmap fx=cached(layer,source,s,padding,true);
+            canvas.drawBitmap(fx,-padding,-padding,
+                compositingPaint(s,layer.opacity*s.opacity));
+        }
+        for(Style s:layer.styles)if(s.enabled&&s.kind==Kind.STROKE&&
+            !"OUTSIDE".equals(s.position)){
             Bitmap fx=cached(layer,source,s,padding,true);
             canvas.drawBitmap(fx,-padding,-padding,
                 compositingPaint(s,layer.opacity*s.opacity));
